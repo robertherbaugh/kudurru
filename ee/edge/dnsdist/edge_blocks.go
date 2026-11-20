@@ -383,7 +383,7 @@ func planEdgeBlocks(desired []internalapi.EdgeBlock, installed map[string]time.T
 // resent (clear first) on the next tick; the child is not retired, because
 // a failed abuse block must not take the edge out of service.
 func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
-	now := s.cfg.BlockNow()
+	now := s.cfg.blockNow()
 	s.mu.Lock()
 	child := s.child
 	st := &s.blocks
@@ -442,6 +442,8 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 }
 
 // sameEdgeBlockOwners reports whether two owner memories persist the same.
+// The last observations are checkpointed on each pull during a streak so
+// a short restart can distinguish a current streak from a stale one.
 func sameEdgeBlockOwners(a, b map[string]edgeBlockOwner) bool {
 	return maps.EqualFunc(a, b, func(x, y edgeBlockOwner) bool {
 		return x.Revision == y.Revision && x.AcceptedAt.Equal(y.AcceptedAt) &&
@@ -492,7 +494,7 @@ func (s *Supervisor) syncEdgeBlocks(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	now := s.cfg.BlockNow().UTC()
+	now := s.cfg.blockNow().UTC()
 	s.mu.Lock()
 	st := &s.blocks
 	active := activeEdgeBlocks(st.desired, now)

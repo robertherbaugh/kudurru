@@ -84,7 +84,7 @@ func (b *restoreTestBackends) start(t *testing.T, at time.Duration, dir string) 
 	h.now.Store(&now)
 	h.harness = newHarness(t, func(cfg *Config) {
 		cfg.Blocks, cfg.Source = b.client, b.source
-		cfg.BlockNow = func() time.Time { return *h.now.Load() }
+		cfg.blockNow = func() time.Time { return *h.now.Load() }
 		cfg.blockPollTicks = h.ticks
 		if dir != "" {
 			cfg.ConfigDir = dir

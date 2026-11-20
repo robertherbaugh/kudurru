@@ -84,7 +84,7 @@ type Config struct {
 	// BlockRestoreHold bounds both the lower-revision confirmation span and
 	// the consecutive absence needed to drop an owner's active blocks (5 min).
 	BlockRestoreHold time.Duration
-	BlockNow         func() time.Time
+	blockNow         func() time.Time
 	blockPollTicks   <-chan time.Time
 	// StatusPoll is the dnsdist API poll interval feeding readiness and
 	// kudurru_edge_backend_up; default 1 s.
@@ -182,8 +182,8 @@ func New(cfg Config) (*Supervisor, error) {
 	if cfg.BlockRestoreHold <= 0 {
 		cfg.BlockRestoreHold = 5 * time.Minute
 	}
-	if cfg.BlockNow == nil {
-		cfg.BlockNow = time.Now
+	if cfg.blockNow == nil {
+		cfg.blockNow = time.Now
 	}
 	if cfg.StatusPoll <= 0 {
 		cfg.StatusPoll = time.Second
@@ -599,7 +599,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if s.cfg.Blocks != nil {
 		// The persisted set is in force until the first backend answers, so
 		// a supervisor restart reapplies unexpired blocks without a backend.
-		persisted, owners := s.loadEdgeBlocks(s.cfg.BlockNow())
+		persisted, owners := s.loadEdgeBlocks(s.cfg.blockNow())
 		s.mu.Lock()
 		s.blocks.desired, s.blocks.owners = persisted, owners
 		if len(persisted) > 0 {
