@@ -52,6 +52,14 @@ subtarget.
 
 ## Zone, controller, objects
 
+Partial SQLite view refusals (#171) are visible without changing the served
+projection or the envelope format. Evidence: `TestCompilerSummarizesRefusedViewsInServedSets`,
+`TestCompilerSummarizesSharedViewBudgetAcrossNamespaces`, the mounted SQLite
+`TestRunServeSQLiteReadPartialViewRefusal`, and the namespaced editor test in
+`dashboard/src/components/RecordViews.test.tsx`.
+This does not change the SQLite takeover behavior, which is now documented in
+[Zones and transfers](../docs/architecture/zones.md#client-group-views-split-horizon).
+
 | Item | Source | Target |
 |---|---|---|
 | Stored TSIG keys: SQLite and Kubernetes management with hot reload (D292, D314, D365) and the `kudurru tsigkeys` CLI (D394) are integrated, and TSIG on DoH/DoQ/DoH3 is integrated (F07b, `a6bf8e1`). Open: `kudurru tsigkeys` has not run against a Kubernetes node, and F07a's final gates (G21–G24) | dev-docs/milestones/m2/xfr.md; F07a | v0.2 |
