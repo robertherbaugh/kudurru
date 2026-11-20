@@ -36,11 +36,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 
@@ -77,8 +79,9 @@ type Options struct {
 	Store     store.Store
 	Validator *validator.Validator
 	// Admit rechecks the elected term before every write.
-	Admit  func(context.Context) error
-	Logger *slog.Logger
+	Admit      func(context.Context) error
+	Logger     *slog.Logger
+	Registerer prometheus.Registerer
 	// Resync bounds the wait between reconciliations when no watch event
 	// arrives (default 10 s).
 	Resync time.Duration
@@ -89,8 +92,10 @@ type Options struct {
 
 // Controller maintains the record sets of external zones.
 type Controller struct {
-	opts   Options
-	client dynamic.Interface
+	opts    Options
+	client  dynamic.Interface
+	health  sourceHealth
+	metrics *sourceMetrics
 	// conflicted records that the running pass met a concurrent change
 	// (store.ErrConflict); Run then retries after MinInterval. Only the
 	// Run goroutine touches it.
@@ -119,7 +124,11 @@ func New(cfg *rest.Config, opts Options) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Controller{opts: opts, client: client}, nil
+	metrics, err := registerSourceMetrics(opts.Registerer)
+	if err != nil {
+		return nil, err
+	}
+	return &Controller{opts: opts, client: client, metrics: metrics}, nil
 }
 
 type limitTransport struct{ http.RoundTripper }
@@ -128,10 +137,37 @@ type limitBody struct {
 	io.Closer
 }
 
+type pageReadKey struct{}
+
+type listPageBody struct {
+	*io.LimitedReader
+	io.Closer
+	truncated *bool
+}
+
+func (b listPageBody) Read(buf []byte) (int, error) {
+	if b.N > 0 || len(buf) == 0 {
+		return b.LimitedReader.Read(buf)
+	}
+	if *b.truncated {
+		return 0, io.EOF
+	}
+	var extra [1]byte
+	if n, err := b.R.Read(extra[:]); n == 0 {
+		return 0, err
+	}
+	*b.truncated = true
+	return 0, io.EOF
+}
+
 func (t limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := t.RoundTripper.RoundTrip(req)
 	if err == nil && res != nil && res.Body != nil {
-		res.Body = limitBody{Reader: io.LimitReader(res.Body, maxResponseBytes), Closer: res.Body}
+		if truncated, ok := req.Context().Value(pageReadKey{}).(*bool); ok && res.StatusCode == http.StatusOK {
+			res.Body = listPageBody{LimitedReader: &io.LimitedReader{R: res.Body, N: maxResponseBytes}, Closer: res.Body, truncated: truncated}
+		} else {
+			res.Body = limitBody{Reader: io.LimitReader(res.Body, maxResponseBytes), Closer: res.Body}
+		}
 	}
 	return res, err
 }
@@ -141,12 +177,11 @@ func (t limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // after MinInterval (a fresh pass recomputes everything; nothing refused is
 // replayed); otherwise the next pass waits for a watch event or Resync.
 func (c *Controller) Run(ctx context.Context) error {
+	c.publishListHealth(nil)
 	for ctx.Err() == nil {
 		started := time.Now()
-		rctx, cancel := context.WithTimeout(ctx, reconcileTimeout)
 		c.conflicted = false
-		watched, err := c.reconcile(rctx)
-		cancel()
+		watched, err := c.reconcile(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -184,8 +219,8 @@ func (c *Controller) noteConflict(err error) {
 
 // watchFrom is one resource and the list resourceVersion to watch from.
 type watchFrom struct {
-	gvr schema.GroupVersionResource
-	rv  string
+	kind *sourceKind
+	rv   string
 }
 
 // wait returns on the first watch event of any watched list, or after the
@@ -203,15 +238,23 @@ func (c *Controller) wait(ctx context.Context, watched []watchFrom) {
 		wg.Add(1)
 		go func(w watchFrom) {
 			defer wg.Done()
-			watch, err := c.client.Resource(w.gvr).Watch(wctx, metav1.ListOptions{ResourceVersion: w.rv, TimeoutSeconds: &seconds})
+			stream, err := c.client.Resource(w.kind.gvr).Watch(wctx, metav1.ListOptions{ResourceVersion: w.rv, TimeoutSeconds: &seconds})
 			if err != nil {
+				if accessDenied(err) {
+					c.health.setWatchDenied(w.kind, true)
+				}
 				return
 			}
-			defer watch.Stop()
+			defer stream.Stop()
+			c.health.setWatchDenied(w.kind, false)
 			select {
 			case <-wctx.Done():
-			case _, ok := <-watch.ResultChan():
+			case event, ok := <-stream.ResultChan():
 				if ok {
+					if event.Type == watch.Error && accessDenied(apierrors.FromObject(event.Object)) {
+						c.health.setWatchDenied(w.kind, true)
+						return
+					}
 					select {
 					case woke <- struct{}{}:
 					default:
@@ -229,32 +272,37 @@ func (c *Controller) wait(ctx context.Context, watched []watchFrom) {
 }
 
 // list reads one complete, bounded list of gvr in all namespaces.
-func (c *Controller) list(ctx context.Context, gvr schema.GroupVersionResource) ([]unstructured.Unstructured, string, error) {
+func (c *Controller) list(ctx context.Context, gvr schema.GroupVersionResource) ([]unstructured.Unstructured, string, int, error) {
 	var all []unstructured.Unstructured
 	var rv, cont string
 	size := 0
 	for {
-		page, err := c.client.Resource(gvr).List(ctx, metav1.ListOptions{Limit: listPageSize, Continue: cont})
+		truncated := false
+		pageCtx := context.WithValue(ctx, pageReadKey{}, &truncated)
+		page, err := c.client.Resource(gvr).List(pageCtx, metav1.ListOptions{Limit: listPageSize, Continue: cont})
+		if truncated {
+			return nil, "", len(all), errors.Join(errTruncatedPage, err)
+		}
 		if err != nil {
-			return nil, "", err
+			return nil, "", len(all), err
 		}
 		if page.GetResourceVersion() == "" || (rv != "" && rv != page.GetResourceVersion()) {
-			return nil, "", store.ErrConflict
+			return nil, "", len(all), store.ErrConflict
 		}
 		rv = page.GetResourceVersion()
 		for _, item := range page.Items {
 			data, err := item.MarshalJSON()
 			if err != nil {
-				return nil, "", err
+				return nil, "", len(all) + 1, err
 			}
 			size += len(data)
 			if size > maxBytes || len(all) == maxObjects {
-				return nil, "", store.ErrTooLarge
+				return nil, "", len(all) + 1, store.ErrTooLarge
 			}
 			all = append(all, item)
 		}
 		if cont = page.GetContinue(); cont == "" {
-			return all, rv, nil
+			return all, rv, len(all), nil
 		}
 	}
 }
@@ -308,24 +356,26 @@ func (c *Controller) children(ctx context.Context, k *sourceKind) ([]*v1alpha1.D
 	}
 }
 
-func enabled(z *v1alpha1.DNSZone, f family) bool {
+func enabled(spec *v1alpha1.ExternalSpec, f family) bool {
+	if spec == nil {
+		return false
+	}
 	switch f {
 	case familyIngress:
-		return z.Spec.External.Ingress
+		return spec.Ingress
 	case familyGateway:
-		return z.Spec.External.Gateway
+		return spec.Gateway
 	case familyService:
-		return z.Spec.External.LoadBalancerServices
+		return spec.LoadBalancerServices
 	}
 	return false
 }
 
 // reconcile is one bounded pass over every source kind. It returns the
 // lists to watch for the next wake-up.
-func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
-	if _, ok := ctx.Deadline(); !ok {
-		return nil, errors.New("external zones: reconciliation must be bounded")
-	}
+func (c *Controller) reconcile(term context.Context) ([]watchFrom, error) {
+	ctx, cancel := context.WithTimeout(term, reconcileTimeout)
+	defer cancel()
 	if err := c.opts.Admit(ctx); err != nil {
 		return nil, err
 	}
@@ -341,10 +391,30 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 			firstError = err
 		}
 	}
+	lists := make(map[*sourceKind]listResult)
+	defer func() {
+		if term.Err() == nil {
+			c.publishListHealth(lists)
+		}
+	}()
+	read := func(k *sourceKind) ([]unstructured.Unstructured, error) {
+		items, rv, observed, err := c.list(ctx, k.gvr)
+		result := classifyList(err)
+		lists[k] = result
+		if term.Err() == nil {
+			c.metrics.recordList(k, result, observed)
+		}
+		if err != nil {
+			keep(c.listError(k, err))
+		} else {
+			watched = append(watched, watchFrom{k, rv})
+		}
+		return items, err
+	}
 	byFamily := map[family][]*v1alpha1.DNSZone{}
 	for _, z := range zones {
 		for _, f := range []family{familyIngress, familyGateway, familyService} {
-			if enabled(z, f) {
+			if enabled(z.Spec.External, f) {
 				byFamily[f] = append(byFamily[f], z)
 			}
 		}
@@ -352,11 +422,10 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 	var gateways map[string]gateway
 	gatewayErr := error(nil)
 	if len(byFamily[familyGateway]) > 0 {
-		items, rv, err := c.list(ctx, gatewayResource)
+		items, err := read(gatewayKind)
 		if err != nil {
 			gatewayErr = err
 		} else {
-			watched = append(watched, watchFrom{gatewayResource, rv})
 			gateways = make(map[string]gateway, len(items))
 			for i := range items {
 				gateways[items[i].GetNamespace()+"/"+items[i].GetName()] = stripGateway(&items[i])
@@ -364,12 +433,21 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 		}
 	}
 	for _, k := range sourceKinds {
+		familyZones := byFamily[k.family]
+		var items []unstructured.Unstructured
+		if len(familyZones) > 0 {
+			var err error
+			items, err = read(k)
+			if err != nil || (k.family == familyGateway && gatewayErr != nil) {
+				// A partial or refused list is never a delete capability.
+				continue
+			}
+		}
 		current, err := c.children(ctx, k)
 		if err != nil {
 			keep(err)
 			continue
 		}
-		familyZones := byFamily[k.family]
 		if len(familyZones) == 0 {
 			// No zone wants this kind any more: withdraw what it published.
 			for _, rs := range current {
@@ -379,19 +457,6 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 			}
 			continue
 		}
-		if k.family == familyGateway && gatewayErr != nil {
-			// Without the Gateways no route can be projected; keep the
-			// record sets of the last complete pass.
-			keep(c.listError(k, gatewayErr))
-			continue
-		}
-		items, rv, err := c.list(ctx, k.gvr)
-		if err != nil {
-			// A partial or refused list is never a delete capability.
-			keep(c.listError(k, err))
-			continue
-		}
-		watched = append(watched, watchFrom{k.gvr, rv})
 		keep(c.reconcileKind(ctx, k, items, current, familyZones, gateways))
 	}
 	return watched, firstError

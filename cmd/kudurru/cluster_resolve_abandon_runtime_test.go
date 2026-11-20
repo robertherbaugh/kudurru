@@ -19,6 +19,34 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
+func openResolvedMember(ctx context.Context, t *testing.T, r resolutionReceiver) *sqlite.Store {
+	t.Helper()
+	scheme, err := runtimekinds.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opening, opened := context.WithTimeout(ctx, 10*time.Second)
+	defer opened()
+	st, err := sqlite.OpenExisting(opening, filepath.Join(r.dir, sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: r.primary.opts.Validator,
+		InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func resolvedMemberConfig(t *testing.T, r resolutionReceiver) *config.Config {
+	t.Helper()
+	cfg, err := config.FromFlat(config.Flatten(r.primary.opts.Config))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Auth.IdentityProviders = nil
+	cfg.Node.Name, cfg.Node.DataDir = "receiver", r.dir
+	return cfg
+}
+
 // F28-HISTORY: after `cluster resolve --offline --abandon-term` the member is
 // the primary of a new term over its own branch. This starts an actual
 // serving runtime on that database with the store's actual elector (the
@@ -55,29 +83,12 @@ func TestClusterResolveAbandonedMemberRunsAsTheNewPrimary(t *testing.T) {
 	}
 	before := r.durable()
 
-	scheme, err := runtimekinds.NewScheme()
-	if err != nil {
-		t.Fatal(err)
-	}
-	opening, opened := context.WithTimeout(t.Context(), 10*time.Second)
-	st, err := sqlite.OpenExisting(opening, filepath.Join(r.dir, sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: r.primary.opts.Validator,
-		InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
-	opened()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openResolvedMember(t.Context(), t, r)
 	if a := st.Authority(); a.Mode != replication.Primary || !a.Term.Same(receipt.Term) {
 		t.Fatal("abandoned member did not reopen as the new term's primary", a.Mode)
 	}
-	cfg, err := config.FromFlat(config.Flatten(r.primary.opts.Config))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Auth.IdentityProviders = nil
-	cfg.Node.Name, cfg.Node.DataDir = "receiver", r.dir
 	o := r.primary.opts
-	o.Config, o.Store = cfg, st
+	o.Config, o.Store = resolvedMemberConfig(t, r), st
 	o.Transferred = servingbuild.NewTransferredRuntime(nil, nil, nil)
 	startup, finish := context.WithTimeout(t.Context(), 10*time.Second)
 	runtime, err := newServingRuntime(startup, o)
