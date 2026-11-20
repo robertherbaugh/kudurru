@@ -636,6 +636,14 @@ authentication failures never trigger fallback. Initial, expired, and
 credential-changed copies use AXFR. The receiver bounds live records, bytes,
 cumulative edits and serial steps independently.
 
+Transfer replies must set AA, even when TSIG verifies. Knot 3.6.2 returns a
+signed, single-SOA IXFR reply without AA when the requested serial is already
+current. Kudurru refuses it: the reply neither replaces the stored copy nor
+renews its confirmation or expiry. With a consistent primary, an unchanged
+SOA poll confirms the copy without issuing IXFR. The refusal can occur when
+the poll and transfer reach different instances or the primary rolls back
+between them. See [the secondary runbook](../deploy/runbooks.md#secondary-refresh-reports-a-non-authoritative-response).
+
 Inbound NOTIFY reaches the authoritative opcode handler through ingress. It
 requires an exact secondary apex, an address belonging to a configured primary,
 and the configured transfer TSIG key when present. Numeric primaries match
