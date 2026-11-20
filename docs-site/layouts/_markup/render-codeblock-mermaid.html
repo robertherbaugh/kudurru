@@ -6,5 +6,5 @@
   JavaScript the reader sees the diagram's source.
 */ -}}
 {{- .Page.Store.Set "mermaid" true -}}
-<pre class="mermaid" tabindex="0">{{ .Inner }}</pre>
+<pre class="mermaid" role="region" aria-label="Mermaid diagram" tabindex="0">{{ .Inner }}</pre>
 {{- /* chomp trailing newline */ -}}

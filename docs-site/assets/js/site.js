@@ -6,7 +6,6 @@
 
   const root = document.documentElement;
   const control = document.querySelector('.theme-switch');
-  root.classList.add('js');
   if (control) {
     const options = control.querySelectorAll('input[type="radio"]');
     const system = matchMedia('(prefers-color-scheme: dark)');
@@ -36,6 +35,17 @@
     });
     system.addEventListener('change', () => { if (!root.dataset.theme) announce(); });
     control.hidden = false;
+  }
+
+  const scrollers = document.querySelectorAll('.table-wrap, pre.mermaid');
+  if (scrollers.length && typeof ResizeObserver !== 'undefined') {
+    const reflow = new ResizeObserver((entries) => {
+      for (const { target } of entries) {
+        if (target.scrollWidth > target.clientWidth) target.tabIndex = 0;
+        else target.removeAttribute('tabindex');
+      }
+    });
+    for (const scroller of scrollers) reflow.observe(scroller);
   }
 
   const sidebar = document.querySelector('.sidebar__tree');

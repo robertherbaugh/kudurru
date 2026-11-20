@@ -30,7 +30,7 @@
 /* NameOther */ .chroma .nx { color:light-dark(#1f2328,#e6edf3) }
 /* NameTag */ .chroma .nt { color:light-dark(#0550ae,#7ee787) }
 /* NameBuiltin */ .chroma .nb { color:light-dark(#6639ba,var(--chroma-fg)) }
-/* NameBuiltinPseudo */ .chroma .bp { color:light-dark(#6a737d,var(--chroma-fg)) }
+/* NameBuiltinPseudo */ .chroma .bp { color:light-dark(#57606a,var(--chroma-fg)) }
 /* NameVariable */ .chroma .nv { color:light-dark(#953800,#79c0ff) }
 /* NameVariableClass */ .chroma .vc { color:light-dark(#953800,#79c0ff) }
 /* NameVariableGlobal */ .chroma .vg { color:light-dark(#953800,#79c0ff) }
