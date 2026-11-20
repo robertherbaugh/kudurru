@@ -86,6 +86,27 @@ describe.each(PAGE_PATHS)("%s", (name) => {
     }
   });
 
+  test("the theme initializes before CSS and includes both OS fallbacks", () => {
+    const head = pages[name]!.split("</head>")[0]!;
+    expect(head).toContain('<meta name="color-scheme" content="light dark">');
+    expect(head).toContain('<meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)">');
+    expect(head).toContain('<meta name="theme-color" content="#182522" media="(prefers-color-scheme: dark)">');
+    const init = head.search(/<script src="\/assets\/theme-init-[\w-]+\.js"><\/script>/);
+    expect(init).toBeGreaterThan(-1);
+    expect(init).toBeLessThan(head.indexOf('<link rel="stylesheet"'));
+    expect(pages[name]).toContain('<div class="theme-switch" role="group" aria-label="Color theme" hidden>');
+  });
+
+  test("header and footer carry both complete logo variants", () => {
+    const variants = [
+      ["light", "mixed", 192, 64], ["dark", "mixed-paper", 192, 64],
+      ["light", "mixed-tagline", 360, 150], ["dark", "mixed-paper-tagline", 360, 150],
+    ];
+    for (const [theme, variant, width, height] of variants) {
+      expect(pages[name]).toMatch(new RegExp(`<img class="logo-${theme}" src="/assets/kudurru-logo-${variant}-[a-f0-9]{10}\\.png" width="${width}" height="${height}" alt="kudurru[^"]*"`));
+    }
+  });
+
   test("external links are https and open safely", () => {
     for (const a of pages[name]!.matchAll(/<a\b[^>]*href="(https?:[^"]*)"[^>]*>/g)) {
       expect(a[1]!.startsWith("https://")).toBe(true);

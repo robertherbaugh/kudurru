@@ -28,8 +28,9 @@ Or inside `website/`: `bun install`, `bun run dev`, `bun test`, `bun run build`,
 | `src/use-cases.ts` | The Kubernetes DNS, network ad blocking and Pi-hole alternative landing pages, with links to maintained setup and migration guides |
 | `src/seo.ts` | Home search title and JSON-LD for the site, publisher, software and page breadcrumbs |
 | `src/pages/` | The page templates: plain functions returning HTML through the escaping `html` tag in `src/html.ts`, rendered once at build time |
-| `src/client/` | The only script: tabs, the sample query log in the hero, copy buttons, the mobile menu, the enterprise pricing calculator, and the "Request a key" form of `/license/` (`license.ts`). Pages are complete without it; the calculator shows a static example and the key form shows mail links instead |
-| `src/styles/site.css` | The stylesheet. It imports `branding/tokens.css` |
+| `src/client/main.ts` | Tabs, sample query log, copy buttons, mobile menu, theme control, enterprise pricing calculator, and key request form. Pages are complete without it; the calculator shows a static example and the key form shows mail links instead |
+| `src/client/theme-init.ts` | Synchronous external script in `<head>` that applies a saved theme before CSS, without relaxing CSP |
+| `src/styles/site.css` | Imports `branding/tokens.css`, maps semantic colors to both schemes, and swaps logos to match the active theme |
 | `src/headers.ts` | The response headers (CSP, HSTS, caching), written to `dist/_headers` |
 | `build.ts` | Renders the pages and root Community License, bundles the script and stylesheet with hashed names, copies the fonts, brand artwork and screenshots, writes `_headers`, `robots.txt`, `sitemap.xml` and the web manifest |
 | `wrangler.jsonc` | The Cloudflare Workers configuration: static assets from `dist/`, the 404 page, the `kudurru.io` custom domain |
@@ -41,6 +42,12 @@ Inter and JetBrains Mono (self-hosted from `@fontsource-variable`, OFL-1.1,
 licenses served at `/licenses/`). Query-status colors in the sample log are
 separate from the brand colors, as the kit asks. The dashboard screenshots
 are the guide's (`docs/guide/images`), so they stay current with it.
+
+The header's Color theme control (in Menu on narrow screens) offers **System**,
+**Light**, and **Dark**. Both public sites use the same contract: a `light` or
+`dark` value in the origin-local `kudurru-theme` storage key sets the matching
+`data-theme` on `<html>`. System clears both and follows the OS live. With
+JavaScript disabled the control is hidden and the OS palette still applies.
 
 The sample traffic in the hero and the pipeline section is illustrative and
 says so on the page: names under `.example` and addresses from RFC 5737 and

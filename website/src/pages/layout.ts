@@ -7,6 +7,7 @@ import { USE_CASES } from "../use-cases.ts";
 export interface Assets {
   css: string;
   js: string;
+  themeInit: string;
   preload: string[];
   file: (name: string) => string;
 }
@@ -37,7 +38,8 @@ function header(assets: Assets, home: boolean): Html {
   return html`<header class="top">
   <div class="wrap top-row">
     <a class="brand" href="/" aria-label="kudurru home">
-      <img src="${assets.file("kudurru-logo-mixed-paper.png")}" width="192" height="64" alt="kudurru">
+      <img class="logo-light" src="${assets.file("kudurru-logo-mixed.png")}" width="192" height="64" alt="kudurru">
+      <img class="logo-dark" src="${assets.file("kudurru-logo-mixed-paper.png")}" width="192" height="64" alt="kudurru">
     </a>
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">${icon.menu}<span>Menu</span></button>
     <nav id="site-nav" class="nav" aria-label="Primary">
@@ -48,6 +50,11 @@ function header(assets: Assets, home: boolean): Html {
         <li>${external(DOCS_URL, html`Docs ${icon.out}`)}</li>
         <li>${external(REPO_URL, html`${icon.github}<span>GitHub</span>`, "gh")}</li>
       </ul>
+      <div class="theme-switch" role="group" aria-label="Color theme" hidden>
+        <label><input type="radio" name="kudurru-theme" value="system" checked><span>System</span></label>
+        <label><input type="radio" name="kudurru-theme" value="light"><span>Light</span></label>
+        <label><input type="radio" name="kudurru-theme" value="dark"><span>Dark</span></label>
+      </div>
     </nav>
   </div>
 </header>`;
@@ -57,7 +64,8 @@ function footer(assets: Assets, version: string): Html {
   return html`<footer class="foot">
   <div class="wrap foot-grid">
     <div class="foot-brand">
-      <img src="${assets.file("kudurru-logo-mixed-paper-tagline.png")}" width="360" height="150" alt="kudurru, ${TAGLINE}" loading="lazy">
+      <img class="logo-light" src="${assets.file("kudurru-logo-mixed-tagline.png")}" width="360" height="150" alt="kudurru, ${TAGLINE}" loading="lazy">
+      <img class="logo-dark" src="${assets.file("kudurru-logo-mixed-paper-tagline.png")}" width="360" height="150" alt="kudurru, ${TAGLINE}" loading="lazy">
       <p class="mono dim">koo-DOO-roo · v${version}</p>
     </div>
     ${FOOTER.map(
@@ -91,8 +99,9 @@ export function layout(page: Page, version: string): string {
 <meta name="description" content="${description}">
 ${index ? html`<link rel="canonical" href="${url}">
 <meta name="robots" content="index, follow, max-image-preview:large">` : html`<meta name="robots" content="noindex">`}
-<meta name="theme-color" content="#182522">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#182522" media="(prefers-color-scheme: dark)">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="kudurru">
 <meta property="og:locale" content="en_US">
@@ -115,6 +124,7 @@ ${index ? html`<script type="application/ld+json">${raw(structuredData(page, ver
 <link rel="apple-touch-icon" href="${assets.file("kudurru-icon-192.png")}">
 <link rel="manifest" href="/site.webmanifest">
 ${assets.preload.map((href) => html`<link rel="preload" href="${href}" as="font" type="font/woff2" crossorigin>`)}
+<script src="${assets.themeInit}"></script>
 <link rel="stylesheet" href="${assets.css}">
 <script type="module" src="${assets.js}"></script>
 </head>
