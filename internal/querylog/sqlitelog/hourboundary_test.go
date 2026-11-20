@@ -71,31 +71,49 @@ func TestSummaryAcrossHourBoundary(t *testing.T) {
 
 // TestSummaryLateWritesIntoPreviousHour writes events whose timestamps are in
 // the previous hour after the clock has crossed the boundary (a queued batch
-// flushed late), then reads a one-hour window ending at HH:00:30.
+// flushed late), then reads a one-hour window ending at HH:00:30 with the
+// counts either still in memory or flushed to the minute rollups.
 func TestSummaryLateWritesIntoPreviousHour(t *testing.T) {
 	now := time.Date(2026, 10, 11, 13, 0, 30, 0, time.UTC)
-	w, _ := newWriter(t, now)
-	ts := now.Add(-2 * time.Minute) // 12:58:30
-	mustWrite(t, w,
-		event(ts, "10.0.0.1", "a.example"),
-		event(ts.Add(time.Second), "10.0.0.2", "b.example"),
-		event(ts.Add(2*time.Second), "10.0.0.1", "c.example"),
-	)
-	if err := w.Flush(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	s, err := w.Reader().Summary(context.Background(), SummaryQuery{Window: Window{From: now.Add(-time.Hour), Until: now}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Queries.Total != 3 || s.Clients.Active != 2 || s.Queries.UniqueDomains != 3 {
-		t.Fatalf("total %d, active clients %d, unique domains %d; want 3, 2, 3", s.Queries.Total, s.Clients.Active, s.Queries.UniqueDomains)
-	}
-	sh, err := w.Reader().SummaryShard(context.Background(), SummaryQuery{Window: Window{From: now.Add(-time.Hour), Until: now}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sh.Queries.Total != 3 || len(sh.ActiveClients.Values) != 2 || len(sh.Domains.Values) != 3 {
-		t.Fatalf("shard total %d, active clients %d, domains %d; want 3, 2, 3", sh.Queries.Total, len(sh.ActiveClients.Values), len(sh.Domains.Values))
+	for _, tc := range []struct {
+		name  string
+		flush bool
+	}{
+		{name: "unflushed"},
+		{name: "flushed", flush: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			w, _ := newWriter(t, now)
+			at := now.Add(-2 * time.Minute)
+			mustWrite(t, w,
+				event(at, "10.0.0.1", "a.example"),
+				event(at.Add(time.Second), "10.0.0.2", "b.example"),
+				event(at.Add(2*time.Second), "10.0.0.1", "c.example"),
+			)
+			if tc.flush {
+				if err := w.Flush(ctx); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if onDisk := queryInt(t, w.w, `SELECT count(*) FROM rollup_1m`) > 0; onDisk != tc.flush {
+				t.Fatalf("minute rollups on disk = %t, want %t", onDisk, tc.flush)
+			}
+			query := SummaryQuery{Window: Window{From: now.Add(-time.Hour), Until: now}}
+			summary, err := w.Reader().Summary(ctx, query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if summary.Queries.Total != 3 || summary.Clients.Active != 2 || summary.Queries.UniqueDomains != 3 {
+				t.Fatalf("total %d, active clients %d, unique domains %d; want 3, 2, 3", summary.Queries.Total, summary.Clients.Active, summary.Queries.UniqueDomains)
+			}
+			shard, err := w.Reader().SummaryShard(ctx, query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if shard.Queries.Total != 3 || len(shard.ActiveClients.Values) != 2 || len(shard.Domains.Values) != 3 {
+				t.Fatalf("shard total %d, active clients %d, domains %d; want 3, 2, 3", shard.Queries.Total, len(shard.ActiveClients.Values), len(shard.Domains.Values))
+			}
+		})
 	}
 }
