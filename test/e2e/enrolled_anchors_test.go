@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,6 +225,7 @@ func (e *enrolledAnchors) assertClusterFenced(node *kudurrutest.Node, want float
 	if got, exported := scrapeGauge(e.t, node.Ports.Metrics, "kudurru_cluster_fenced", ""); !exported || got != want {
 		e.t.Fatalf("%s: kudurru_cluster_fenced = %v (exported %v), want %v", why, got, exported, want)
 	}
+	e.t.Logf("%s: kudurru_cluster_fenced = %v", why, want)
 }
 
 // sampleValidated queries node for validated recursion over UDP and TCP every
@@ -799,7 +801,9 @@ func scrapeGauge(t *testing.T, address, name, match string) (float64, bool) {
 		return 0, false
 	}
 	for _, line := range strings.Split(string(body), "\n") {
-		if !strings.HasPrefix(line, name+"{") || !strings.Contains(line, match) {
+		unlabeled := match == "" && strings.HasPrefix(line, name+" ")
+		labeled := match != "" && strings.HasPrefix(line, name+"{") && strings.Contains(line, match)
+		if !unlabeled && !labeled {
 			continue
 		}
 		fields := strings.Fields(line)
@@ -812,4 +816,18 @@ func scrapeGauge(t *testing.T, address, name, match string) (float64, bool) {
 		}
 	}
 	return 0, false
+}
+
+func TestScrapeGaugeHandlesUnlabeledAndLabeledSamples(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "kudurru_cluster_fenced_other 1\nkudurru_cluster_fenced 0\nkudurru_root_anchor_adoption_refused{reason=\"policy\"} 1\n")
+	}))
+	t.Cleanup(server.Close)
+	address := server.Listener.Addr().String()
+	if got, found := scrapeGauge(t, address, "kudurru_cluster_fenced", ""); !found || got != 0 {
+		t.Fatal("unlabeled zero sample was not exported", got, found)
+	}
+	if got, found := scrapeGauge(t, address, "kudurru_root_anchor_adoption_refused", `reason="policy"`); !found || got != 1 {
+		t.Fatal("labeled refusal sample was not exported", got, found)
+	}
 }
