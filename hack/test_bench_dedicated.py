@@ -1,8 +1,11 @@
 """Check dedicated-host review, historical formulas and evidence integrity without timing."""
 
+from contextlib import ExitStack, redirect_stderr
 import importlib.util
+import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -206,18 +209,237 @@ class DedicatedControls(unittest.TestCase):
                 "calibration_manifest_sha256": dedicated.runner.digest(calibration / "manifest.json")})
             limits = dedicated.runner.LIMIT_FILES
             def execute(original, output, order):
+                self.assertEqual(original, root)
                 self.assertEqual(order, "interleaved")
                 self.assertEqual(output, root / "qualification/paired")
-                self.assertTrue((output.parent / "dedicated-review.json").is_file())
+                self.assertEqual(list(output.parent.iterdir()), [output.parent / "dedicated-review.json"])
+                expected_review = {
+                    "approval": dedicated.read(approval), "approval_sha256": dedicated.runner.digest(approval),
+                    "calibration_manifest_sha256": dedicated.runner.digest(calibration / "manifest.json"),
+                    "host": {}, "host_transition": None, "host_transition_sha256": None, "release_qualified": False}
+                self.assertEqual((output.parent / "dedicated-review.json").read_text(),
+                                 json.dumps(expected_review, indent=2) + "\n")
                 self.assertEqual(dedicated.reference.RUNNER_CLASS, dedicated.CLASS)
                 self.assertEqual(dedicated.runner.LIMIT_FILES["blocking-zone"], str(dedicated.ROOT / "bench/limits.txt"))
                 for scope in dedicated.CALIBRATED:
                     self.assertEqual(dedicated.runner.LIMIT_FILES[scope], str(calibration / (scope + "-limits.txt")))
                 return 1  # A failed paired run must remain failed.
-            with mock.patch.object(dedicated, "verify_calibration"), mock.patch.object(dedicated.paired, "execute", side_effect=execute):
+            with mock.patch.object(dedicated, "verify_calibration"), \
+                    mock.patch.object(dedicated.runner, "measure") as measure, \
+                    mock.patch.object(dedicated.paired, "execute", side_effect=execute) as paired:
                 self.assertEqual(dedicated.qualify(root, calibration / "host.json", calibration, approval, root / "qualification"), 1)
+                measure.assert_not_called()
+                paired.assert_called_once_with(root, root / "qualification/paired", "interleaved")
+                self.assertIs(dedicated.runner.measure, measure)
             self.assertIs(dedicated.runner.LIMIT_FILES, limits)
             self.assertEqual(dedicated.reference.RUNNER_CLASS, "ubicloud-standard-8-ubuntu-2404")
+
+
+class HostEquivalencePreflight(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.gate = Path(directory.name) / "benchgate"
+        subprocess.run(["go", "build", "-o", str(cls.gate), "./hack/benchgate"], cwd=dedicated.ROOT, check=True)
+
+    def setUp(self):
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        self.root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        self.original, self.calibration = self.root / "original", self.root / "calibration"
+        self.original.mkdir()
+        self.calibration.mkdir()
+        self.host = self.calibration / "host.json"
+        manifest = self.calibration / "manifest.json"
+        self.approval, self.preflight_approval = self.root / "approval.json", self.root / "preflight.json"
+        dedicated.runner.save(self.host, {})
+        dedicated.runner.save(manifest, {})
+        review = {"decision": "accepted", "reviewed_by": "fixture owner", "reviewed_at": "2026-11-15",
+                  "review_evidence": "fixture review only"}
+        manifest_hash = dedicated.runner.digest(manifest)
+        dedicated.runner.save(self.approval, dict(review, calibration_manifest_sha256=manifest_hash))
+        self.preflight_review = dict(review, purpose="host-equivalence-preflight",
+                                     calibration_manifest_sha256=manifest_hash,
+                                     calibration_approval_sha256=dedicated.runner.digest(self.approval),
+                                     qualification_host_sha256=dedicated.runner.digest(self.host),
+                                     method_sha256=dedicated.runner.digest(dedicated.__file__))
+        dedicated.runner.save(self.preflight_approval, self.preflight_review)
+        for report, metrics in {"cache": {("BenchmarkGet", "ns/op"): [100] * 5},
+                                "upstream": {("BenchmarkStrategies/fast/strict", "p99-ns"): [100] * 5,
+                                             ("BenchmarkStrategies/fast/strict", "q/s"): [100] * 5}}.items():
+            (self.calibration / (report + "-limits.txt")).write_text(dedicated.profile(report, metrics, set(metrics)))
+        self.rows = {"blocking": "BenchmarkEvaluate/exact-6 1 0 allocs/op",
+                     "zone": "BenchmarkLookup100k/cname-6 1 2000 p99-ns",
+                     "cache": "BenchmarkGet-6 1 125 ns/op",
+                     "upstream": "BenchmarkStrategies/fast/strict-6 1 120 p99-ns 80 q/s"}
+        self.heads = {self.original: dedicated.reference.REFERENCE, dedicated.ROOT: "control"}
+        self.calls, self.failures = [], {}
+        self.mutate_after = None
+        self.limits, self.runner_class = dedicated.runner.LIMIT_FILES, dedicated.reference.RUNNER_CLASS
+        stack.enter_context(mock.patch.object(dedicated, "verify_calibration"))
+        stack.enter_context(mock.patch.object(dedicated, "validate_host"))
+        stack.enter_context(mock.patch.object(dedicated.reference, "checkout_head", side_effect=self.heads.__getitem__))
+        stack.enter_context(mock.patch.object(dedicated.subprocess, "check_output", return_value=b"go version fixture"))
+        self.measure = stack.enter_context(mock.patch.object(dedicated.runner, "measure", side_effect=self.collect))
+        self.paired = stack.enter_context(mock.patch.object(dedicated.paired, "execute", return_value=0))
+
+    def collect(self, argv, stem, procs, timeout=1860):
+        self.assertEqual(procs, 6)
+        self.assertEqual(stem.parent.name, "preflight")
+        self.calls.append(stem.name)
+        if stem.name in self.rows:
+            self.assertEqual(Path.cwd(), self.original)
+            self.assertEqual(argv, dedicated.runner.commands()[stem.name])
+            self.assertEqual(timeout, 1860)
+            text = "cpu: fixture\n" + self.rows[stem.name] + "\n"
+            code = 0
+        else:
+            self.assertEqual(Path.cwd(), dedicated.ROOT)
+            self.assertEqual(timeout, 300)
+            report = stem.name.removesuffix("-gate")
+            rules = dedicated.ROOT / "bench/limits.txt" if report == "blocking-zone" else self.calibration / (report + "-limits.txt")
+            path = stem.parent / (report + ".txt")
+            self.assertEqual(argv, ["go", "run", "./hack/benchgate", "-samples", "1", "-procs", "6",
+                                    "-strict-cpu", "-limits", str(rules), str(path)])
+            self.assertEqual(path.read_text(), "".join("cpu: fixture\n" + self.rows[scope] + "\n"
+                                                       for scope in dedicated.reference.REPORTS[report]))
+            gate = subprocess.run([str(self.gate), *argv[3:]], capture_output=True, text=True, check=False)
+            code, text = gate.returncode, gate.stdout + gate.stderr
+        receipt = {"argv": argv, "child_exit_code": code, "stop_reason": None, "group_reaped": True}
+        receipt.update(self.failures.get(stem.name, {}))
+        stem.with_suffix(".log").write_text(text)
+        dedicated.runner.save(stem.with_suffix(".json"), receipt)
+        if stem.name == self.mutate_after:
+            self.preflight_approval.write_text("changed after receipt")
+        return receipt
+
+    def run_qualify(self, name="qualification", phase="qualify"):
+        output = self.root / name
+        argv = ["bench-dedicated.py", phase, "--reference", str(self.original), "--host-record", str(self.host),
+                "--calibration", str(self.calibration), "--approval", str(self.approval), "--output", str(output),
+                "--host-equivalence-preflight", str(self.preflight_approval)]
+        with mock.patch.object(dedicated.sys, "argv", argv), redirect_stderr(io.StringIO()) as stderr:
+            code = dedicated.main()
+        self.assertIs(dedicated.runner.LIMIT_FILES, self.limits)
+        self.assertEqual(dedicated.reference.RUNNER_CLASS, self.runner_class)
+        self.assertIs(dedicated.runner.measure, self.measure)
+        return output, code, stderr.getvalue()
+
+    def assert_result(self, output, passed, gate_exits, measured):
+        preflight = output / "preflight"
+        receipts = {name + ".json": dedicated.runner.digest(preflight / (name + ".json")) for name in measured}
+        self.assertEqual(dedicated.read(preflight / "result.json"), {
+            "preflight_pass": passed, "held": not passed, "counted": False, "release_qualified": False,
+            "gate_exits": gate_exits, "receipt_sha256": receipts})
+        reports = {name.removesuffix("-gate") + ".txt" for name in measured if name.endswith("-gate")}
+        self.assertEqual({path.name for path in preflight.iterdir()},
+                         {"result.json", *receipts, *reports, *(name + ".log" for name in measured)})
+        if not passed:
+            self.paired.assert_not_called()
+            self.assertFalse((output / "paired").exists())
+
+    def test_opt_in_requires_a_review_bound_to_every_input_before_any_measurement(self):
+        for key in self.preflight_review:
+            for missing in (False, True):
+                with self.subTest(key=key, missing=missing):
+                    changed = dict(self.preflight_review)
+                    if missing:
+                        del changed[key]
+                    elif key == "decision":
+                        changed[key] = "pending"
+                    elif key.startswith("review"):
+                        changed[key] = ""
+                    else:
+                        changed[key] = "wrong"
+                    dedicated.runner.save(self.preflight_approval, changed)
+                    output, code, stderr = self.run_qualify()
+                    self.assertEqual(code, 1)
+                    self.assertIn("Dedicated benchmark held: host-equivalence preflight", stderr)
+                    self.assertFalse(output.exists())
+                    self.measure.assert_not_called()
+                    self.paired.assert_not_called()
+
+    def test_flag_is_only_for_qualify(self):
+        for phase in ("inspect-host", "calibrate", "review-template"):
+            with self.subTest(phase=phase):
+                output, code, stderr = self.run_qualify(phase=phase)
+                self.assertEqual(code, 1)
+                self.assertIn("only available with qualify", stderr)
+                self.assertFalse(output.exists())
+                self.measure.assert_not_called()
+
+    def test_wrong_reference_refuses_before_measurement(self):
+        self.heads[self.original] = "not-original"
+        output, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("exact original baseline commit", stderr)
+        self.measure.assert_not_called()
+        self.assert_result(output, False, {}, [])
+
+    def test_in_bounds_runs_original_scopes_and_gates_before_unchanged_paired_call(self):
+        reports = dict.fromkeys(dedicated.reference.REPORTS, 0)
+        expected_calls = [*dedicated.reference.SCOPES, *(report + "-gate" for report in reports)]
+        paired_rows = "BenchmarkLookup100k/cname-6 1 900 p99-ns\n" * 5
+
+        def execute(original, output, order):
+            self.assertEqual(self.calls, expected_calls)
+            self.assertEqual((original, order), (self.original, "interleaved"))
+            self.assert_result(output.parent, True, reports, expected_calls)
+            self.assertFalse(output.exists())
+            (output / "reference").mkdir(parents=True)
+            (output / "reference/blocking-zone.txt").write_text(paired_rows)
+            return 1
+
+        self.paired.side_effect = execute
+        output, code, stderr = self.run_qualify()
+        self.paired.assert_called_once_with(self.original, output / "paired", "interleaved")
+        self.assertEqual(code, 1)
+        self.assertEqual(stderr, "")
+        self.assertEqual((output / "paired/reference/blocking-zone.txt").read_text(), paired_rows)
+        self.assertEqual(list((output / "paired").rglob("*.txt")), [output / "paired/reference/blocking-zone.txt"])
+        self.assertEqual(dedicated.read(output / "dedicated-review.json")["host_equivalence_preflight_approval_sha256"],
+                         dedicated.runner.digest(self.preflight_approval))
+
+    def test_fixed_ceiling_calibrated_ceiling_and_minimum_hold_and_retain_all_gates(self):
+        for name, scope, text, report, finding in (
+                ("fixed", "zone", "BenchmarkLookup100k/cname-6 1 2187 p99-ns", "blocking-zone", "exceeds the limit 2000"),
+                ("calibrated", "upstream", "BenchmarkStrategies/fast/strict-6 1 121 p99-ns 80 q/s", "upstream", "exceeds the limit 120"),
+                ("minimum", "upstream", "BenchmarkStrategies/fast/strict-6 1 120 p99-ns 79 q/s", "upstream", "below the minimum 80")):
+            with self.subTest(name=name), mock.patch.dict(self.rows, {scope: text}):
+                output, code, stderr = self.run_qualify(name)
+                self.assertEqual(code, 1)
+                self.assertEqual(stderr, "Dedicated benchmark held: host-equivalence preflight outside calibration bounds\n")
+                reports = {key: int(key == report) for key in dedicated.reference.REPORTS}
+                self.assert_result(output, False, reports, [*dedicated.reference.SCOPES, *(key + "-gate" for key in reports)])
+                self.assertIn(finding, (output / "preflight" / (report + "-gate.log")).read_text())
+
+    def test_nonzero_exit_stop_or_unreaped_group_holds_even_with_zero_exit(self):
+        for label, key, value in (("zone", "child_exit_code", 2), ("zone", "stop_reason", "timeout"),
+                                  ("zone", "group_reaped", False), ("blocking-zone-gate", "stop_reason", "timeout")):
+            with self.subTest(label=label, key=key), mock.patch.dict(self.failures, {label: {key: value}}):
+                self.calls.clear()
+                output, code, stderr = self.run_qualify(label + "-" + key)
+                self.assertEqual(code, 1)
+                self.assertIn("host-equivalence preflight outside calibration bounds", stderr)
+                measured = [*dedicated.reference.SCOPES, label] if label.endswith("-gate") else ["blocking", "zone"]
+                self.assertEqual(self.calls, measured)
+                self.assert_result(output, False, {"blocking-zone": 0} if label.endswith("-gate") else {}, measured)
+                self.assertEqual(dedicated.read(output / "preflight" / (label + ".json"))[key], value)
+
+    def test_approval_mutation_holds_and_refuses_reusing_retained_output(self):
+        self.mutate_after = "blocking"
+        output, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("host-equivalence preflight approval changed", stderr)
+        self.assertEqual(self.calls, ["blocking"])
+        self.assert_result(output, False, {}, ["blocking"])
+        retained = dedicated.inventory(output)
+        _, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("existing output is refused", stderr)
+        self.assertEqual(self.calls, ["blocking"])
+        self.assertEqual(dedicated.inventory(output), retained)
 
 
 if __name__ == "__main__":
