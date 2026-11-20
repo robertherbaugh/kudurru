@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -24,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -260,7 +262,37 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	gateA, gateB := newPartitionGate(t, env.rest), newPartitionGate(t, env.rest)
+	leaseName := kube.DefaultLeasePrefix + ih.ElectionKey(ih.InstanceID{Namespace: "default", Name: "inventory"})
+	leaseKey := client.ObjectKey{Namespace: "default", Name: leaseName}
+	leasePath := "/apis/coordination.k8s.io/v1/namespaces/default/leases/" + leaseName
+	var blockLeaseRead atomic.Bool
+	var blockedLeaseReads atomic.Int32
+	var interruptAfterHead atomic.Pointer[string]
+	interrupted := make(chan error, 1)
+	cutPurge := func(response *http.Response) error {
+		if blockLeaseRead.Load() && response.Request.Method == http.MethodGet && response.Request.URL.Path == leasePath {
+			blockedLeaseReads.Add(1)
+			return errors.New("fixture cannot verify the Lease")
+		}
+		headPath := interruptAfterHead.Load()
+		if headPath == nil || response.Request.Method != http.MethodDelete || response.Request.URL.Path != *headPath || response.StatusCode != http.StatusOK || !interruptAfterHead.CompareAndSwap(headPath, nil) {
+			return nil
+		}
+		interrupted <- retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var lease coordinationv1.Lease
+			if err := env.admin.Get(ctx, leaseKey, &lease); err != nil {
+				return err
+			}
+			if lease.Spec.HolderIdentity == nil || lease.Spec.LeaseTransitions == nil {
+				return errors.New("no elected holder to displace during purge")
+			}
+			holder, now, transitions := "cleanup-fault", metav1.NowMicro(), *lease.Spec.LeaseTransitions+1
+			lease.Spec.HolderIdentity, lease.Spec.AcquireTime, lease.Spec.RenewTime, lease.Spec.LeaseTransitions = &holder, &now, &now, &transitions
+			return env.admin.Update(ctx, &lease)
+		})
+		return nil
+	}
+	gateA, gateB := newPartitionGate(t, env.rest, cutPurge), newPartitionGate(t, env.rest, cutPurge)
 	cfgA := env.replica(t, "sources-a", gateA, credential)
 	stops := map[string]func(){"sources-a": kubeIntegrationMount(t, cfgA)}
 	// The bootstrap token's service account is created by the first
@@ -279,10 +311,9 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	if err := env.admin.Create(ctx, inventory); err != nil {
 		t.Fatal(err)
 	}
-	leaseName := "kudurru-" + ih.ElectionKey(ih.InstanceID{Namespace: "default", Name: "inventory"})
 	holder := func() string {
 		var lease coordinationv1.Lease
-		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: leaseName}, &lease); err != nil || lease.Spec.HolderIdentity == nil {
+		if err := env.admin.Get(ctx, leaseKey, &lease); err != nil || lease.Spec.HolderIdentity == nil {
 			return ""
 		}
 		return *lease.Spec.HolderIdentity
@@ -406,6 +437,20 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		t.Fatal("the reviewed sync did not commit a successor head", before, sequence())
 	}
 
+	kubeAwait(t, 10*time.Second, "a current review is refused when the live Lease read fails", func() bool {
+		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
+			t.Fatal(err)
+		}
+		checkCalls, blockedBefore := calls.Load(), blockedLeaseReads.Load()
+		blockLeaseRead.Store(true)
+		defer blockLeaseRead.Store(false)
+		status, body := env.api(t, byName[first], http.MethodPost, "/integrations/default/inventory/check", map[string]any{"uid": string(current.UID), "revision": current.ResourceVersion})
+		if status == http.StatusOK || calls.Load() != checkCalls {
+			t.Fatal("a reviewed check reached the provider without verified authority", status, body, calls.Load()-checkCalls)
+		}
+		return status == http.StatusConflict && blockedLeaseReads.Load() > blockedBefore
+	})
+
 	// setPoll changes the poll interval, and so the spec digest every head
 	// carries, and waits until both replicas grant from a head committed
 	// under the new spec.
@@ -519,6 +564,8 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	if first == "sources-a" {
 		other = "sources-b"
 	}
+	lastBeforeCut := sequence()
+	kubeAwait(t, 20*time.Second, "a fresh completed poll before the partition", func() bool { return sequence() > lastBeforeCut })
 	pollsBefore := calls.Load()
 	gates[first].partition(true)
 	partitionedAt := time.Now()
@@ -535,6 +582,9 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	for time.Now().Before(until) {
 		if !granted(byName[first]) {
 			t.Fatal("the partitioned replica stopped answering from its last committed source before its expiry", time.Since(partitionedAt), time.Until(until))
+		}
+		if calls.Load() > pollsBefore && holder() == first {
+			t.Fatal("the partitioned holder reached the provider without a live Lease check")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
@@ -557,6 +607,12 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	if got := heads(); len(got) != 1 {
 		t.Fatal("partition and heal left more than one head", len(got))
 	}
+	gates[other].partition(true)
+	kubeAwait(t, 60*time.Second, "the original holder re-acquires after the successor is partitioned", func() bool { return holder() == first })
+	reacquired := sequence()
+	kubeAwait(t, 30*time.Second, "the re-elected replica commits a successor head", func() bool { return sequence() > reacquired && granted(byName[first]) })
+	gates[other].partition(false)
+	kubeAwait(t, 30*time.Second, "both replicas grant from the re-elected holder's head", func() bool { return granted(byName[other]) && manual(byName[other]) })
 
 	// deletionPolicy Delete: the root arms the cleanup finalizer; deleting
 	// the Integration purges its source carriers and grants on both
@@ -576,24 +632,140 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	})
 	armed := sequence()
 	kubeAwait(t, 60*time.Second, "the armed instance commits again", func() bool { return sequence() > armed })
+	headPath := "/api/v1/namespaces/default/secrets/" + kube.InternalSecretName(kinds.KindIntegrationSourceHead, "", kinds.SourceHeadName(heads()[0].Spec.Owner))
+	interruptAfterHead.Store(&headPath)
 	if err := env.admin.Delete(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-interrupted:
+		if err != nil {
+			t.Fatal("change the Lease after the head delete", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("cleanup never removed the head")
+	}
+	readChunks := func() []corev1.Secret {
+		t.Helper()
+		var chunks corev1.SecretList
+		if err := env.admin.List(ctx, &chunks, client.InNamespace("default"), client.MatchingLabels{kube.InternalKindLabel: kinds.KindIntegrationSourceChunk}); err != nil {
+			t.Fatal(err)
+		}
+		return chunks.Items
+	}
+	time.Sleep(time.Second)
+	if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil || current.DeletionTimestamp.IsZero() || !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || len(heads()) != 0 || len(readChunks()) == 0 {
+		t.Fatal("Lease loss did not stop purge between the head and its chunks with the finalizer intact", err)
+	}
+	var displaced coordinationv1.Lease
+	if err := env.admin.Get(ctx, leaseKey, &displaced); err != nil || displaced.Spec.HolderIdentity == nil || *displaced.Spec.HolderIdentity != "cleanup-fault" {
+		t.Fatal("read the displaced Lease before allowing cleanup to resume", err)
+	}
+	if err := env.admin.Delete(ctx, &displaced, client.Preconditions{UID: &displaced.UID, ResourceVersion: &displaced.ResourceVersion}); err != nil {
 		t.Fatal(err)
 	}
 	kubeAwait(t, 90*time.Second, "the cleanup purges the source and removes the object", func() bool {
 		err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current)
 		return err != nil && strings.Contains(err.Error(), "not found") && len(heads()) == 0
 	})
-	var chunks corev1.SecretList
-	if err := env.admin.List(ctx, &chunks, client.InNamespace("default"), client.MatchingLabels{kube.InternalKindLabel: kinds.KindIntegrationSourceChunk}); err != nil {
-		t.Fatal(err)
-	}
-	if len(chunks.Items) != 0 {
-		t.Fatal("the purge left source chunks", len(chunks.Items))
+	if remaining := len(readChunks()); remaining != 0 {
+		t.Fatal("the resumed purge left source chunks", remaining)
 	}
 	for name, cfg := range byName {
 		kubeAwait(t, 30*time.Second, name+" closes the deleted source", func() bool { return !granted(cfg) && !manual(cfg) })
 	}
 	if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "manual"}, &public.ClientGroup{}); err != nil {
 		t.Fatal("the manual group was touched", err)
+	}
+}
+
+func TestRunServeKubeExpiredLicenseAndRecreatedIntegration(t *testing.T) {
+	env := newKubeIntegrationEnv(t)
+	ctx := t.Context()
+	var offset atomic.Int64
+	sign := trustTestKeyAt(t, func() time.Time { return time.Now().Add(time.Duration(offset.Load())) })
+	t.Setenv(license.EnvKey, sign(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: []license.Feature{license.FeatureIntegrations}}))
+	server, calls, _ := kubeUniFiController(t, "127.0.0.7")
+	credential := kubeTestCredential(t)
+	group := &public.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: "devices", Namespace: "default"}, Spec: public.ClientGroupSpec{Sources: &public.ClientGroupSources{IntegrationRef: &public.ObjectRef{Name: "inventory"}}}}
+	policy := &public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "devices", Namespace: "default"}, Spec: public.PolicySpec{ClientGroupRefs: []string{"devices"}, Priority: 1000, Rewrites: []public.Rewrite{{Name: "granted.test", Targets: []string{"192.0.2.99"}}}}}
+	for _, object := range []client.Object{group, policy} {
+		if err := env.admin.Create(ctx, object); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gate := newPartitionGate(t, env.rest)
+	cfg := env.replica(t, "license-cut", gate, credential)
+	_ = kubeIntegrationMount(t, cfg)
+	sum := sha256.Sum256(server.Certificate().Raw)
+	key := client.ObjectKey{Namespace: "default", Name: "inventory"}
+	definition := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: key.Name, Namespace: key.Namespace}, Spec: public.IntegrationSpec{Type: "unifi", DeletionPolicy: public.IntegrationDeletionRetain, Resync: metav1.Duration{Duration: time.Hour}, Credentials: map[string]public.CredentialReference{"apiKey": {File: credential}}, UniFi: &public.UniFiIntegration{Endpoint: server.URL, TLSFingerprint: "sha256:" + hex.EncodeToString(sum[:]), Site: "default", Poll: metav1.Duration{Duration: time.Hour}, Groups: public.UniFiGroups{ByNetwork: map[string]string{"LAN": "devices"}}}}}
+	old := definition.DeepCopy()
+	if err := env.admin.Create(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	granted := func() bool { return kubeRewritten(ctx, cfg, "127.0.0.7", "granted.test.", "192.0.2.99") }
+	kubeAwait(t, 60*time.Second, "the original instance's committed source grants DNS", granted)
+	read := func() public.Integration {
+		t.Helper()
+		var current public.Integration
+		if err := env.admin.Get(ctx, key, &current); err != nil {
+			t.Fatal(err)
+		}
+		return current
+	}
+	sync := func() (int, map[string]any) {
+		current := read()
+		return env.api(t, cfg, http.MethodPost, "/integrations/default/inventory/sync", map[string]any{"uid": string(current.UID), "revision": current.ResourceVersion, "mode": "observe"})
+	}
+	before := calls.Load()
+	kubeAwait(t, 20*time.Second, "a valid license admits a reviewed observe sync", func() bool {
+		status, body := sync()
+		return status == http.StatusOK && body["sourceCommitted"] == true
+	})
+	if calls.Load() <= before {
+		t.Fatal("the licensed control made no provider request")
+	}
+	offset.Store(int64(48*time.Hour + license.Grace))
+	kubeAwait(t, 20*time.Second, "the mounted license has expired past grace", func() bool {
+		status, body := env.api(t, cfg, http.MethodGet, "/license", nil)
+		return status == http.StatusOK && body["state"] == string(license.StateExpired)
+	})
+	before = calls.Load()
+	for attempt := 0; attempt < 3; attempt++ {
+		status, body := sync()
+		problem, _ := body["error"].(map[string]any)
+		if status != http.StatusServiceUnavailable || problem["key"] != "unavailable" {
+			t.Fatal("expired license did not refuse the reviewed sync", status, body)
+		}
+	}
+	if calls.Load() != before || !granted() {
+		t.Fatal("the expired license reached the provider or withdrew the still-valid observation")
+	}
+	owner := kinds.Owner{ClusterID: env.identity, Namespace: key.Namespace, Name: key.Name, UID: string(old.UID)}
+	secretKey := client.ObjectKey{Namespace: key.Namespace, Name: kube.InternalSecretName(kinds.KindIntegrationSourceHead, "", kinds.SourceHeadName(owner))}
+	var retained corev1.Secret
+	if err := env.admin.Get(ctx, secretKey, &retained); err != nil {
+		t.Fatal("read the old head before recreation", err)
+	}
+	if err := env.admin.Delete(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.admin.Create(ctx, definition); err != nil {
+		t.Fatal(err)
+	}
+	if definition.UID == old.UID {
+		t.Fatal("the API server did not assign a new Integration UID")
+	}
+	kubeAwait(t, 30*time.Second, "the mount knows the new unlicensed incarnation", func() bool {
+		status, body := env.api(t, cfg, http.MethodGet, "/integrations/default/inventory", nil)
+		return status == http.StatusOK && body["uid"] == string(definition.UID) && body["reason"] == "LicenseUnavailable"
+	})
+	if granted() || calls.Load() != before {
+		t.Fatal("the new UID inherited the old source or reached the provider")
+	}
+	var after corev1.Secret
+	if err := env.admin.Get(ctx, secretKey, &after); err != nil || after.ResourceVersion != retained.ResourceVersion {
+		t.Fatal("the old head did not remain unchanged across recreation", err)
 	}
 }

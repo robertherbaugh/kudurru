@@ -189,6 +189,12 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+Current K3/K7 follow-through: [mounted Kubernetes evidence for #156](milestones/v0.2/followup-audit.md#k3k7-mounted-evidence-156)
+supersedes the historical test gaps below for election, shared budgets,
+holder recovery, partition and re-acquisition, cleanup fencing, rotation,
+license expiry and UID replacement. This is local envtest evidence only;
+it does not change deployment support or claim live qualification.
+
 | Item | Source | Target |
 |---|---|---|
 | Readiness under CPU starvation: the readiness budget of `startStaticMount` has no run that turns a failing condition into a pass (under the reproducing condition the test fails at its own 5 s HTTP timeout), the multi-P credit is not exercised, and the other mounted tests keep fixed 20 s readiness loops | CI-RED verify; FLAKE-CLOCK-AND-READINESS verify | v0.2 |

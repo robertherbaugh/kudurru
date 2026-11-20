@@ -15293,6 +15293,24 @@ Still open, stated plainly. Setup failures other than a lost budget CAS (a provi
 **Review and verification state at 17b7c87a.** The review accepted the package with four findings (one major: four bounded budget re-reservation attempts were not enough once more than two Cloudflare instances reserve at once; two minor: the two-replica budget test covers only the minimal case, and credential rotation is proven only by credential order at the peer; one nit) and two intended guard changes. The fixer resolved three (the re-reservation now runs until the request's deadline) and rebutted three (no retry of other refused setup work; the adapter-level legs of K3 stay partial; the guard notes); the verifier confirmed all three resolved and reported three new minor notes, open: budget exhaustion past the deadline is now also a local refusal on the event path, untested; the rotation leg's 60 s wait could be met by the request's own timeout; and the deadline leg's attempt bounds depend on scheduling. Merged and pushed at `85913663`. K3 and K7 stay partial (see the section).
 
 
+### K3/K7 mounted evidence (#156)
+
+This evidence supersedes the corresponding historical K3/K7 gaps above. It
+comes from `runServe` with local Kubernetes 1.37 envtest, local provider peers
+and synthetic credentials, not a hosted or live deployment.
+
+| Mounted test | What passed | What failed when the protection was removed with a local Go overlay |
+| --- | --- | --- |
+| `TestRunServeKubeCloudflareTwoReplicasShareBudget/self-elected` | Each replica acquired its own Lease through election; both published once and shared one durable budget, 20 reservations for 20 requests. The pre-placed concurrent contention cases remain separate. | Bypassing reservations for one Integration let 20 requests through with only 10 durable reservations. |
+| `TestRunServeKubeCloudflarePublicationAndRefusals` | A second elected holder recovered the first replica's pending Cloudflare intent from a fresh read without replaying the batch. | Disabling recovery left the intent pending and the successor never completed. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | A reviewed check could not reach the peer when the live Lease read failed. A network partition moved the Lease, the old source expired without renewal, and the healed former holder later re-acquired the Lease and committed a successor head. | Ignoring the failed live Lease check let the reviewed operation succeed and send two peer requests. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | Displacing the holder after its head delete left the unreferenced chunks and terminating finalizer intact. A fresh election finished the purge. | Ignoring the fence for the chunk delete let the old holder remove the chunks. |
+| `TestRunServeKubeCredentialRotationJoinsPreviousStop` | An instrumented provider blocked in `Stop`; the replacement provisioned the new credential only after `Stop` returned. | Calling `Stop` asynchronously let the replacement provision while `Stop` was blocked. |
+| `TestRunServeKubeExpiredLicenseAndRecreatedIntegration` | Advancing the license clock beyond grace blocked a reviewed sync without a peer request. Recreating the same name and spec did not inherit a still-valid old source: the old head remained unchanged and the new UID did not receive its grant. | Granting the feature to an expired key kept the new instance from entering `LicenseUnavailable`. Removing source eligibility's UID comparison exposed the old grant to the new UID. |
+
+These tests do not change the supported providers, Lease or budget bounds, or
+fencing rules. No shared cluster or live provider acceptance was attempted.
+
 ### OPS-1 CoreDNS Corefile offline importer — November 10, 2026 (D392)
 
 `kudurru import coredns --file Corefile` (or `--file -` for stdin) now converts a
