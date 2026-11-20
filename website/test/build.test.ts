@@ -86,12 +86,49 @@ describe.each(PAGE_PATHS)("%s", (name) => {
     }
   });
 
+  test("the theme initializes before CSS and includes both OS fallbacks", () => {
+    const head = pages[name]!.split("</head>")[0]!;
+    expect(head).toContain('<meta name="color-scheme" content="light dark">');
+    expect(head).toContain('<meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)" data-scheme="light">');
+    expect(head).toContain('<meta name="theme-color" content="#182522" media="(prefers-color-scheme: dark)" data-scheme="dark">');
+    const init = head.search(/<script src="\/assets\/theme-init-[\w-]+\.js"><\/script>/);
+    expect(init).toBeGreaterThan(-1);
+    expect(init).toBeLessThan(head.indexOf('<link rel="stylesheet"'));
+    expect(pages[name]).toContain('<div class="theme-switch" role="group" aria-label="Color theme" hidden>');
+  });
+
+  test("header and footer carry both complete logo variants", () => {
+    const variants = [
+      ["light", "mixed", 192, 64], ["dark", "mixed-paper", 192, 64],
+      ["light", "mixed-tagline", 360, 150], ["dark", "mixed-paper-tagline", 360, 150],
+    ];
+    for (const [theme, variant, width, height] of variants) {
+      expect(pages[name]).toMatch(new RegExp(`<img class="logo-${theme}" src="/assets/kudurru-logo-${variant}-[a-f0-9]{10}\\.png" width="${width}" height="${height}" alt="kudurru[^"]*"`));
+    }
+  });
+
   test("external links are https and open safely", () => {
     for (const a of pages[name]!.matchAll(/<a\b[^>]*href="(https?:[^"]*)"[^>]*>/g)) {
       expect(a[1]!.startsWith("https://")).toBe(true);
       expect(a[0]).toContain('rel="noopener"');
     }
   });
+});
+
+test("the bundled bootstrap is a classic script that ignores denied and invalid storage", async () => {
+  const path = /<script src="(\/assets\/theme-init-[\w-]+\.js)"><\/script>/.exec(pages["index.html"]!)?.[1];
+  expect(path).toBeTruthy();
+  const script = await readFile(join(out, path!), "utf8");
+  const run = new Function("localStorage", "document", script);
+  for (const saved of ["light", "dark", "auto", "system", null, new Error("storage denied")]) {
+    const dataset: Record<string, string> = {};
+    run({ getItem: (key: string) => {
+      if (saved instanceof Error) throw saved;
+      expect(key).toBe("kudurru-theme");
+      return saved;
+    } }, { documentElement: { dataset } });
+    expect(dataset.theme).toBe(saved === "dark" || saved === "light" ? saved : undefined);
+  }
 });
 
 test("the home page links to the docs and the repository and carries the version", () => {
