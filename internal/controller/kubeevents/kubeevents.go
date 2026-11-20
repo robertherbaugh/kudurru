@@ -50,9 +50,11 @@ type Options struct {
 	Host string
 	// Scheme resolves object kinds for involvedObject; default a scheme
 	// with kudurru.io/v1alpha1.
-	Scheme     *runtime.Scheme
+	Scheme *runtime.Scheme
+	// Registerer registers the dropped-Events counter; nil leaves it unregistered.
 	Registerer prometheus.Registerer
-	Logger     *slog.Logger
+	// Logger receives write-failure warnings; default slog.Default().
+	Logger *slog.Logger
 }
 
 // Sink uses one bounded queue and one API writer. The writer uses client-go's
@@ -184,19 +186,20 @@ func (s *Sink) deliver(events typedcorev1.EventsGetter, correlator *record.Event
 	ctx, cancel := context.WithTimeout(s.ctx, writeTimeout)
 	defer cancel()
 	client := events.Events(result.Event.Namespace)
-	var stored *corev1.Event
 	if result.Event.Count > 1 {
-		stored, err = client.Patch(ctx, result.Event.Name, types.StrategicMergePatchType, result.Patch, metav1.PatchOptions{})
-		if err != nil && !apierrors.IsNotFound(err) {
+		stored, err := client.Patch(ctx, result.Event.Name, types.StrategicMergePatchType, result.Patch, metav1.PatchOptions{})
+		if err == nil {
+			correlator.UpdateState(stored)
+			return nil
+		}
+		if !apierrors.IsNotFound(err) {
 			return err
 		}
 	}
-	if stored == nil {
-		result.Event.ResourceVersion = ""
-		stored, err = client.Create(ctx, result.Event, metav1.CreateOptions{})
-		if err != nil {
-			return err
-		}
+	result.Event.ResourceVersion = ""
+	stored, err := client.Create(ctx, result.Event, metav1.CreateOptions{})
+	if err != nil {
+		return err
 	}
 	correlator.UpdateState(stored)
 	return nil

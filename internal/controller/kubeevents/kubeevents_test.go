@@ -12,6 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/clock"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/controller"
@@ -59,6 +61,48 @@ func TestSinkRecordsEvents(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
+	}
+}
+
+func TestDeliverRecreatesExpiredEvent(t *testing.T) {
+	client := fake.NewClientset()
+	events := client.CoreV1().Events("default")
+	sink := &Sink{ctx: t.Context()}
+	correlator := record.NewEventCorrelator(clock.RealClock{})
+	now := metav1.Now()
+	event := &corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "default", Name: "home.first"},
+		InvolvedObject: corev1.ObjectReference{Kind: "DNSZone", Name: "home", UID: "zone"},
+		Type:           corev1.EventTypeNormal,
+		Reason:         controller.EventSerialBumped,
+		Message:        "serial 1 -> 2",
+		Source:         corev1.EventSource{Component: DefaultComponent},
+		FirstTimestamp: now,
+		LastTimestamp:  now,
+		Count:          1,
+	}
+	if err := sink.deliver(client.CoreV1(), correlator, event.DeepCopy()); err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Delete(t.Context(), event.Name, metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	client.ClearActions()
+	repeat := event.DeepCopy()
+	repeat.Name = "home.repeat"
+	if err := sink.deliver(client.CoreV1(), correlator, repeat); err != nil {
+		t.Fatal(err)
+	}
+	actions := client.Actions()
+	if len(actions) != 2 || !actions[0].Matches("patch", "events") || !actions[1].Matches("create", "events") {
+		t.Fatalf("delivery actions = %v, want patch then create", actions)
+	}
+	list, err := events.List(t.Context(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Items) != 1 || list.Items[0].Name != event.Name || list.Items[0].Count != 2 {
+		t.Fatalf("stored Events = %+v, want one correlated Event with name %s and count 2", list.Items, event.Name)
 	}
 }
 
