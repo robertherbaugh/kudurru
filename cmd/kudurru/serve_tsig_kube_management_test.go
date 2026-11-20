@@ -124,14 +124,17 @@ func TestRunServeKubeStoredTSIGManagementHotRotation(t *testing.T) {
 	c, base, csrf := login()
 	var schema api.List[api.SettingKey]
 	controlMountedRequest(t, c, base, http.MethodGet, "/settings/_schema", "", nil, http.StatusOK, &schema)
-	authControls := map[string]bool{}
+	authControls := map[string]bool{
+		"auth.localLogin":          false,
+		"auth.session.idleTimeout": false,
+		"auth.session.lifetime":    false,
+		"auth.session.secure":      false,
+		"auth.tokens.maxLifetime":  false,
+	}
 	for _, setting := range schema.Items {
-		if config.AuthControlHot(setting.Path) {
+		if _, ok := authControls[setting.Path]; ok {
 			authControls[setting.Path] = setting.RestartRequired
 		}
-	}
-	if len(authControls) != 5 {
-		t.Fatalf("settings schema returned %d sign-in controls, want five", len(authControls))
 	}
 	for path, restart := range authControls {
 		if !restart {

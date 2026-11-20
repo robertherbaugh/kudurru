@@ -132,7 +132,7 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if command == "get" && o.output != "" {
+			if format := cli.Format(strings.ToLower(o.output)); command == "get" && (format == cli.FormatTable || format == cli.FormatWide) {
 				return o.render(cmd, raw, func(bool) (*cli.Table, error) {
 					var summary api.IntegrationSummary
 					if err := json.Unmarshal(raw, &summary); err != nil {
