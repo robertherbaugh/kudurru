@@ -39,7 +39,7 @@ with its own key, so that column is the same in every row:
 | Cluster settings (`kudurru settings set` of a cluster key) | Yes | `read_only` | Forwarded | Yes |
 | Node settings (`PATCH /node/config`) | Yes, for keys that the node's file or environment does not set (`host_locked`, `env_locked` otherwise) | As standalone | `primary_required`: set them in the node's file or environment | `read_only` (HTTP 501): set them in the chart values or the node's environment |
 | Settings ownership and YAML export (`kudurru settings ownership`, `settings yaml`) | `unavailable`: the database holds the settings; use `kudurru settings get` | `unavailable`, as standalone | `unavailable`, as standalone | Yes |
-| The five sign-in controls (`auth.localLogin`, `auth.session.idleTimeout`, `auth.session.lifetime`, `auth.session.secure`, `auth.tokens.maxLifetime`) | Take effect without a restart | `read_only` | Forwarded | Need a restart of the replicas (`restartRequired` names them) |
+| The five sign-in controls (`auth.localLogin`, `auth.session.idleTimeout`, `auth.session.lifetime`, `auth.session.secure`, `auth.tokens.maxLifetime`) | Take effect without a restart | `read_only` | Forwarded | Need a restart of the replicas (`GET /api/v1/settings/_schema` marks all five `restartRequired: true`) |
 | Password sign-in in the browser and sign-out | Yes | Yes | Forwarded; needs a reachable primary | Yes |
 | `kudurru login --username` (the CLI saves an API token) | Yes | Fails: the node cannot create the token (see below) | `primary_required` | Yes |
 | Your own API tokens | Yes | `read_only` | `primary_required` | Yes |
@@ -54,6 +54,14 @@ with its own key, so that column is the same in every row:
 | Role bindings through the API (`/iam/rolebindings`, [rolebindings.md](rolebindings.md)) | Yes | `read_only` | `primary_required` | `unavailable`: change the `RoleBinding` objects with `kubectl` |
 | Cluster enrollment, invitations and promotion (`kudurru cluster ...`) | Yes | `unavailable` | Promotion runs on the follower; activation and invitations answer `409 conflict` | `unavailable` |
 | Background integrations ([integrations.md](integrations.md)) | Yes, with a license key | Reads; commands answer `read_only` | Reads; commands answer `primary_required` | Yes, with a license key, for Cloudflare and UniFi inventory in the release namespace; check, preview, sync and actions run on the replica that holds the Integration's Lease, and another replica answers `503` with `hint.holder` |
+
+On Kubernetes, an Integration's status reports `NamespaceNotAllowed` outside
+the release namespace, `UnsupportedOnKubernetes` for Tier-B webhooks,
+`RecordPublicationUnsupportedOnKubernetes` for UniFi record publication, or
+`UniFiPushUnsupportedOnKubernetes` for optional UniFi writes. Use the release
+namespace, run webhooks on SQLite, or turn off UniFi record publication and
+writes to keep using inventory and groups. These are object status reasons,
+not API refusal keys. Neither integration host resolves native Secret references.
 
 Static nodes accept no credential changes through the API. To use the CLI
 against one, start it with a token you generated yourself

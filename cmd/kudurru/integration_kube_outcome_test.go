@@ -18,6 +18,7 @@ import (
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
 )
@@ -122,6 +123,15 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 	out, err := run("integrations", "list")
 	if err != nil || !strings.Contains(out, "inventory") || !strings.Contains(out, "unifi") || !strings.Contains(out, public.IntegrationDeletionDelete) {
 		t.Fatalf("CLI list: %v\n%s", err, out)
+	}
+	out, err = run("integrations", "get", "inventory", "-o", "table")
+	if err != nil || !strings.Contains(out, "REVISION") || !strings.Contains(out, string(current.UID)) || !strings.Contains(out, "inventory") {
+		t.Fatalf("CLI get table: %v\n%s", err, out)
+	}
+	out, err = run("integrations", "get", "inventory", "-o", "json")
+	var detail api.IntegrationSummary
+	if err != nil || json.Unmarshal([]byte(out), &detail) != nil || detail.Namespace != "default" || detail.Name != "inventory" || detail.UID != string(current.UID) || detail.Revision == "" || detail.Type != "unifi" {
+		t.Fatalf("CLI get JSON: %v\n%s", err, out)
 	}
 	// reviewed runs one reviewed CLI command against the current revision,
 	// retrying only a conflict (the job's status writes move the revision).
