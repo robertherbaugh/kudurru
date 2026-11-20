@@ -119,10 +119,10 @@ func (b *IntegrationSourceBackend) Head(ctx context.Context, owner integration.O
 // and carry the preceding sequence; a first head carries sequence 1. Exactly
 // one create or one update is sent. ErrSourceConflict means that write lost
 // and nothing changed. An error wrapping ErrSourceOutcomeUnknown means the
-// write was sent and not acknowledged: the caller resolves it by reading the
-// head again, never by repeating the write. ErrSourceRejected means the API
-// server rejected the write outright (400, 403, 413 or 422). Every other
-// error precedes the write. Neither refusal changes the committed source.
+// response did not establish whether the write committed: the caller resolves
+// it by reading the head again, never by repeating the write. ErrSourceRejected
+// means the API server rejected the write outright (400, 403, 413 or 422).
+// Every other error precedes the write. Neither refusal changes the committed source.
 func (b *IntegrationSourceBackend) Commit(ctx context.Context, expected string, head *integration.IntegrationSourceHead, chunks []*integration.IntegrationSourceChunk, manager string) (*integration.IntegrationSourceHead, error) {
 	if head == nil || head.Validate() != nil || len(chunks) != len(head.Spec.Chunks) || manager == "" {
 		return nil, ErrSourceInvalid
