@@ -470,8 +470,10 @@ sequenceDiagram
 
 `kube.IntegrationSourceBackend` stages the chunks and rechecks that each is
 durable before the head write; a lost head CAS writes nothing and leaves the
-previous source plus unreferenced chunks. A head write that was sent and not
-acknowledged (`kube.ErrSourceOutcomeUnknown`) is resolved by one read of the
+previous source plus unreferenced chunks. A Kubernetes API rejection of a
+head write (400, 403, 413 or 422) also leaves the source unchanged and is
+reported as a refusal (`kube.ErrSourceRejected`). A head write whose outcome
+is unknown (`kube.ErrSourceOutcomeUnknown`) is resolved by one read of the
 head: the head written is a commit; anything else is reported as an
 uncertain outcome (`integration_uncertain`, the intent pending) and never
 written again. Every private integration carrier

@@ -100,6 +100,18 @@ func TestRefusalInventoryNamesEveryOperation(t *testing.T) {
 	}
 }
 
+func TestKubernetesOperationRefusalsDocumented(t *testing.T) {
+	page, err := os.ReadFile("../../docs/deploy/capabilities.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for operation, line := range operationRefusals {
+		if key, ok := line[ShapeKubernetes]; ok && key != noRefusal && !strings.Contains(string(page), "`"+key+"`") {
+			t.Errorf("%s refuses with %q on Kubernetes, missing from capabilities.md", operation, key)
+		}
+	}
+}
+
 // The inheritance rules of ExpectedRefusal.
 func TestExpectedRefusalInheritance(t *testing.T) {
 	for _, tc := range []struct {

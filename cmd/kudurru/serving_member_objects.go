@@ -273,6 +273,10 @@ func memberForwardSource(ctx context.Context) (sqlite.GenerationToken, bool, err
 func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObject) (api.ForwardedObjectResult, bool, error) {
 	token, forward, err := memberForwardSource(ctx)
 	if !forward || err != nil {
+		if forward && api.InObjectItems(ctx) {
+			_, primary, _ := servinghttp.SourceRole(ctx)
+			err = memberItemRefusal(err, primary)
+		}
 		return api.ForwardedObjectResult{}, forward, err
 	}
 	operation := map[string]string{api.ForwardedWrite: memberObjectWrite, api.ForwardedDelete: memberObjectDelete}[in.Operation]
@@ -329,6 +333,8 @@ func memberItemRefusal(err error, primary string) error {
 		return objectForwardUnavailable("the follower's source changed while this request ran (it installed newer data from the primary); " +
 			"this item was not sent and was not applied, and neither was any later one; " +
 			"send the items that were not applied, or the whole file, to " + where + ", which applies them in one request")
+	case refusal.Body.Key == api.KeyUnavailable && refusal.Body.Message == memberItemLifetimeEnded:
+		return objectForwardUnavailable(memberItemLifetimeEnded + "; send this item to " + where)
 	case refusal.Body.Key == "completion_unknown":
 		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
 			Message: refusal.Body.Message + "; the items after it were not applied; send them to " + where}}
@@ -434,6 +440,11 @@ func objectForwardUnavailable(message string) error {
 // cut item by this exact message, so both use the constant.
 const memberSourceChanged = "the follower's source changed; review current state before a new decision"
 
+// memberItemLifetimeEnded is memberCaptureError's answer when the request's
+// forwarding lifetime ended before the write was sent. memberItemRefusal
+// recognizes that unsent item by this exact message.
+const memberItemLifetimeEnded = "the request's 30-second forwarding lifetime ended before this write was sent; it was not applied"
+
 // memberCaptureError explains why a follower could not bind its request for
 // forwarding. Capture sends nothing, so in every case the write was not
 // applied; only a changed source needs a review of current state first.
@@ -449,7 +460,7 @@ func memberCaptureError(ctx context.Context, err error) error {
 		// came through a route that a follower does not forward.
 		return objectForwardUnavailable("this route is not forwarded from a follower; the write was not applied; send it to the enrolled primary")
 	case ctx.Err() != nil || !time.Now().Before(deadline):
-		return objectForwardUnavailable("the request's 30-second forwarding lifetime ended before this write was sent; it was not applied")
+		return objectForwardUnavailable(memberItemLifetimeEnded)
 	default:
 		return objectForwardUnavailable("this follower cannot forward writes now; the write was not applied")
 	}

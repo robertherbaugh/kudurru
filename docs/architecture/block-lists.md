@@ -400,8 +400,8 @@ normally. Unlike primary zones, where a `local.db`
 snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
 answers, this stops forwarding too for every client whose policy selects an RPZ
 list, unsigned feeds with an unexpired copy included. An RPZ feed does not wait
-for the list resolver: a policy decision carries every referenced BlockList that
-exists but is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
+for the list resolver: a policy decision carries each referenced BlockList with
+an enabled RPZ source that is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
 selectors require those lists' feeds too (D390). A just-started node therefore
 applies a persisted copy, or fails closed, from its first answer, whatever
 `blocking.allowDegraded` says; the downloaded sources of a mixed list still
