@@ -67,6 +67,11 @@ func ledgerExchange(client *dns.Client, address string, m *dns.Msg, deadline tim
 	}
 }
 
+func ledgerReadTimeout(err error) bool {
+	var transport *net.OpError
+	return errors.As(err, &transport) && transport.Op == "read" && transport.Timeout()
+}
+
 // A mounted primary commits more signed RFC 2136 UPDATEs to one zone than
 // its receipt ledger holds, sent over DNS with real TSIG signatures (D409).
 // Before D409 the ledger was append-only and after the 256th commit every
@@ -119,9 +124,12 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 	}
 	// #nosec G115 -- ledgerSigned sets this fixture timestamp from time.Now().Unix().
 	time.Sleep(time.Until(time.Unix(int64(short.IsTsig().TimeSigned)+2+1, 0)))
+	// An UPDATE's TSIG refusal can be withheld if the captured publication
+	// loses currency before the write. Only a missing reply with a read
+	// timeout allows another send of the same expired packet, not a new
+	// signature. Any received response must still be NOTAUTH/BADTIME.
 	answer, _, err := client().Exchange(short.Copy(), address)
-	var transport *net.OpError
-	if answer == nil && errors.As(err, &transport) && transport.Op == "read" && transport.Timeout() {
+	if answer == nil && ledgerReadTimeout(err) {
 		t.Logf("expired exact repeat received no TCP answer: %v; sending the same expired packet once more", err)
 		answer, _, err = client().Exchange(short.Copy(), address)
 	}
@@ -159,7 +167,6 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 				deadline := time.Now().Add(3 * time.Minute)
 				for {
 					answer, _, err := c.Exchange(ledgerSigned(name, target, ledgerMountedFudge, false), address)
-					var transport *net.OpError
 					switch {
 					case err == nil && answer != nil && answer.Rcode == dns.RcodeSuccess:
 						noerror.Add(1)
@@ -167,7 +174,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 						servfail.Add(1)
 					case errors.Is(err, io.EOF):
 						eof.Add(1)
-					case errors.As(err, &transport) && transport.Op == "read" && transport.Timeout():
+					case ledgerReadTimeout(err):
 						readTimeout.Add(1)
 					default:
 						other.Add(1)
