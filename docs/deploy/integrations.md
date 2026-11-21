@@ -858,10 +858,13 @@ name in `hint.holder` and does not forward the request, so a client behind a
 Service must send the command to that pod. When no other replica holds the
 Lease (the instance is suspended, unlicensed, paused or between two jobs)
 the `503` names no holder and carries the instance's `phase` and `reason`
-in its hint instead. A reviewed sync whose source head write was not
-acknowledged is resolved by one read of the head; if that read does not
-show the write, the answer is `503 integration_uncertain` and the sync is
-not repeated. On Kubernetes the
+in its hint instead. If the Kubernetes API server rejects a reviewed sync's
+source-head write with 400, 403, 413 or 422, no source was installed and the
+sync is refused with `503 unavailable` and no `pending` hint. Fix the cause
+(for example, missing Secret write permission) and run a fresh review.
+Otherwise, a write whose outcome is unknown is resolved by
+one read of the head; if that read does not show the write, the answer is
+`503 integration_uncertain` and the sync is not repeated. On Kubernetes the
 route permission is checked once per request, not again inside each effect,
 and a reviewed sync or act is logged on the holder rather than written to an
 audit table. List/get status is unknown when no observation matches the

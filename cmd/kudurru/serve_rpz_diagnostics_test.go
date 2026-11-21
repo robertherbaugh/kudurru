@@ -50,6 +50,8 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 	defer stop()
 	tsigMountedAwaitRcode(t, cfg, "blocked.test.", dns.RcodeNameError, true)
 	cli := mountedCLI(t, cfg, "rpz")
+	assertMountedRPZDig(t, cli, "blocked.test.", "blocked.test.policy.test.")
+	assertMountedRPZPolicyList(t, cli, "feed", 1, true)
 
 	feeds := func(args ...string) []api.RPZFeed {
 		t.Helper()
@@ -142,6 +144,7 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 	if f := items[0]; f.Available || f.Reason != "RPZExpired" || f.Serial == nil || *f.Serial != 7 || f.Counts == nil || !strings.Contains(f.Message, "SERVFAIL") {
 		t.Fatalf("expired feed = %+v", f)
 	}
+	assertMountedRPZPolicyList(t, cli, "feed", 1, false)
 	if !kubeRPZMetric(cfg, `kudurru_rpz_feed_available{list="default/feed",source="native"} 0`) {
 		t.Fatal("expired feed metric missing")
 	}
@@ -154,6 +157,46 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 	if primary.transfers.Load() == 0 {
 		t.Fatal("no real transfer")
 	}
+}
+
+func assertMountedRPZDig(t *testing.T, cli *harness, name, owner string) {
+	t.Helper()
+	body, err := json.Marshal(map[string]string{"name": name, "client": "127.0.0.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, err := cli.run("api", "POST", "/dns/query", "--data", string(body))
+	if err != nil {
+		t.Fatalf("dig: %v\n%s", err, stderr)
+	}
+	var result api.DNSQueryResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode dig: %v\n%s", err, out)
+	}
+	if result.Status != "blocked_rpz" || result.Rcode != "NXDOMAIN" || result.List != "default/feed" || result.Rule != owner+" nxdomain" {
+		t.Errorf("dig projection: status=%q rcode=%q list=%q rule=%q", result.Status, result.Rcode, result.List, result.Rule)
+	}
+}
+
+func assertMountedRPZPolicyList(t *testing.T, cli *harness, name string, entries int, ready bool) {
+	t.Helper()
+	out, stderr, err := cli.run("api", "/policies/default/default/state")
+	if err != nil {
+		t.Fatalf("policy state: %v\n%s", err, stderr)
+	}
+	var state api.PolicyState
+	if err := json.Unmarshal([]byte(out), &state); err != nil {
+		t.Fatalf("decode policy state: %v\n%s", err, out)
+	}
+	for _, list := range state.Lists {
+		if list.Ref == name {
+			if !list.Exists || !list.Enabled || list.Entries != entries || list.Ready != ready {
+				t.Errorf("policy list %q: got %+v, want enabled with entries=%d ready=%t", name, list, entries, ready)
+			}
+			return
+		}
+	}
+	t.Errorf("policy list %q missing from %+v", name, state.Lists)
 }
 
 type rpzDiagnosticsFeed struct {
