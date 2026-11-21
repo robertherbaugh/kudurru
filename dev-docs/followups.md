@@ -197,6 +197,12 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+Current K3/K7 follow-through: [mounted Kubernetes evidence for #156](milestones/v0.2/followup-audit.md#k3k7-mounted-evidence-156)
+supersedes the historical test gaps below for election, shared budgets,
+holder recovery, partition and re-acquisition, cleanup fencing, rotation,
+license expiry and UID replacement. This is local envtest evidence only;
+it does not change deployment support or claim live qualification.
+
 | Item | Source | Target |
 |---|---|---|
 | Define what `kudurru integrations list/get -o name` should print. The current list prints a table and get prints YAML; #154 preserves both formats. | PR #192 review | Integration CLI follow-up |
