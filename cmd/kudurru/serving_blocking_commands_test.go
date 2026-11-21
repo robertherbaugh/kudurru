@@ -405,27 +405,24 @@ func TestServingBlockingCommittedPendingReceiptAndSupersession(t *testing.T) {
 	f := newServingCommandFixture(t)
 	var commandErr error
 	called := false
+	var committed atomic.Bool
 	f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		called = true
 		original := f.clock.Current()
-		var calls atomic.Int64
-		f.clock.Set(func() time.Time {
-			// Authenticate, resolve deadline and finish the detached commit check at
-			// the valid time. Reject only the postcommit publication observation.
-			if calls.Add(1) >= 4 {
-				return f.now.Add(-time.Nanosecond)
-			}
-			return f.now
-		})
+		defer func() { f.clock.Set(original) }()
+		f.s.commandHooks.Store(&commandHooks{afterCommit: func(context.Context) {
+			f.clock.Set(func() time.Time { return f.now.Add(-time.Nanosecond) })
+			committed.Store(true)
+		}})
+		defer f.s.commandHooks.Store(nil)
 		_, commandErr = f.s.BlockingCommand(r.Context(), api.BlockingChange{HasTimer: true, TimerSeconds: 30})
-		f.clock.Set(original)
 	})).ServeHTTP(httptest.NewRecorder(), f.request())
 	if !called {
 		t.Fatal("HTTP handler unavailable")
 	}
 	var failure *api.Error
-	if !errors.As(commandErr, &failure) || failure.Status != http.StatusServiceUnavailable {
-		t.Fatal("publication failure returned success", commandErr)
+	if !committed.Load() || !errors.As(commandErr, &failure) || failure.Status != http.StatusServiceUnavailable {
+		t.Fatalf("expected publication refusal after commit, committed=%t: %v", committed.Load(), commandErr)
 	}
 	receipt, ok := failure.Body.Hint.(blockingReceipt)
 	if !ok || !receipt.Committed || receipt.Publication != "pending" || receipt.ResourceVersion == "" || receipt.SettingsUID == "" || !receipt.Disabled || receipt.DisabledUntil == nil || !receipt.DisabledUntil.Equal(f.now.Add(30*time.Second)) {
