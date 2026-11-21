@@ -98,7 +98,8 @@ Retain` to release the object and keep the records.
 While this runs the Integration is shown with phase `Terminating`, and
 `kudurru integrations get` and `list` (and `GET /api/v1/integrations`) show
 `deletionPolicy`, `terminating: true`, `deletionRequestedAt`, the reason and
-the counts described below (`remaining`, `blocked`, `uncertain`). Check,
+the counts described below (`remaining`, `blocked`, `uncertain`) in structured
+output. Use `integrations get -o table` for the same columns as `list`. Check,
 preview, sync and actions are refused for it with `409 Conflict`. The cleanup
 works in bounded runs and shares the Cloudflare request budget with every
 other instance, so a large zone can take several budget windows.
@@ -287,9 +288,9 @@ integrations NAME`). The rules are those of every object write:
   what an instance publishes) needs only `integrations.write`. Only the
   built-in `admin` role holds these verbs; on Kubernetes a ClusterRole can
   grant them separately.
-- Credentials are references only (`file`, `env` or, on Kubernetes,
-  `secretRef`). There is no field for a value; a document that carries one is
-  refused with `400`. A validation failure that names `spec.credentials` is
+- Credentials are references only (`file` or `env`). Neither host resolves
+  native Kubernetes `secretRef` references. There is no field for a value;
+  a document that carries one is refused with `400`. A validation failure that names `spec.credentials` is
   answered with a fixed message and the field paths only, never the refused
   value, so a pasted token (also with a trailing newline, a quote or a
   backslash) is not repeated; other refusals have every string of
@@ -322,8 +323,15 @@ runs, webhook instances are unsupported and `spec.unifi.inventory`,
 `fieldLimits` gives each such field with its effect: `refused`, with the
 status reason and message the Integration would show, or `inert` for a field
 that is accepted but does nothing because the field it needs is refused
-(`spec.unifi.push.dnsServers` and `networks` on Kubernetes). A
-`deletionPolicy: Delete` UniFi Integration refused on Kubernetes for
+on Kubernetes:
+
+- `spec.unifi.push.dnsServers` and `spec.unifi.push.networks` need
+  `spec.unifi.push.dhcpDNSServers`.
+- `spec.unifi.push.mirrorRecords.types`, `spec.unifi.push.mirrorRecords.domains`,
+  `spec.unifi.push.mirrorRecords.labels` and `spec.unifi.push.mirrorRecords.exclude`
+  need `spec.unifi.push.mirrorRecords.enabled`.
+
+A `deletionPolicy: Delete` UniFi Integration refused on Kubernetes for
 `spec.unifi.inventory`, `dhcpDNSServers` or `clientActions` is still cleaned
 up when it is deleted (its local state is purged, with no request to the
 controller); one refused for `mirrorRecords.enabled` stays Terminating until
@@ -831,10 +839,13 @@ name in `hint.holder` and does not forward the request, so a client behind a
 Service must send the command to that pod. When no other replica holds the
 Lease (the instance is suspended, unlicensed, paused or between two jobs)
 the `503` names no holder and carries the instance's `phase` and `reason`
-in its hint instead. A reviewed sync whose source head write was not
-acknowledged is resolved by one read of the head; if that read does not
-show the write, the answer is `503 integration_uncertain` and the sync is
-not repeated. On Kubernetes the
+in its hint instead. If the Kubernetes API server rejects a reviewed sync's
+source-head write with 400, 403, 413 or 422, no source was installed and the
+sync is refused with `503 unavailable` and no `pending` hint. Fix the cause
+(for example, missing Secret write permission) and run a fresh review.
+Otherwise, a write whose outcome is unknown is resolved by
+one read of the head; if that read does not show the write, the answer is
+`503 integration_uncertain` and the sync is not repeated. On Kubernetes the
 route permission is checked once per request, not again inside each effect,
 and a reviewed sync or act is logged on the holder rather than written to an
 audit table. List/get status is unknown when no observation matches the

@@ -19,12 +19,13 @@ var errTruncatedPage = errors.New("list page exceeds the 4 MiB response bound")
 type listResult string
 
 const (
-	listOK           listResult = "ok"
-	listForbidden    listResult = "forbidden"
-	listTooLarge     listResult = "tooLarge"
-	listTruncated    listResult = "truncated"
-	listNotInstalled listResult = "notInstalled"
-	listError        listResult = "error"
+	listOK                  listResult = "ok"
+	listForbidden           listResult = "forbidden"
+	listTooLarge            listResult = "tooLarge"
+	listTruncated           listResult = "truncated"
+	listNotInstalled        listResult = "notInstalled"
+	listError               listResult = "error"
+	listUnsupportedSelector listResult = "unsupportedSelector"
 )
 
 func accessDenied(err error) bool {
@@ -166,7 +167,7 @@ func registerSourceMetrics(reg prometheus.Registerer) (*sourceMetrics, error) {
 	m := &sourceMetrics{
 		lists: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_external_zone_source_list_total",
-			Help: "External-zone source list passes by Kubernetes kind and result.",
+			Help: "External-zone source list attempts by Kubernetes kind and result, including retries.",
 		}, []string{"kind", "result"}),
 		objects: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "kudurru_external_zone_source_objects",
