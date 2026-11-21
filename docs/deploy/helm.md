@@ -622,8 +622,13 @@ configuration and add the two rules above to the kudurru ClusterRole.
 
 Operational limits: each source kind is read as one complete list of at most
 4,096 objects and 32 MiB (pages of 64 objects, each response at most 4 MiB).
-Every Service in the cluster counts toward the Service bound, whatever its
-type. One source can own record sets in at most eight zones, with at most
+If a page exceeds 4 MiB, the adapter restarts the list once with pages of
+eight; it never uses the partial snapshot. Services are listed and watched
+with `spec.type=LoadBalancer` where the API server supports it. If it rejects
+that field selector, the adapter lists and watches all Services for that
+elected term, and every Service counts toward the same caps. The adapter
+only publishes LoadBalancer Services either way. One source can own record
+sets in at most eight zones, with at most
 1,000 endpoints per record set. A refused list does not remove last-good
 record sets. An affected zone can be `Ready` and `Degraded` at the same time:
 `SourcesIncomplete` names the source failure, while `SourcesNotRead` means
