@@ -253,33 +253,15 @@ func enrolledRecordSetNames(ctx context.Context, client *staticProcessClient) (m
 		if continuation != "" {
 			path += "&continue=" + url.QueryEscape(continuation)
 		}
-		requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, client.base+path, nil)
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-		if client.csrf != "" {
-			request.Header.Set("X-Kudurru-CSRF", client.csrf)
-		}
-		if client.ifMatch != "" {
-			request.Header.Set("If-Match", client.ifMatch)
-		}
-		response, err := client.client.Do(request)
-		if err != nil {
-			cancel()
-			return nil, err
-		}
-		body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
-		_ = response.Body.Close()
-		cancel()
+		status, body, err := client.do(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return nil, err
 		}
-		if response.StatusCode != http.StatusOK {
+		if status != http.StatusOK {
 			var problem api.Error
+			// Match the cursor-specific conflict from listCapturedObjects in internal/api/object_reads.go.
 			if json.Unmarshal(body, &problem) == nil && continuation != "" &&
-				response.StatusCode == http.StatusConflict && problem.Body.Key == api.KeyConflict &&
+				status == http.StatusConflict && problem.Body.Key == api.KeyConflict &&
 				problem.Body.Message == "object pagination generation or query changed" &&
 				problem.Body.Hint == "restart pagination without continue" {
 				clear(present)
@@ -287,7 +269,7 @@ func enrolledRecordSetNames(ctx context.Context, client *staticProcessClient) (m
 				restarts++
 				continue
 			}
-			return nil, fmt.Errorf("status %d want %d, error %s: %s", response.StatusCode, http.StatusOK, problem.Body.Key, problem.Body.Message)
+			return nil, fmt.Errorf("status %d want %d, error %s: %s", status, http.StatusOK, problem.Body.Key, problem.Body.Message)
 		}
 		var listed api.List[struct {
 			Metadata struct {
