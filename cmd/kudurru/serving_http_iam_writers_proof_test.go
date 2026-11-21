@@ -261,7 +261,7 @@ func TestServingHTTPIAMWritersDeleteFloorsSurviveReplicaPromotion(t *testing.T) 
 // unavailable and commits nothing: the account, its token and the image stay
 // exactly as they were. Reads keep working.
 func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
-	f := newServingHTTPFixture(t, false)
+	f := newServingHTTPFixtureOn(t, newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false)), false)
 	defer f.stop()
 	sa := serviceAccountResponse(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("full")), f.token, nil, ""), http.StatusCreated)
 	localUsersFresh(t, f)
@@ -310,7 +310,7 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 }
 
 func TestServingHTTPIAMWritersDeleteRecoversFullRevocationHistory(t *testing.T) {
-	f := newServingHTTPFixture(t, false)
+	f := newServingHTTPFixtureOn(t, newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false)), false)
 	defer f.stop()
 	sa := serviceAccountResponse(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("history")), f.token, nil, ""), http.StatusCreated)
 	localUsersFresh(t, f)
