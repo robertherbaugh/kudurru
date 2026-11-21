@@ -493,6 +493,14 @@ read every matching boundary fact. Local readers pin a real WAL snapshot while
 copying pending totals, after acquiring a reader connection and before releasing
 the writer lock. SQL facts, index cells and pending totals describe one cut.
 
+Late writes into a completed hour make that hour and its day unsafe to read
+from the coarse tiers until maintenance rebuilds them. SQLite records the
+dirty hour in the same transaction as its minute rollups and removes the
+marker in the rebuild transaction. After a restart the reader still falls back
+to finer tiers, and the shipper still sees the held-back completion boundary.
+Count-based statistics use minute buckets at partial-hour edges; raw history
+filters use exact timestamps.
+
 Names, clients, upstreams, zones, lists and policies are stored once in
 `dict_*` tables and referenced by ID. Charts read the rollups, so a 30-day
 chart does not scan 30 days of rows. The database is per node: in a
