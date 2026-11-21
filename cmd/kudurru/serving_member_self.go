@@ -140,15 +140,15 @@ func memberSelfUnavailable(err error, what string) error {
 	return &auth.Error{Status: http.StatusServiceUnavailable, Key: api.KeyUnavailable, Message: message + "; " + what}
 }
 
-// memberSelfError keeps an unsent command apart from an unknown outcome.
-// Clean primary refusals are retained results and never reach it.
+// memberSelfError distinguishes definite failures before execution from an
+// unknown outcome. Retained user refusals never reach it.
 func memberSelfError(err error, sent bool, notDone, unknown string) error {
-	switch {
-	case errors.Is(err, clusterreplica.ErrForbidden), errors.Is(err, servingauth.ErrDenied):
+	switch classifyMemberForwardRefusal(err, sent) {
+	case memberForwardForbidden:
 		return &auth.Error{Status: http.StatusForbidden, Key: api.KeyForbidden, Message: "the primary refused this credential; " + notDone}
-	case errors.Is(err, clusterreplica.ErrUnauthorized):
-		return &auth.Error{Status: http.StatusUnauthorized, Key: api.KeyUnauthenticated, Message: "the primary did not accept this credential; " + notDone}
-	case !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown):
+	case memberForwardAuthorityChanged:
+		return &auth.Error{Status: http.StatusServiceUnavailable, Key: api.KeyUnavailable, Message: "cluster authority changed; " + notDone}
+	case memberForwardUnavailable:
 		return &auth.Error{Status: http.StatusServiceUnavailable, Key: api.KeyUnavailable, Message: "the enrolled primary is unavailable; " + notDone}
 	default:
 		return &auth.Error{Status: http.StatusServiceUnavailable, Key: "completion_unknown", Message: unknown + "; do not replay this request"}
