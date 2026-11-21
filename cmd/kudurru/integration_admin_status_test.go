@@ -65,8 +65,8 @@ func TestIntegrationAdminStatusOnlyWriteKeepsReviewCurrent(t *testing.T) {
 		t.Fatalf("running instance reported no status: %+v", reviewed)
 	}
 
-	// A sync writes the host's status again. The operator's earlier review
-	// is now one status-only write behind.
+	// The stored sync time has whole-second precision. Advance the clock so
+	// this sync changes the status and leaves the review one revision behind.
 	settled()
 	f.offset.Add(int64(time.Second))
 	w := integrationAdminCall(t, router, f, http.MethodPost, path+"/sync", api.IntegrationReview{UID: reviewed.UID, Revision: reviewed.Revision, Mode: "observe"}, f.token)
