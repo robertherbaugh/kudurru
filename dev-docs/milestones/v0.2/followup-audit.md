@@ -15282,6 +15282,16 @@ known input reaches that path.
 **Review and verification state at 17b7c87a.** The review accepted the package with six findings (one major: the `-o` output format was validated only after the mutation committed; three minor: local refusals reported as unknown outcomes, the receipt not bound to the requested key and resourceVersion, the receipt validation untested; two nits). The fixer resolved all four non-nit findings; the verifier confirmed them and found no new problem. Merged and pushed at `3a6ab137`. Not tested: the CLI against a Kubernetes node; there is no dashboard surface for stored TSIG keys.
 
 
+**Current source-head outcome evidence (#155).** On local Kubernetes 1.37
+envtest, `TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` injects a
+Kubernetes 403 Status at the exact head update: the sync refuses without
+a pending hint, the head stays at the same sequence, and a fresh review
+commits once. Its two lost-response legs still resolve a landed write and
+report an unlanded write as uncertain without replay.
+`TestIntegrationSourceHeadWriteClassification` exercises create and update
+with the four definite statuses and verifies that transport errors,
+timeouts, 429, 5xx and other statuses remain uncertain.
+
 ### F09B-OPEN Kubernetes root: refusal backoff, conflicts, credentials, budget and the open K3 criteria — November 13, 2026 (D384)
 
 What now happens. A root refusal (`Options.Refuse`) whose status write fails is no longer retried in a hot loop. Before, `refuse` called `Wake`, refresh replaced the job at once and the job's own deferred `Wake` started the next one; a verification probe counted 4083 status attempts and 8166 captures in two seconds, each on Kubernetes a Lease acquire and release, a credential read and a status write. The F09B-KUBE-ROOT commit message, code comment, ledger draft and architecture page said "at most once per poll interval", which was false. Now a failed refusal publication records a retry time on the job (one poll interval after the first failure, doubling per consecutive failure of that instance up to five minutes, `refusalBackoff`), nothing wakes the host early, and only the first capture at or after that time replaces the job. The host also asks `Refuse` after every capture and keeps the answer with the job's frame, replacing a job whose answer changes.
@@ -19356,6 +19366,34 @@ label, an operator annotation and the clientgroup scope).
 
 ### INT-6 ClientGroup-scoped record views (split horizon) — November 10, 2026 (D403)
 
+**November 20, 2026 follow-up (#136, local evidence).** On `ce3ab6e2`, the
+mandatory Kubernetes envtest baseline passed with the race detector (two tests,
+19.550 s). An authenticated UPDATE of a view-only A record returned NOERROR in
+both namespaces. In the UPDATE namespace the group kept its view and default
+clients got the new A record. In the other namespace the group's answer changed
+to the default A record and the static source later reported `Duplicated`.
+With the reservation change, `TestRunServeKubeViewUpdateOwnership` confirms
+both writes return REFUSED and retain the original group and default answers.
+An ordinary write succeeds, and a view-only RRset remains absent to an
+NXRRSET prerequisite. The race run also passed `TestRunServeKubeClientGroupViews`
+with conflict retry and `TestRecordsViews` (three tests, 20.787 s):
+
+```sh
+KUDURRU_REQUIRE_ENVTEST=1 go test -race -count=1 ./cmd/kudurru -run '^(TestRunServeKube(ClientGroupViews|ViewUpdateOwnership)|TestRecordsViews)$'
+go test -count=1 ./internal/primaryruntime -run '^TestSQLiteUpdateViewOwnership$'
+KUDURRU_E2E=1 go test -count=1 ./test/e2e -run '^TestClientGroupViewsSplitHorizon$'
+```
+
+The SQLite runtime test passed both namespace cases (0.305 s): a reserved
+view name was refused, an unreserved control UPDATE was published, and only
+an explicitly authorized takeover moved the collision out of the default
+data. The loopback process test passed (4.06 s after building): AXFR and IXFR
+from the lan address carried the same default data with either allowed TSIG
+key. TCP probes were added to the pinned dnsdist fixture, but its live gate
+was not run; the hosted edge qualification remains separate (#127). The
+partial SQLite refusal diagnostics and the two-namespace budget test are
+tracked in #171.
+
 An endpoint whose `kudurru.view` names a ClientGroup used to be withheld
 from every client (`zone.Served`), so only the publish-only `public` half of
 split horizon worked. It is now served to that group, on both drivers. The
@@ -21592,6 +21630,42 @@ This product change requires a new source qualification below. It does not
 change any benchmarked package or supersede the failed paired run 43685577680;
 the D383 performance gate remains open. The historical package findings and
 owner-deferred acceptance remain as recorded above.
+
+### F28 startup bounds and hosted bootstrap evidence — November 20, 2026
+
+For #135, hosted [CI run 44780132339](https://github.com/robertherbaugh/kudurru/actions/runs/44780132339)
+on main `ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61` passed all four enrolled
+managed-anchor cases in the E2E job (`136440648259`): partition/restart/REVOKE,
+promotion/rejoin, offline recovery, and conflict resolution. These are two
+enrolled SQLite member processes against a signed loopback stand-in root,
+not live-root or independent-host acceptance. Each case logged one bootstrap
+acquisition and zero races. `settleBootstrap` requires exactly one successful
+acquisition and permits at most two raced acquisitions; the old allegation
+of an uncapped race count no longer applies. This run did not exercise the
+raced path at the cap. The promote/rejoin sampler reported 538 ms of startup
+SERVFAIL (24 samples, starting at 17:22:20.119 UTC on the restarted old
+primary), within the original 5 s limit. This confirms the bound, not the
+absence of a startup gap.
+
+The same run was not green overall: the command shard (`136440648737`)
+failed `TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger`. No full
+command-package or aggregate CI pass is claimed. The local SQLite `Anchor`
+selection passed under race in 131.164 s on the main baseline.
+
+On a local eight-vCPU sandbox with test source
+`e915b833aa6286bc422327bac8cf03684b1ebea5`, all 15 invocations passed (121.017 s)
+under race with `CGO_ENABLED=1`, `-p 2`, and `-count=5`:
+
+- `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` (9.41–10.46 s per complete test).
+- `TestOfflineAnchorRecoveredTrustServesAfterRestart` (10.16–11.65 s per complete test).
+- `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` (3.07–3.49 s per complete test).
+
+Load averages were 3.61/5.76/6.22 at 19:49:05 UTC and 2.27/4.47/5.68 at
+19:51:14 UTC. These durations are whole tests, not individual readiness
+polls; each original 10 s readiness assertion passed. The historical timing
+misses and early writer return were not reproduced at this load. The results
+do not explain those earlier failures or authorize a changed bound. No
+startup chain, read lease, acceptance bound, or live deferral changed.
 
 ### Interleaved benchmark protocol, November 15, 2026 (D412)
 

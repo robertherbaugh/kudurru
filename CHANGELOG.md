@@ -1358,6 +1358,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Kubernetes refuses RFC 2136 writes that collide with served static client-group
+  view RRsets (#136). An upgrade preserves existing UPDATE records; operators can
+  remove pre-existing collisions from the zone's `rfc2136-<zone>` DNSRecordSet
+  through the Kubernetes API.
+
 - TSIG observer tests retain their original expiry, cancellation, deadline and
   publication assertions while isolating the quiet fixture from unrelated
   provider retries and redundant publisher wakeups.

@@ -239,6 +239,23 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 		return r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/secrets/"+heads[0].Name)
 	}
 	before = sequence()
+	gate.answer(headWrite, metav1.Status{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+		Status:   metav1.StatusFailure,
+		Reason:   metav1.StatusReasonForbidden,
+		Code:     http.StatusForbidden,
+		Message:  "update of the source head is forbidden",
+	})
+	status, body = sync(env.token)
+	problem, _ := body["error"].(map[string]any)
+	if gate.faultPending() || status != http.StatusServiceUnavailable || problem["key"] != "unavailable" || problem["hint"] != nil || sequence() != before {
+		t.Fatal("a rejected head write was not refused before effect", status, body, before, sequence())
+	}
+	status, body = sync(env.token)
+	if status != http.StatusOK || body["completed"] != true || body["sourceCommitted"] != true || sequence() != before+1 {
+		t.Fatal("a fresh review after the rejection did not commit once", status, body, before, sequence())
+	}
+	before = sequence()
 	gate.loseAnswer(headWrite, true)
 	status, body = sync(env.token)
 	if gate.faultPending() {
@@ -256,7 +273,7 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 	if gate.faultPending() {
 		t.Fatal("the sync never wrote the head", status, body)
 	}
-	problem, _ := body["error"].(map[string]any)
+	problem, _ = body["error"].(map[string]any)
 	hint, _ := problem["hint"].(map[string]any)
 	if status != http.StatusServiceUnavailable || problem["key"] != "integration_uncertain" || hint["uncertain"] != true || hint["sourceCommitted"] != false || hint["pending"] != float64(1) {
 		t.Fatal("a head write with an unknown outcome was not reported uncertain", status, body)
