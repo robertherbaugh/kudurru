@@ -196,6 +196,53 @@ func TestIntegrationDeleteResumesAfterRestart(t *testing.T) {
 	}
 }
 
+func TestIntegrationDeleteRestartWithHeldBatch(t *testing.T) {
+	f := newIntegrationDeleteFixture(t, nil)
+	foreignID := integrationForeignID(1)
+	f.seed(foreignID, "foreign.example", "A", "198.51.100.1", "")
+	_, writes, _ := f.traffic()
+	hold, entered := make(chan struct{}), make(chan struct{})
+	var released atomic.Bool
+	release := func() {
+		if released.CompareAndSwap(false, true) {
+			close(hold)
+		}
+	}
+	defer release()
+	f.peer.mu.Lock()
+	f.peer.hold, f.peer.entered = hold, entered
+	f.peer.mu.Unlock()
+	f.requestDelete(t)
+	integrationAwaitSignal(t, entered)
+	if !f.ledgerPending(t) {
+		t.Fatal("the batch reached the peer before its reservation was durable")
+	}
+	if persisted := integrationStored(t, f.s, f.d); persisted == nil || !store.HasFinalizer(persisted, store.IntegrationCleanupFinalizer) {
+		t.Fatal("cleanup finalized while the provider batch was in flight")
+	}
+	f.restart(t, func() {
+		release()
+		until := time.Now().Add(5 * time.Second)
+		for {
+			_, after, deleted := f.traffic()
+			if after == writes+1 && len(deleted) == len(f.published) {
+				break
+			}
+			if time.Now().After(until) {
+				t.Fatal("the batch did not take effect during the restart")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	f.awaitGone(t)
+	f.expectOwnedDeletedOnce(t, writes, 1)
+	f.peer.mu.Lock()
+	defer f.peer.mu.Unlock()
+	if len(f.peer.rows) != 1 || f.peer.rows[foreignID]["content"] != "198.51.100.1" {
+		t.Fatal("the restarted cleanup changed a foreign provider record")
+	}
+}
+
 // TestIntegrationDeleteFailoverFencesHeldBatchAndSuccessorFinishes holds the
 // cleanup's delete batch at the provider while a replica is promoted. The
 // old writer's batch then completes at the provider, but it can record no

@@ -792,6 +792,14 @@ flowchart TD
   then no integration job gets a frame. Operations, which ordinary life
   never prunes, count toward that store limit; it is the open limit on an
   instance's history.
+- **Bounded progress.** After a confirmed delete, the host uses the last
+  delete and complete observation times to estimate whether another delete
+  fits with time left for a reread and a forget commit. If not, it defers the
+  next intent and moves to the reread and proof-based forget in the current
+  run. Neither the deadline nor the frame, lease, and ownership checks
+  change. A later lease
+  can recover a pending delete from the stored intent and a complete reread,
+  and does not replay a delete whose absence it can confirm.
 - **Long histories.** Operations leave in bounded commits: a ledger row with
   the first of its record's operations, at most
   `ledger.MaxForgetOperations` (1,024), the rest a stored page at a time once

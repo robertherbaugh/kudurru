@@ -165,9 +165,14 @@ The cleanup has these limits. It reads each configured zone as a sync does
 ledger rows of all Integrations together. Every create, update and delete of
 a record set leaves one stored operation, and nothing removes them while the
 Integration lives; the cleanup forgets them in bounded commits, a stored page
-at a time, so it never holds the whole history at once. A run that made
-progress ends before its 30-second bound would cut its next commit, and a
-commit that the bound cut without any progress is retried at half its size.
+at a time, so it never holds the whole history at once. After confirming a
+provider delete, a run may defer more deletes to leave time to reread the
+provider and forget confirmed ledger rows within its 30-second bound. A run
+that has made progress also yields when the remaining time is too short for
+the next forget commit. A forget commit that the bound cuts without any
+progress is retried at half its size. After a restart, cleanup uses the stored
+ledger and a fresh complete provider observation; it does not replay a
+confirmed delete.
 
 What bounds the history is the SQLite store as a whole. Root's integration
 capture starts by reading one complete generation of the store, and that
