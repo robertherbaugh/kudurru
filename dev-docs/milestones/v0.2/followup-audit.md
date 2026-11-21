@@ -18218,6 +18218,40 @@ Commits: `21468b91` (host and planner seams), `960faeb9` (UniFi writes, wiring, 
 **Verification state at 7663c957.** Merged and pushed at `95c57113`, after the integrator's contract commit. The verifier resolved the blocker (an intent whose acknowledged effects are gone is abandoned only with exact proof), the major (a 409 fence on the frame a command captures) and three more, and left finding 5 (minor) partly unresolved: the act audit row named only a parameter digest; INT-OPEN2 made it name the client's MAC in lowercase. New, low, open: the recovery exit covers only acknowledged creates (a partial update or delete needs the operator to restore the baseline; untested and undocumented); a deleted source now yields 409 for every publisher and the background operation path, with no test pinning it; the parameter digest collapses duplicate keys and misses trailing brackets of malformed input; the host-level abandon path has no unit test. Locally `TestIntegrationUniFiPushMirrorPartialCreate` failed once under load (INT-OPEN2 left its 30 s stall open). No live UniFi controller was exercised.
 
 
+**Issue #125 synthetic follow-up (November 20, 2026).** The mounted UniFi TLS
+double exercises a definite second PUT/DELETE failure, lost replies with an
+unavailable immediate reread, exact-baseline restore, operator completion,
+restart, and lease loss while the final PUT is held. Recovery neither replays
+the write nor adopts a foreign policy, and the old digest is refused. The
+mounted deleted-source test pins the 409 and the host unit test covers all
+three acknowledged-create abandon cases. This does not qualify a live
+UniFi controller or a Cloudflare account; #153 remains pending.
+
+**Current-main timing evidence (`ce3ab6e2`, November 20, 2026).** In five
+local race runs of `TestIntegrationUniFiPushMirrorPartialCreate` and
+`TestIntegrationAdminActualUniFiTLSObservation` against loopback doubles,
+the historical 30-second stall did not reproduce (5/5 partial-create runs
+passed). The observation test returned HTTP 503 in 2/5 runs (test elapsed
+times: 2.64 s and 2.70 s). Hosted CI run `44684111744`, job `136114447349`,
+saw the same observation test return 503 (2.63 s) on `07881d30`. On `ce3ab6e2`, hosted
+run `44780132339`, job `136440648524`, passed both UniFi batches even
+though an unrelated signed-update test failed the workflow. These are
+distinct failure signatures; the 30-second bound is unchanged. Sanitized
+diagnostics reproduced the observation failure in 1/5 more runs: the response
+key was `unavailable`, with zero additional requests to the TLS double and no
+source outcome. That places this occurrence before provider dispatch. The
+exact admission check was not identified in a subsequent five-run trace
+sample that passed. No retry or production behavior change was added.
+
+The SQLite restart regression shows the same pending intent at shutdown and
+one confirmation by the restarted runtime's automatic poll. An experimental
+immediate post-restart HTTP re-review returned `503 unavailable` in 3/3 race
+runs after the poll settled; the relationship to the observe-only failure is
+not established. The regression pins the stale 409 before restarting while
+the intent is pending. The non-restart and writer-lease tests also pin it
+after settlement. No HTTP retry is used to mask the restart refusal.
+
+
 ### INT-EXTERNAL-ZONES Kubernetes external zones from Ingress, Gateway API routes and LoadBalancer Services — November 10, 2026 (D402)
 
 **What now happens.** A DNSZone of type `external` is served on the Kubernetes store. The zone model (`internal/zone`) builds it like a primary zone, but `ServedRecordSets` admits only record sets with the complete source-adapter identity (`zone.ExternalSourceOwned`: managedBy `kubernetes-source:<uid>`, the source UID and name annotations, the `kudurru.io/external-source` kind label and one matching owner reference). The zone controller reports every other record set naming the zone as `NotSelected`, so status, serial and the served zone agree, and the zone is `Ready` instead of `Unsupported`. The object API refuses a DNSRecordSet for an external zone with `409 conflict`; the zone-record and import endpoints and RFC 2136 on Kubernetes already refuse non-primary zones. External zones never transfer, are listed as served authoritative zones and take part in CNAME chasing. The complete SQLite image still refuses the type (`ServingErrors`, and `BuildNonprimary` now refuses it explicitly).
@@ -21967,3 +22001,39 @@ Full hosted validation of the corrected source is pending. The passing
 performance recording remains attributed to its exact earlier source; updated
 source qualification must be recorded separately. GitHub review stays outside
 the owner's requested work, and other documented scope/deferrals remain.
+
+### Follower self-service refusal evidence (#137)
+
+On November 20, 2026, `TestRootMemberForwardPasswordTransportRefusalActualHTTP`
+reproduced a transport `401 unauthenticated` on `ce3ab6e2`. The mounted
+follower requested a password change with its valid bearer credential; the
+fixture fenced the primary while the follower held the original request at
+body read. The primary refused the member exchange before its command
+executor. The follower now answers `503 unavailable` and says the password
+was not changed. The same test checks that a wrong current password still
+gets the primary's retained `401 unauthenticated`. Neither refusal changed
+the password or left a durable mutation audit row.
+
+The HA-OPEN5 fixes (`7bae1238`, `532a5cd7`, `1737eb2e`) are integrated.
+`TestRootMemberForwardPasswordAndTokensActualHTTP` checks the durable
+attribution of successful commands and the absence of mutation audit rows
+for refused commands. `TestRootMemberForwardTokenCallerPasswordActualHTTP`
+pins the original principal for a committed password change, and
+`TestRootMemberForwardCookiePasswordUnservedActualHTTP` and
+`TestMemberSessionUnservedNamesTheCause` pin committed-but-unavailable output.
+The shared failure matrix in `TestMemberSelfError`, `TestMemberLogoutError`,
+and `TestObjectForwardError` distinguishes authority refusals, other definite
+refusals, authorization denials, and uncertain completion, including joined
+errors. No request bound, subject, deduplication check, or replay rule changed.
+
+Local checks used mounted loopback TLS and synthetic SQLite fixtures only.
+The baseline reproduction failed as expected in `.context/gh137-before.log`
+(1-minute load average 0.42). The focused `CGO_ENABLED=1 go test -p 4 -race
+-count=1 -run ... ./cmd/kudurru` suite passed in 138.398 seconds, including
+the refusal matrix, mounted password/token/sign-out and audit tests, the
+unforwarded mutation test, and the cut-apply regression
+(`.context/gh137-forward-refusal-race.log`, 1-minute load average 0.90 at start).
+`go vet -p 3 ./cmd/kudurru/...` passed (147.791 seconds wall time, load
+0.92), and `golangci-lint run --concurrency 3 ./cmd/kudurru/...` (v2.15.0)
+reported zero issues (76.095 seconds wall time, load 7.70). See
+`.context/gh137-vet-lint.log`. `make docs-site docs-check-links` also passed.
