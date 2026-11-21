@@ -295,7 +295,12 @@ func (h *harness) clock() time.Time {
 
 func (h *harness) replica(name string, ip string) *Runtime {
 	h.t.Helper()
-	r, err := New(Options{Store: h.st, Leases: h.leases, Pods: h.pods, Elector: &fakeElector{election: h.election, name: name},
+	return h.replicaWithLeases(name, ip, h.leases)
+}
+
+func (h *harness) replicaWithLeases(name string, ip string, leases LeaseAPI) *Runtime {
+	h.t.Helper()
+	r, err := New(Options{Store: h.st, Leases: leases, Pods: h.pods, Elector: &fakeElector{election: h.election, name: name},
 		PodName: name, ServerIdentifier: netip.MustParseAddr("198.51.100.67"), DataDir: h.t.TempDir(),
 		Now: h.clock, Interval: time.Hour,
 		LocalAddress: func(string) (netip.Addr, error) { return netip.MustParseAddr(ip), nil },
@@ -389,6 +394,73 @@ func TestReplicasShareLeasesAndFailOver(t *testing.T) {
 	eventually(t, "a sees b's lease", func() bool { return len(listed(a, "lan")) == 2 })
 	if _, ok := h.leases.get(ObjectName("lan", lease.Address)); !ok {
 		t.Fatal("the failover lost a's lease object")
+	}
+}
+
+type heldLeaderLeaseList struct {
+	LeaseAPI
+	calls    atomic.Int64
+	captured chan int
+	release  chan struct{}
+}
+
+func (l *heldLeaderLeaseList) List(ctx context.Context) ([]dhcpv1.DHCPLease, string, error) {
+	items, version, err := l.LeaseAPI.List(ctx)
+	if l.calls.Add(1) == 2 && err == nil {
+		l.captured <- len(items)
+		select {
+		case <-l.release:
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		}
+	}
+	return items, version, err
+}
+
+func TestAllocatorListDoesNotRestoreLeaseDeletedByWatch(t *testing.T) {
+	h := newHarness(t)
+	api := &heldLeaderLeaseList{LeaseAPI: h.leases, captured: make(chan int, 1), release: make(chan struct{})}
+	r := h.replicaWithLeases("kudurru-a", "10.0.0.1", api)
+	eventually(t, "empty scope working copy", func() bool { return len(r.Stores()) == 1 })
+	mac := "02:00:00:00:00:01"
+	address := netip.MustParseAddr("192.0.2.10")
+	obj := leaseObject("", "lan", dhcp.ExternalLease{
+		Record: dhcp.LeaseRecord{Address: address, MAC: mac, Hostname: "laptop", State: "bound",
+			Identity: dhcp.LeaseIdentity{Kind: "mac", Value: mac}, ExpiresAt: h.now.Add(time.Hour)},
+		Claim: dhcp.DNSClaim{Name: "laptop.leases.test.", Ticket: 1},
+	})
+	if err := api.Create(t.Context(), obj); err != nil {
+		t.Fatal(err)
+	}
+	bound := func() bool {
+		for _, leases := range r.Stores() {
+			if lease, ok := leases.DNS().Bound(address); ok && lease.MAC == mac {
+				return true
+			}
+		}
+		return false
+	}
+	eventually(t, "bound lease snapshot", bound)
+	h.election.grant("kudurru-a")
+	select {
+	case items := <-api.captured:
+		if items != 1 {
+			t.Fatalf("allocator captured %d leases, want one", items)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("allocator did not capture a lease list")
+	}
+	if err := api.Delete(t.Context(), obj.Name, obj.ResourceVersion); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "watch removed the lease MAC", func() bool { return !bound() })
+	close(api.release)
+	eventually(t, "allocator serving", r.Leader)
+	if bound() || len(listed(r, "lan")) != 0 {
+		t.Fatal("allocator's older list resurrected the deleted lease and its MAC")
+	}
+	if calls := api.calls.Load(); calls != 3 {
+		t.Fatalf("lease lists = %d, want initial, overtaken, and fresh lists", calls)
 	}
 }
 
