@@ -237,7 +237,7 @@ function deploy(version: string): Html {
         ${tabs.map(
           (t, i) => html`<div class="term-panel" role="tabpanel" id="inst-${t.id}" aria-labelledby="inst-tab-${t.id}"${i === 0 ? "" : html` hidden`}>
           <button type="button" class="copy mono" data-copy="inst-${t.id}-code">${icon.copy}<span>Copy</span></button>
-          <pre class="mono" id="inst-${t.id}-code">${t.lines.join("\n")}</pre>
+          <pre class="mono" id="inst-${t.id}-code" tabindex="0">${t.lines.join("\n")}</pre>
           <p class="term-note">${t.note} ${external(t.href, html`Guide ${icon.arrow}`, "more")}</p>
         </div>`,
         )}

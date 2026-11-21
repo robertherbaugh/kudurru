@@ -802,8 +802,10 @@ write block that precedes a durable fence, ends the current term: the store
 cancels the term context before the new authority becomes visible, so a
 leader-only loop that sees its token retired always finds its term already
 over and stops quietly instead of failing and restarting. The cluster runner
-treats an error returned after the term ended as the end of the term: it logs
-nothing, counts no restart and leaves the runnable's last error empty.
+treats a non-panic error returned after the term ended as the end of the term:
+it does not log a failure or count a restart. `RunnableStatus.LastError` is
+empty if the runner has not recorded a failure; otherwise it retains the prior
+failure across term end and later successful invocations.
 
 ### The controller
 

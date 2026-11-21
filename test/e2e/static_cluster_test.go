@@ -29,7 +29,7 @@ type staticProcessClient struct {
 
 // Every command is one original attempt, with no body replay or retry. Read
 // readiness observation below may poll; it never resubmits a refused mutation.
-func (c *staticProcessClient) request(t *testing.T, method, path string, body any, want int, out any) {
+func (client *staticProcessClient) request(t *testing.T, method, path string, body any, want int, out any) {
 	t.Helper()
 	var data []byte
 	var err error
@@ -39,43 +39,48 @@ func (c *staticProcessClient) request(t *testing.T, method, path string, body an
 			t.Fatal(err)
 		}
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	r, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.GetBody = nil
-	if body != nil {
-		r.Header.Set("Content-Type", "application/json")
-	}
-	if c.csrf != "" {
-		r.Header.Set("X-Kudurru-CSRF", c.csrf)
-	}
-	if c.ifMatch != "" {
-		r.Header.Set("If-Match", c.ifMatch)
-	}
-	response, err := c.client.Do(r)
+	status, data, err := client.do(t.Context(), method, path, data)
 	if err != nil {
 		t.Fatalf("static process %s %s: %v", method, path, err)
 	}
-	defer func() { _ = response.Body.Close() }()
-	data, err = io.ReadAll(io.LimitReader(response.Body, 128<<10))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != want {
+	if status != want {
 		var problem struct {
 			Error api.ErrorBody `json:"error"`
 		}
 		_ = json.Unmarshal(data, &problem)
-		t.Fatalf("static process %s %s: status %d want %d, error %s", method, path, response.StatusCode, want, problem.Error.Key)
+		t.Fatalf("static process %s %s: status %d want %d, error %s", method, path, status, want, problem.Error.Key)
 	}
 	if out != nil {
 		if err := json.Unmarshal(data, out); err != nil {
 			t.Fatal(err)
 		}
 	}
+}
+
+func (client *staticProcessClient) do(ctx context.Context, method, path string, data []byte) (int, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, method, client.base+path, bytes.NewReader(data))
+	if err != nil {
+		return 0, nil, err
+	}
+	request.GetBody = nil
+	if data != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if client.csrf != "" {
+		request.Header.Set("X-Kudurru-CSRF", client.csrf)
+	}
+	if client.ifMatch != "" {
+		request.Header.Set("If-Match", client.ifMatch)
+	}
+	response, err := client.client.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
+	return response.StatusCode, body, err
 }
 
 func staticProcessPeers(t *testing.T, c *staticProcessClient) []api.NodeInfo {
