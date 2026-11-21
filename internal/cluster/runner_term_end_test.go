@@ -4,11 +4,52 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
+
+func TestRunnableLastErrorSurvivesTermEnd(t *testing.T) {
+	var calls atomic.Int32
+	const failure = "writer failed while term was active"
+	h := startHarness(t, Options{}, func(h *harness) {
+		mustAdd(t, h.r, "writer", true, func(term context.Context) error {
+			if calls.Add(1) == 1 {
+				return errors.New(failure)
+			}
+			<-term.Done()
+			return errors.New("term expired while writing")
+		})
+	})
+	send(t, h.e.grant, "grant")
+	eventually(t, "writer restarted after recording its failure", func() bool {
+		status := h.r.Status()[0]
+		return calls.Load() == 2 && status.Active && status.LastError == failure && status.Restarts == 1
+	})
+	send(t, h.e.revoke, "revoke")
+	eventually(t, "writer joined", func() bool { return !h.r.Status()[0].Active })
+	if status := h.r.Status()[0]; status.LastError != failure || status.Restarts != 1 {
+		t.Fatalf("term end replaced the recorded failure: %+v", status)
+	}
+}
+
+func TestRunnableLastErrorIgnoresErrorAtCancellation(t *testing.T) {
+	h := startHarness(t, Options{}, func(h *harness) {
+		mustAdd(t, h.r, "writer", true, func(term context.Context) error {
+			<-term.Done()
+			return errors.New("writer returned an error after cancellation")
+		})
+	})
+	send(t, h.e.grant, "grant")
+	eventually(t, "writer active", func() bool { return h.r.Status()[0].Active })
+	send(t, h.e.revoke, "revoke")
+	eventually(t, "writer joined", func() bool { return !h.r.Status()[0].Active })
+	if status := h.r.Status()[0]; status.LastError != "" || status.Restarts != 0 {
+		t.Fatalf("term cancellation recorded a failure: %+v", status)
+	}
+}
 
 // A leader-only writer that returns an error because its token was retired
 // (the primary driver's ErrUnavailable, the serving writer's ErrFenced) after
