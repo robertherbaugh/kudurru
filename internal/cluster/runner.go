@@ -96,7 +96,11 @@ type RunnableStatus struct {
 	LeaderOnly bool
 	Active     bool
 	Restarts   int
-	LastError  string
+	// LastError is the last failure recorded by this runner. It survives
+	// later successful invocations and leadership changes. A non-panic error
+	// returned after the invocation context ended, or matching context.Canceled,
+	// does not replace it.
+	LastError string
 }
 
 // runnable is one registered unit of work.
