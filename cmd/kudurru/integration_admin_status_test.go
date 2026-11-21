@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
@@ -67,6 +68,7 @@ func TestIntegrationAdminStatusOnlyWriteKeepsReviewCurrent(t *testing.T) {
 	// A sync writes the host's status again. The operator's earlier review
 	// is now one status-only write behind.
 	settled()
+	f.offset.Add(int64(time.Second))
 	w := integrationAdminCall(t, router, f, http.MethodPost, path+"/sync", api.IntegrationReview{UID: reviewed.UID, Revision: reviewed.Revision, Mode: "observe"}, f.token)
 	if w.Code != http.StatusOK {
 		t.Fatalf("observer sync: %d %s", w.Code, w.Body.String())
