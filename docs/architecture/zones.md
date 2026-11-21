@@ -307,6 +307,12 @@ Rules and limits:
   default endpoint would, although the view serves only its group. Default
   clients then lose that dynamic data; authorize a takeover only for record
   sets whose view endpoints are meant to replace it.
+- Kubernetes reserves the names and types of **served** static view RRsets
+  against UPDATE, in the UPDATE record set's namespace and any other namespace.
+  Unlike SQLite, a view that did not build does not acquire this reservation.
+  Reservations are not prerequisite data: a name only in a view still does not
+  exist in the default data. Kubernetes does not perform SQLite's authorized
+  takeover on a recompile.
 - The content hash covers the views, so a view change advances the serial.
   On SQLite the committed aggregate keeps views in their own `views` list,
   apart from the default `records`.
@@ -1485,6 +1491,16 @@ answers SERVFAIL without a write. A prerequisite or policy refusal writes
 nothing. The controller advances `status.serial`, which drives NOTIFY. API, file
 and integration writers keep their own objects; an UPDATE cannot change their
 records, and the API cannot edit the `dns-update`-owned object.
+
+An upgrade does not remove pre-existing UPDATE records that collide with
+client-group views. The view reservation is used for planning, not for filtering
+what the UPDATE-owned object persists. A Kubernetes operator can inspect
+`rfc2136-<zone>` in the namespace described above and remove only the colliding
+endpoint from `spec.endpoints` through the Kubernetes API, preserving unrelated
+endpoints. Delete the object only if no endpoints should remain. Verify that the
+record set reconciles and that group and default clients receive the expected
+answers. A cross-namespace view can remain `Duplicated` until that collision is
+removed.
 
 ```mermaid
 sequenceDiagram

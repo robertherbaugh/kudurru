@@ -19358,6 +19358,34 @@ label, an operator annotation and the clientgroup scope).
 
 ### INT-6 ClientGroup-scoped record views (split horizon) — November 10, 2026 (D403)
 
+**November 20, 2026 follow-up (#136, local evidence).** On `ce3ab6e2`, the
+mandatory Kubernetes envtest baseline passed with the race detector (two tests,
+19.550 s). An authenticated UPDATE of a view-only A record returned NOERROR in
+both namespaces. In the UPDATE namespace the group kept its view and default
+clients got the new A record. In the other namespace the group's answer changed
+to the default A record and the static source later reported `Duplicated`.
+With the reservation change, `TestRunServeKubeViewUpdateOwnership` confirms
+both writes return REFUSED and retain the original group and default answers.
+An ordinary write succeeds, and a view-only RRset remains absent to an
+NXRRSET prerequisite. The race run also passed `TestRunServeKubeClientGroupViews`
+with conflict retry and `TestRecordsViews` (three tests, 20.787 s):
+
+```sh
+KUDURRU_REQUIRE_ENVTEST=1 go test -race -count=1 ./cmd/kudurru -run '^(TestRunServeKube(ClientGroupViews|ViewUpdateOwnership)|TestRecordsViews)$'
+go test -count=1 ./internal/primaryruntime -run '^TestSQLiteUpdateViewOwnership$'
+KUDURRU_E2E=1 go test -count=1 ./test/e2e -run '^TestClientGroupViewsSplitHorizon$'
+```
+
+The SQLite runtime test passed both namespace cases (0.305 s): a reserved
+view name was refused, an unreserved control UPDATE was published, and only
+an explicitly authorized takeover moved the collision out of the default
+data. The loopback process test passed (4.06 s after building): AXFR and IXFR
+from the lan address carried the same default data with either allowed TSIG
+key. TCP probes were added to the pinned dnsdist fixture, but its live gate
+was not run; the hosted edge qualification remains separate (#127). The
+partial SQLite refusal diagnostics and the two-namespace budget test are
+tracked in #171.
+
 An endpoint whose `kudurru.view` names a ClientGroup used to be withheld
 from every client (`zone.Served`), so only the publish-only `public` half of
 split horizon worked. It is now served to that group, on both drivers. The
