@@ -620,9 +620,9 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		// The lifecycle of a deleted zone keeps its name: a zone for it
 		// under another object name is refused, naming the object to use,
 		// and the node keeps serving. The same object name is accepted.
-		soa := func(name string) bool {
+		tempServed := func() bool {
 			q := new(dns.Msg)
-			q.SetQuestion(name, dns.TypeSOA)
+			q.SetQuestion("temp.test.", dns.TypeSOA)
 			// Through exchange, so that a dropped query is not taken for a
 			// zone that is not served.
 			r, err := exchange(q)
@@ -652,17 +652,17 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			_ = response.Body.Close()
 			return fmt.Sprintf("%d %d %s", ready(), response.StatusCode, body)
 		}
-		served := func(want bool) {
+		waitForTemp := func(want string, matches func() bool) {
 			t.Helper()
 			from := time.Now()
 			progress, changes, last := from, 0, zonesView()
-			for soa("temp.test.") != want {
+			for !matches() {
 				now := time.Now()
 				switch {
 				case now.Sub(progress) > 30*time.Second:
-					t.Fatalf("temp.test. served = %v: nothing changed for 30s (%d changes in %s): %s", !want, changes, now.Sub(from).Round(time.Millisecond), last)
+					t.Fatalf("temp.test. did not reach %s: nothing changed for 30s (%d changes in %s): %s", want, changes, now.Sub(from).Round(time.Millisecond), last)
 				case now.Sub(from) > 3*time.Minute:
-					t.Fatalf("temp.test. served = %v after 3 minutes (%d changes): %s", !want, changes, last)
+					t.Fatalf("temp.test. did not reach %s after 3 minutes (%d changes): %s", want, changes, last)
 				}
 				if view := zonesView(); view != last {
 					changes++
@@ -670,11 +670,13 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-			t.Logf("timing: temp.test. served = %v after %s and %d changes", want, time.Since(from).Round(time.Millisecond), changes)
+			t.Logf("timing: temp.test. reached %s after %s and %d changes", want, time.Since(from).Round(time.Millisecond), changes)
 		}
-		served(true)
+		waitForTemp("served = true", tempServed)
 		upgradeMountedRequest(t, client, base, http.MethodDelete, "/objects/dnszones/temp", session.CSRF, nil, http.StatusNoContent, nil)
-		served(false)
+		waitForTemp("served = false and readiness = 200 on deletion", func() bool {
+			return !tempServed() && ready() == http.StatusOK
+		})
 		var problem struct {
 			Error api.ErrorBody `json:"error"`
 		}
@@ -690,9 +692,8 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("readiness %d after the refused zone", got)
 		}
 		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, temp, http.StatusCreated, nil)
-		served(true)
-		if got := ready(); got != http.StatusOK {
-			t.Fatalf("readiness %d after the zone was created again", got)
-		}
+		waitForTemp("served = true and readiness = 200 on recreation", func() bool {
+			return tempServed() && ready() == http.StatusOK
+		})
 	})
 }
