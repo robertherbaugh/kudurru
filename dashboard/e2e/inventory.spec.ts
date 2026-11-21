@@ -194,6 +194,8 @@ test('a client-group view is added beside the default data, listed and deleted a
     const left = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.recordType === 'A');
     expect(left.map((r) => `${r.kudurru?.view ?? ''}=${r.targets.join(',')}`)).toEqual(['=203.0.113.10']);
   } finally {
+    // Leave the detail page before deleting so its queries cannot race cleanup.
+    await page.goto('/zones');
     await api.del(`/zones/${name}`);
     await api.del(`/objects/clientgroups/default/${group}`);
   }
@@ -285,6 +287,8 @@ test('a view of a non-default namespace is edited in its own record set and dele
     const left = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.kudurru?.view);
     expect(left.map((r) => `${r.namespace}/${r.kudurru?.view}=${r.targets.join(',')}`)).toEqual([`default/${group}=10.0.0.20`]);
   } finally {
+    // Leave the detail page before deleting so its queries cannot race cleanup.
+    await page.goto('/zones');
     await api.del(`/zones/${name}`);
     await api.del(`/objects/clientgroups/default/${group}`);
     await api.del(`/objects/clientgroups/kids/${group}`);
