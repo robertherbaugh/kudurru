@@ -15478,6 +15478,38 @@ copy, keeps its fields and now says why it is unusable. The no-copy message
 says "This node holds no copy" instead of "No copy has been transferred". The
 CLI fake API and `lists-rpz-all-wide.txt` carry the current pending message.
 
+#### SQLite restart and pending filters (#163)
+
+On November 20, 2026, local `TestRunServeSQLiteRPZRestartCompileWindow` mounted
+SQLite with `allowDegraded: true`, primed an unsigned RPZ feed and a 50,000-entry
+download, stopped the node, and restarted with both origins unavailable. The
+first sampled TCP DNS response arrived 150 ms after restart and the first RPZ
+NXDOMAIN 152 ms after that. Of 100 probes, 52 received answers (51 SERVFAIL and
+one NXDOMAIN, no NOERROR). The downloaded rule was also enforced again from its
+persisted body. A second run measured 173 ms to the first response and 303 ms
+from that response to NXDOMAIN (112 probes, 56 SERVFAIL, no NOERROR). This
+measures the observed serving window, including RPZ rebind/publication, not
+the compiler in isolation or a hosted latency bound.
+
+Removing the append of `Decision.PendingBlockLists()` in
+`internal/servingbuild/dns.go` and running this test with `-count=3` also
+passed each time. The mounted result therefore does not independently test
+SQLite's pending-list selector; the production selector stays in place.
+
+`TestPendingBlockListsReachTheDecision` reproduces download-only and
+disabled-source lists making an uncompiled decision filter on `ce3ab6e2`.
+Only a list with an enabled RPZ source now counts as pending coverage; downloaded
+lists still gate strict readiness. Blocking's `TestReady` also checks the
+per-group gauge projection for a pending download.
+
+`TestRPZCLIGoldenMessagesMatchProjection` matches the API's pending, expired,
+and serving-with-refresh-error messages to the wide CLI golden, and
+`TestConvenienceGolden/lists-rpz-all-wide` matches that golden to the fake API.
+The old pending-message allegation no longer reproduces. The existing local
+envtest `TestRunServeKubeRPZFeeds` still proves D390: an offline signed restart
+fails closed, while an unexpired unsigned copy is reused. No live acceptance
+is inferred from these tests.
+
 **CoreDNS importer (D392).** `cache.minTTL` is always emitted (the `success`
 MINTTL or the CoreDNS default 5 s) and lowered to `cache.maxTTL` when larger,
 with a loss line, as CoreDNS lets the TTL win; `prefetch` amounts above 2^30,
@@ -18216,6 +18248,8 @@ Review fixes (evidence `fix-*.log`):
 
 **#123 local regression coverage.** `TestRunServeExternalZonesFromKubernetesSources` uses an isolated envtest API server with a restricted identity and revocable source-reader grant. It checks `SourcesIncomplete` and denied-list metrics for all six kinds, retained record sets and DNS answers on two replicas, recovery after restoring the grant, and watch-driven updates. `TestExternalSourceWatchDeniedWithHealthyList` distinguishes denied watches from failed lists. `TestExternalSourceObjectCapReportsObservedObjects` and `TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap` pin the two refusal classes, including the runbook distinction: an oversized page is truncated and fails to decode; it is not `store.ErrTooLarge`. Smaller-page retry and Service selector verification are tracked in #150.
 
+**#150 local regression coverage.** `TestExternalSourceLargePageRestartsWithSmallerPages` proves a 64-object page exceeding 4 MiB triggers a fresh, complete eight-object-page snapshot. `TestExternalSourceSmallPageRetryStillEnforcesByteCapAndKeepsLastGood` verifies the 32 MiB refusal does not authorize cleanup; the 4,096-object limit remains pinned by `TestExternalSourceObjectCapReportsObservedObjects`. `TestExternalSourceServiceSelectorEnvtest` exercises filtered list/watch on Kubernetes 1.37 and unfiltered fallback on Kubernetes 1.30. The fallback still does not publish ClusterIP Services, and a Service changing from LoadBalancer to ClusterIP withdraws its records even though its UID is unchanged.
+
 
 ### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
 
@@ -20481,6 +20515,17 @@ Still open, stated plainly. `TestIntegrationUniFiPushMirrorPartialCreate`'s 30 s
 
 **Verification state at 7663c957.** Merged and pushed at `bae1c9df`, with `6259b61c` for the dashboard, whose typecheck failed until its mocks and field-limit rules followed the new manifest contract. The verifier resolved seven of eight findings (all 97 tests of `cmd/kudurru/integration*_test.go` under race at the lane head, 1,356 s; the whole host package) and left finding 8 (minor) **unresolved**: the 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is not explained. New, open: every changing SQLite command and every host capture reads the whole stored image, so on a large store a capture over 10 s drops every integration job and a cleanup whose commands exceed 30 s never finishes (the test raises both bounds to the host's maximums; production cannot configure them; the real threshold is unknown); permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; `docs/deploy/integrations.md` does not name the four inert record-mirror fields on Kubernetes; two new mounted Kubernetes steps depend on timing (a fixed 5 s sleep, up to five resends).
 
+
+**Current Kubernetes CLI and refusal evidence (#154).** With local Kubernetes
+1.37 envtest and no skipped mounted tests,
+`TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` reads an Integration
+through `integrations get` in table and JSON formats.
+`TestRunServeKubeStoredTSIGManagementHotRotation` runs CLI list, create,
+replace, reseal and revoke and checks the sign-in settings' restart metadata
+through `/settings/_schema`. `TestKubernetesIntegrationLimitsDocumented`
+and `TestKubernetesOperationRefusalsDocumented` pin the deploy guide to the
+manifest field paths and Kubernetes refusal keys. This supersedes the missing
+CLI get and record-mirror documentation findings, not the K3/K7 findings.
 
 ### DASH-INVENTORY Dashboard inventory view and client-group record views — November 13, 2026 (D397, D403)
 

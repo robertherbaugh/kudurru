@@ -56,6 +56,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/controller"
+	"github.com/robertherbaugh/kudurru/internal/controller/kubeevents"
 	"github.com/robertherbaugh/kudurru/internal/dhcpkube"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
@@ -1555,6 +1556,15 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSourcesUnsupported: kubeStore == nil}
 	if externalZones != nil {
 		ctrlOpts.ExternalZoneSources = externalZones
+	}
+	if kubeStore != nil {
+		events, err := kubeevents.NewForConfig(kubeStore.RESTConfig(), kubeevents.Options{Registerer: reg, Logger: logger})
+		if err != nil {
+			logger.Warn("Kubernetes controller Events unavailable; using the log sink", "err", err)
+		} else {
+			defer events.Shutdown()
+			ctrlOpts.Events = controller.MultiSink(ctrlOpts.Events, events)
+		}
 	}
 	if complete != nil {
 		// complete.status also reports the endpoints left out for dynamic

@@ -228,8 +228,8 @@ func TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap(t *testing.T) {
 	}
 	largeAnnotation := strings.Repeat("x", maxResponseBytes)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("limit") != "64" {
-			t.Errorf("expected a bounded list, got %s", r.URL)
+		if limit := r.URL.Query().Get("limit"); limit != "64" && limit != "8" {
+			t.Errorf("expected a bounded list or smaller retry, got %s", r.URL)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("continue") == "" {
@@ -254,7 +254,7 @@ func TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap(t *testing.T) {
 	if problems, _ := controller.Problems(zone.Spec.External); len(problems) != 1 || !strings.Contains(problems[0], "4 MiB response bound") {
 		t.Fatalf("truncation diagnosis: %v", problems)
 	}
-	if got := testutil.ToFloat64(controller.metrics.lists.WithLabelValues("ingress", string(listTruncated))); got != 1 {
+	if got := testutil.ToFloat64(controller.metrics.lists.WithLabelValues("ingress", string(listTruncated))); got != 2 {
 		t.Fatalf("truncation result count %v", got)
 	}
 	if got := testutil.ToFloat64(controller.metrics.objects.WithLabelValues("ingress")); got != 1 {

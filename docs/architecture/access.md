@@ -1070,6 +1070,10 @@ The legacy Kubernetes stack does not store OIDC users. Session defaults remain t
 hours absolute and thirty minutes idle; current settings and durable revocation
 floors govern SQLite enrollments. Startup provider resets can revoke old sessions
 and pending browser attempts even when the configuration bytes are unchanged.
+On Kubernetes the five sign-in controls are restart-bound;
+`GET /api/v1/settings/_schema` marks each `restartRequired: true`. See the
+[deployment capability matrix](../deploy/capabilities.md#refusal-keys) for
+the unsupported account, session and CLI OIDC operations and their hints.
 
 Stored providers can read only exact file paths granted by the operator in
 `credentials.allowedFiles`. This node setting is host-only and requires a

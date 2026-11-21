@@ -50,6 +50,7 @@ type integrationCloudflarePeer struct {
 	// readCanceled is set, is len(tokens) at the moment the client canceled
 	// a held listing (its connection closed while the peer held it).
 	holdRead, readEntered chan struct{}
+	listingRequests       int
 	readCanceled          bool
 	readCanceledAt        int
 	// accept, when set, lists the bearer credentials the peer accepts
@@ -105,6 +106,7 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 		case "/client/v4/zones/" + integrationCloudflareZone:
 			success(map[string]any{"id": zone, "name": zoneName, "account": map[string]any{"id": integrationCloudflareAccount}, "plan": map[string]any{"name": "Free Website"}})
 		case "/client/v4/zones/" + integrationCloudflareZone + "/dns_records":
+			peer.listingRequests++
 			if peer.holdRead != nil {
 				hold, entered := peer.holdRead, peer.readEntered
 				peer.holdRead, peer.readEntered = nil, nil

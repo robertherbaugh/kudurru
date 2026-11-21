@@ -889,12 +889,18 @@ answering an old address.
 3. On the elected replica, check the `external zone reconciliation incomplete`
    warning and `kudurru_external_zone_source_list_total{kind,result}`. An
    increasing `tooLarge` count means the complete list would exceed 4,096
-   objects or 32 MiB for that kind. `truncated` means a page (up to 64 objects)
-   exceeded the 4 MiB response cap; the warning can include a decode error
-   such as `unexpected end of JSON input`, not `object too large`. The
+   objects or 32 MiB for that kind. `truncated` means a page exceeded the
+   4 MiB response cap. The adapter discards the partial list and retries
+   once from the beginning with pages of eight instead of 64. If the retry
+   also fails, the warning can include a decode error such as
+   `unexpected end of JSON input`, not `object too large`. The counter
+   includes both attempts, so check the zone condition to see whether the
+   retry recovered. The
    `kudurru_external_zone_source_objects{kind}` gauge includes a cap-triggering
-   object but excludes objects from an undecodable page. Every Service counts,
-   whatever its type. A failed list cannot withdraw last-good record sets;
+   object but excludes objects from an undecodable page. The adapter normally
+   uses `spec.type=LoadBalancer`; `unsupportedSelector` means it fell back to
+   counting every Service toward the same caps, whatever its type. A failed
+   list cannot withdraw last-good record sets;
    the kind resumes following its sources after a successful pass. Reduce
    the number or size of objects, or disable the kind in `spec.external` of
    every zone. A source may project to at most eight zones, and each derived
