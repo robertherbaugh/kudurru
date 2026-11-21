@@ -15282,6 +15282,16 @@ known input reaches that path.
 **Review and verification state at 17b7c87a.** The review accepted the package with six findings (one major: the `-o` output format was validated only after the mutation committed; three minor: local refusals reported as unknown outcomes, the receipt not bound to the requested key and resourceVersion, the receipt validation untested; two nits). The fixer resolved all four non-nit findings; the verifier confirmed them and found no new problem. Merged and pushed at `3a6ab137`. Not tested: the CLI against a Kubernetes node; there is no dashboard surface for stored TSIG keys.
 
 
+**Current source-head outcome evidence (#155).** On local Kubernetes 1.37
+envtest, `TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` injects a
+Kubernetes 403 Status at the exact head update: the sync refuses without
+a pending hint, the head stays at the same sequence, and a fresh review
+commits once. Its two lost-response legs still resolve a landed write and
+report an unlanded write as uncertain without replay.
+`TestIntegrationSourceHeadWriteClassification` exercises create and update
+with the four definite statuses and verifies that transport errors,
+timeouts, 429, 5xx and other statuses remain uncertain.
+
 ### F09B-OPEN Kubernetes root: refusal backoff, conflicts, credentials, budget and the open K3 criteria — November 13, 2026 (D384)
 
 What now happens. A root refusal (`Options.Refuse`) whose status write fails is no longer retried in a hot loop. Before, `refuse` called `Wake`, refresh replaced the job at once and the job's own deferred `Wake` started the next one; a verification probe counted 4083 status attempts and 8166 captures in two seconds, each on Kubernetes a Lease acquire and release, a credential read and a status write. The F09B-KUBE-ROOT commit message, code comment, ledger draft and architecture page said "at most once per poll interval", which was false. Now a failed refusal publication records a retry time on the job (one poll interval after the first failure, doubling per consecutive failure of that instance up to five minutes, `refusalBackoff`), nothing wakes the host early, and only the first capture at or after that time replaces the job. The host also asks `Refuse` after every capture and keeps the answer with the job's frame, replacing a job whose answer changes.
