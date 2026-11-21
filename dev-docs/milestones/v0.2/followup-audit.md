@@ -14810,7 +14810,16 @@ RPZ-1). The full `./cmd/kudurru` suite (hack/go-test.py) was not run, and the fu
 mounted test still does not read `/info/messages`; Kubernetes nodes use the
 plain path, which the route test covers.
 
-**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads report no RPZ fields.
+**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open at that revision); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads were reported to have no RPZ fields.
+
+**Current projection evidence (#162, November 20, 2026).** On `ce3ab6e2`,
+mounted `TestRunServeKubeRPZFeeds` passed the new HTTP dig assertions
+(`blocked_rpz`, `default/feed`, exact owner and action), but returned zero
+instead of five policy-state entries and reported an unavailable feed as
+ready. Kubernetes policy-state now reads the node-local serving binding.
+`TestRunServeKubeRPZFeeds` (local envtest) and
+`TestRunServeSQLiteRPZFeedDiagnostics` (local SQLite) pin the same dig fields
+and policy-state counts/readiness. This does not qualify hosted deployment.
 
 
 ### CI-RED-3 The four hosted failures of ecd633b1 — November 13, 2026 (no decision number assigned)
@@ -15297,6 +15306,16 @@ known input reaches that path.
 
 **Review and verification state at 17b7c87a.** The review accepted the package with six findings (one major: the `-o` output format was validated only after the mutation committed; three minor: local refusals reported as unknown outcomes, the receipt not bound to the requested key and resourceVersion, the receipt validation untested; two nits). The fixer resolved all four non-nit findings; the verifier confirmed them and found no new problem. Merged and pushed at `3a6ab137`. Not tested: the CLI against a Kubernetes node; there is no dashboard surface for stored TSIG keys.
 
+
+**Current source-head outcome evidence (#155).** On local Kubernetes 1.37
+envtest, `TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` injects a
+Kubernetes 403 Status at the exact head update: the sync refuses without
+a pending hint, the head stays at the same sequence, and a fresh review
+commits once. Its two lost-response legs still resolve a landed write and
+report an unlanded write as uncertain without replay.
+`TestIntegrationSourceHeadWriteClassification` exercises create and update
+with the four definite statuses and verifies that transport errors,
+timeouts, 429, 5xx and other statuses remain uncertain.
 
 ### F09B-OPEN Kubernetes root: refusal backoff, conflicts, credentials, budget and the open K3 criteria — November 13, 2026 (D384)
 
@@ -18220,6 +18239,8 @@ Review fixes (evidence `fix-*.log`):
 
 **Verification state at 7663c957.** Merged and pushed at `2e15060e`. The verifier resolved three findings, including the major, and left **two minor findings unresolved**: with the adapter on but its RBAC missing an external zone is still Ready and empty (only a log warning); the page size is 64 but there is no smaller-page fallback, the 4,096-object and 32 MiB caps and the unfiltered Service list remain, and a refused kind has no metric or zone condition. New: the runbook's `object too large` line is wrong for a truncated page (a decode error, not `store.ErrTooLarge`; open); `SourcesNotRead` replaced a more specific Degraded reason, and its message named a setting that a non-Kubernetes store refuses (both fixed by INT-OPEN2).
 
+**#123 local regression coverage.** `TestRunServeExternalZonesFromKubernetesSources` uses an isolated envtest API server with a restricted identity and revocable source-reader grant. It checks `SourcesIncomplete` and denied-list metrics for all six kinds, retained record sets and DNS answers on two replicas, recovery after restoring the grant, and watch-driven updates. `TestExternalSourceWatchDeniedWithHealthyList` distinguishes denied watches from failed lists. `TestExternalSourceObjectCapReportsObservedObjects` and `TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap` pin the two refusal classes, including the runbook distinction: an oversized page is truncated and fails to decode; it is not `store.ErrTooLarge`. Smaller-page retry and Service selector verification are tracked in #150.
+
 
 ### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
 
@@ -19035,6 +19056,41 @@ What remains open:
 **Verification state at 7663c957.** Merged with F28-REVOKE-HOSTED and pushed at `531bffd0`. The verifier resolved six findings (the DNS SERVFAIL while a fence is persisted, `91fca04a`; exact counts; the e2e managed suite passed under race; the live edge tests passed 4 of 4) and left **three unresolved**: (major) a fresh managed recursive node still takes about 9 s to become ready under race, so `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` and `TestOfflineAnchorRecoveredTrustServesAfterRestart` fail their 10 s bound on a loaded machine (a serial startup chain; the integrator has to accept it as load-bound, raise the bound with a reason or change the driver); (minor) the early `RunWriter` return in `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` is not explained; (minor) the full `./cmd/kudurru` package had not been run with `2fd09d9c`'s fixture change (the integrator's baseline full run on `606a53a8` stopped after five of nine batches; no green full run is recorded). New, low: `settleBootstrap`'s raced count has no upper bound; the e2e `enrolledQuietReview(2 s)` quiet period hides the 503 window after a new zone; any error that is neither a race nor a failure counts as `refused` (F28-REVOKE-HOSTED added `canceled`); one log line lacks `-v`.
 
 
+### F28-OPEN7 retired promotion and abandoned-term return — November 20, 2026
+
+`TestAnchorHistoryPromotedRetiredFollowerKeepsRevocation` runs a signed root
+on loopback with mounted SQLite runtimes. It follows a deny-only REVOKE
+through actual promotion and reopen. Both the retired follower and its
+promoted writer answer empty SERVFAIL for the root DNSKEY. The writer
+rolls back one acquired reply omitting REVOKE without changing the local
+denial or installed owner. It then commits the canonical tombstone over
+that unchanged denial and the old primary installs it through the
+production puller. Both publications admit only the kept key. Six DNSKEY
+acquisitions are required exactly: bootstrap, initial local denial, rejected
+update, canonical revocation, and the two old-primary supervision checks.
+
+`TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller` runs
+`cluster resolve --offline --abandon-term` on the stranded SQLite member,
+elects its kept branch, and returns a still-running lost-term primary. The
+lost primary first publishes its actual two-anchor branch. After observing
+the new term and before fetching a replacement, its fenced supervisor sees
+the signed REVOKE, retires that output, and the mounted DNS path answers empty
+SERVFAIL. The production member coordinator then pulls the kept primary's
+exact response. The test checks that the abandoned image is quarantined
+and that the returned follower publishes only the kept trust. Exactly four
+acquisitions occur: bootstrap, canonical REVOKE, fenced local denial, and
+one rejoined follower check. The restarted writer retains its committed
+schedule and exports no acquisition.
+
+`CGO_ENABLED=1 go test -p 2 ./cmd/kudurru -run 'AnchorHistory|ClusterResolve' -race -count=1`
+passed locally in 55.063 s before the mounted-return review follow-up. On
+the initial PR head `c0526a6b5b731aa297b2c84afd571b836753b813`, all 120
+`Anchor|ClusterResolve` command cases also passed under race (344.347 s).
+After review, the mounted-return regression and existing abandoned-member
+runtime test each passed twice under race (32.314 s total). Both new flows
+use a signed synthetic root and in-process runtimes; neither claims hosted,
+live root, or independent-host acceptance. No readiness bound was changed.
+
 ### F28-REVOKE-HOSTED Why the BIND revocation interop test failed on hosted CI — November 13, 2026 (D398)
 
 Lane `wip/v020/f28`, base `87551fe9` (the end of F28-OPEN7). Source commits
@@ -19334,6 +19390,34 @@ label, an operator annotation and the clientgroup scope).
 
 
 ### INT-6 ClientGroup-scoped record views (split horizon) — November 10, 2026 (D403)
+
+**November 20, 2026 follow-up (#136, local evidence).** On `ce3ab6e2`, the
+mandatory Kubernetes envtest baseline passed with the race detector (two tests,
+19.550 s). An authenticated UPDATE of a view-only A record returned NOERROR in
+both namespaces. In the UPDATE namespace the group kept its view and default
+clients got the new A record. In the other namespace the group's answer changed
+to the default A record and the static source later reported `Duplicated`.
+With the reservation change, `TestRunServeKubeViewUpdateOwnership` confirms
+both writes return REFUSED and retain the original group and default answers.
+An ordinary write succeeds, and a view-only RRset remains absent to an
+NXRRSET prerequisite. The race run also passed `TestRunServeKubeClientGroupViews`
+with conflict retry and `TestRecordsViews` (three tests, 20.787 s):
+
+```sh
+KUDURRU_REQUIRE_ENVTEST=1 go test -race -count=1 ./cmd/kudurru -run '^(TestRunServeKube(ClientGroupViews|ViewUpdateOwnership)|TestRecordsViews)$'
+go test -count=1 ./internal/primaryruntime -run '^TestSQLiteUpdateViewOwnership$'
+KUDURRU_E2E=1 go test -count=1 ./test/e2e -run '^TestClientGroupViewsSplitHorizon$'
+```
+
+The SQLite runtime test passed both namespace cases (0.305 s): a reserved
+view name was refused, an unreserved control UPDATE was published, and only
+an explicitly authorized takeover moved the collision out of the default
+data. The loopback process test passed (4.06 s after building): AXFR and IXFR
+from the lan address carried the same default data with either allowed TSIG
+key. TCP probes were added to the pinned dnsdist fixture, but its live gate
+was not run; the hosted edge qualification remains separate (#127). The
+partial SQLite refusal diagnostics and the two-namespace budget test are
+tracked in #171.
 
 An endpoint whose `kudurru.view` names a ClientGroup used to be withheld
 from every client (`zone.Served`), so only the publish-only `public` half of
@@ -21571,6 +21655,42 @@ This product change requires a new source qualification below. It does not
 change any benchmarked package or supersede the failed paired run 43685577680;
 the D383 performance gate remains open. The historical package findings and
 owner-deferred acceptance remain as recorded above.
+
+### F28 startup bounds and hosted bootstrap evidence — November 20, 2026
+
+For #135, hosted [CI run 44780132339](https://github.com/robertherbaugh/kudurru/actions/runs/44780132339)
+on main `ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61` passed all four enrolled
+managed-anchor cases in the E2E job (`136440648259`): partition/restart/REVOKE,
+promotion/rejoin, offline recovery, and conflict resolution. These are two
+enrolled SQLite member processes against a signed loopback stand-in root,
+not live-root or independent-host acceptance. Each case logged one bootstrap
+acquisition and zero races. `settleBootstrap` requires exactly one successful
+acquisition and permits at most two raced acquisitions; the old allegation
+of an uncapped race count no longer applies. This run did not exercise the
+raced path at the cap. The promote/rejoin sampler reported 538 ms of startup
+SERVFAIL (24 samples, starting at 17:22:20.119 UTC on the restarted old
+primary), within the original 5 s limit. This confirms the bound, not the
+absence of a startup gap.
+
+The same run was not green overall: the command shard (`136440648737`)
+failed `TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger`. No full
+command-package or aggregate CI pass is claimed. The local SQLite `Anchor`
+selection passed under race in 131.164 s on the main baseline.
+
+On a local eight-vCPU sandbox with test source
+`e915b833aa6286bc422327bac8cf03684b1ebea5`, all 15 invocations passed (121.017 s)
+under race with `CGO_ENABLED=1`, `-p 2`, and `-count=5`:
+
+- `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` (9.41–10.46 s per complete test).
+- `TestOfflineAnchorRecoveredTrustServesAfterRestart` (10.16–11.65 s per complete test).
+- `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` (3.07–3.49 s per complete test).
+
+Load averages were 3.61/5.76/6.22 at 19:49:05 UTC and 2.27/4.47/5.68 at
+19:51:14 UTC. These durations are whole tests, not individual readiness
+polls; each original 10 s readiness assertion passed. The historical timing
+misses and early writer return were not reproduced at this load. The results
+do not explain those earlier failures or authorize a changed bound. No
+startup chain, read lease, acceptance bound, or live deferral changed.
 
 ### Interleaved benchmark protocol, November 15, 2026 (D412)
 
