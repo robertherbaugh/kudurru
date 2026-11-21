@@ -21631,6 +21631,42 @@ change any benchmarked package or supersede the failed paired run 43685577680;
 the D383 performance gate remains open. The historical package findings and
 owner-deferred acceptance remain as recorded above.
 
+### F28 startup bounds and hosted bootstrap evidence — November 20, 2026
+
+For #135, hosted [CI run 44780132339](https://github.com/robertherbaugh/kudurru/actions/runs/44780132339)
+on main `ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61` passed all four enrolled
+managed-anchor cases in the E2E job (`136440648259`): partition/restart/REVOKE,
+promotion/rejoin, offline recovery, and conflict resolution. These are two
+enrolled SQLite member processes against a signed loopback stand-in root,
+not live-root or independent-host acceptance. Each case logged one bootstrap
+acquisition and zero races. `settleBootstrap` requires exactly one successful
+acquisition and permits at most two raced acquisitions; the old allegation
+of an uncapped race count no longer applies. This run did not exercise the
+raced path at the cap. The promote/rejoin sampler reported 538 ms of startup
+SERVFAIL (24 samples, starting at 17:22:20.119 UTC on the restarted old
+primary), within the original 5 s limit. This confirms the bound, not the
+absence of a startup gap.
+
+The same run was not green overall: the command shard (`136440648737`)
+failed `TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger`. No full
+command-package or aggregate CI pass is claimed. The local SQLite `Anchor`
+selection passed under race in 131.164 s on the main baseline.
+
+On a local eight-vCPU sandbox with test source
+`e915b833aa6286bc422327bac8cf03684b1ebea5`, all 15 invocations passed (121.017 s)
+under race with `CGO_ENABLED=1`, `-p 2`, and `-count=5`:
+
+- `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` (9.41–10.46 s per complete test).
+- `TestOfflineAnchorRecoveredTrustServesAfterRestart` (10.16–11.65 s per complete test).
+- `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` (3.07–3.49 s per complete test).
+
+Load averages were 3.61/5.76/6.22 at 19:49:05 UTC and 2.27/4.47/5.68 at
+19:51:14 UTC. These durations are whole tests, not individual readiness
+polls; each original 10 s readiness assertion passed. The historical timing
+misses and early writer return were not reproduced at this load. The results
+do not explain those earlier failures or authorize a changed bound. No
+startup chain, read lease, acceptance bound, or live deferral changed.
+
 ### Interleaved benchmark protocol, November 15, 2026 (D412)
 
 The failed D383 recording 43685577680 remains retained and release-blocking.
