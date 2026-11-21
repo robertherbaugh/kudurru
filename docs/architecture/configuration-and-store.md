@@ -821,8 +821,12 @@ status only when it differs; a full re-list every 10 minutes.
 | ClientGroup | `members` |
 | Policy | `Degraded` (MissingReference, UnknownService, UnknownCategory) |
 
-Events (`SerialBumped`, `Duplicated`, `OutsideZone`, …) go to the log only;
-the Kubernetes Events sink exists but is not wired yet.
+Events (`SerialBumped`, `Duplicated`, `OutsideZone`, …) go to the structured
+log. On Kubernetes, the leader also offers them to a bounded core/v1 Event
+writer. Event writes are not part of the store or status-write path. The
+controller watches only the kinds listed above, not core/v1 Events, so
+posting or aggregating an Event cannot enqueue another reconcile. SQLite
+continues to use the structured log alone.
 
 ## Settings
 
