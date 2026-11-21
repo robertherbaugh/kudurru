@@ -966,6 +966,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			// Fenced is a supervised role: its child checks the root once
 			// (D369), before the partition heals.
 			anchors.awaitTCP(anchorRootNormal, 3, 0, "fenced restart")
+			anchors.assertClusterFenced(primary, 1, "fenced restart")
 		}
 		relayB.partition(false)
 		ready, readyCancel := context.WithTimeout(t.Context(), 60*time.Second)
@@ -1041,6 +1042,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			if rejoined.Supervisor.State != "running" || rejoined.Updater.State != "not_running" || rejoined.Pull == nil || rejoined.Pull.Result != "installed" || rejoined.Pull.Refusal != "" {
 				t.Fatalf("rejoined member status: %+v", rejoined)
 			}
+			anchors.assertClusterFenced(primary, 0, "rejoined member")
 			// From its first publication on, every answer was validated,
 			// across the fence and the install of the successor, and some
 			// were taken while it was DNS-only (fenced).

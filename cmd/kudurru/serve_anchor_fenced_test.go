@@ -1,19 +1,63 @@
 package main
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/follower"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestManagedAnchorFencedMetricClearsAfterPull(t *testing.T) {
+	root := newAnchorHistoryAuthority(t)
+	reg := prometheus.NewRegistry()
+	runtime, original, target, host := anchorOperationFixtureWithMetrics(t, root.endpoint, root.seeds, "direct", sqlite.NewMetrics(reg))
+	newAnchorHistoryWriter(original, t, runtime, target, host).operate(t, root, false)
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+	t.Cleanup(cancel)
+	f := newAnchorFollowerFixture(ctx, t, runtime)
+	promoted := anchorHistoryPromote(ctx, t, f)
+	st := runtime.opts.Store
+	if _, err := st.ObserveAuthority(ctx, promoted.Term); err != nil || st.Authority().Mode != replication.Fenced {
+		t.Fatal("old primary did not fence against the promoted term", err)
+	}
+	server := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	t.Cleanup(server.Close)
+	metric := func(want float64) {
+		t.Helper()
+		if got, ok := mountedUnlabeledMetric(t, server.Listener.Addr().String(), "kudurru_cluster_fenced"); !ok || got != want {
+			t.Fatalf("old primary fenced gauge = %v (exported %v), want %v", got, ok, want)
+		}
+	}
+	anchorHistoryAwait(t, "old primary did not serve DNS-only and supervise once", runtime, root, func() bool {
+		return runtime.publisher.Status().DNSOnly && !runtime.anchorStatus.snapshot().supervisor.next.IsZero() && root.reads.Load() == 2
+	})
+	metric(1)
+	puller := &follower.Puller{Mirror: st, Source: anchorHistorySource{primary: func() *sqlite.Store { return f.store }}}
+	if err := puller.Pull(ctx); err != nil {
+		t.Fatal("old primary failed to pull the promoted generation", err)
+	}
+	anchorHistoryAwait(t, "old primary did not publish completely and supervise once after rejoining", runtime, root, func() bool {
+		return st.Authority().Mode == replication.Follower && runtime.publisher.Status().ProtectedReady && root.reads.Load() == 3
+	})
+	metric(0)
+	if got := root.reads.Load(); got != 3 {
+		t.Fatalf("want one bootstrap and one supervision acquisition in each role, got %d", got)
+	}
+}
 
 // One actual runServe database is bootstrapped as a managed/direct writer, then
 // durably fenced by a higher term and later put in an equal-epoch conflict,
@@ -25,6 +69,7 @@ import (
 // change to the accepted trust history, the canonical image or the authority.
 func TestRunServeDirectAnchorsFencedAndConflictRestart(t *testing.T) {
 	cfg, _ := mountedTestConfig(t)
+	cfg.Listeners.Metrics.Address = offlineFreeAddress(t, "tcp")
 	t.Setenv(license.EnvKey, "")
 	t.Setenv(license.EnvKeyFile, "")
 	cfg.Auth.IdentityProviders = nil
@@ -133,6 +178,9 @@ func TestRunServeDirectAnchorsFencedAndConflictRestart(t *testing.T) {
 		}
 		// Past the supervisor's one-second recheck: its cooldown holds.
 		time.Sleep(1500 * time.Millisecond)
+		if got, ok := mountedUnlabeledMetric(t, cfg.Listeners.Metrics.Address, "kudurru_cluster_fenced"); !ok || got != 1 {
+			t.Fatal("DNS-only managed node did not export its replication fence", role, got, ok)
+		}
 		if ready := offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready"); ready == http.StatusOK {
 			t.Fatal("DNS-only managed node reported protected readiness", role)
 		}
