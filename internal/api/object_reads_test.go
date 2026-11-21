@@ -9,6 +9,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -87,6 +91,31 @@ func TestCapturedObjectListsAliasesETagsAndDetachedOutput(t *testing.T) {
 		t.Fatal("output map changed immutable owner")
 	}
 	h.do(http.MethodGet, "/api/v1/objects/dnszones/live-only", "viewer", nil).want(http.StatusNotFound)
+}
+
+type recordSetRefusalFixture struct{ zoneReadFixture }
+
+func (*recordSetRefusalFixture) ServedRecordSetReason(context.Context, *public.DNSRecordSet) string {
+	return "Refused view endpoints: printer.example. A (view apps/lan): Duplicated"
+}
+
+func TestCapturedRecordSetRefusalKeepsTimestampAndETagStable(t *testing.T) {
+	created := time.Date(2026, time.October, 1, 0, 0, 0, 0, time.UTC)
+	recordSet := &public.DNSRecordSet{ObjectMeta: objectMeta("apps", "mixed"), Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "example"}}}
+	recordSet.CreationTimestamp = metav1.NewTime(created)
+	recordSet.ResourceVersion = "opaque-record-set-rv"
+	h, _ := newObjectReadFixture(t, zoneObj("example", "example."), recordSet)
+	h.srv.opts.ZoneReads = &recordSetRefusalFixture{}
+	for _, now := range []time.Time{created.Add(time.Hour), created.Add(2 * time.Hour)} {
+		h.srv.opts.Now = func() time.Time { return now }
+		var got public.DNSRecordSet
+		res := h.do(http.MethodGet, "/api/v1/objects/dnsrecordsets/apps/mixed", "viewer", nil).want(http.StatusOK)
+		res.json(&got)
+		condition := meta.FindStatusCondition(got.Status.Conditions, "ViewEndpointsRefused")
+		if condition == nil || !condition.LastTransitionTime.Equal(&recordSet.CreationTimestamp) || res.Header().Get("ETag") != recordSet.ResourceVersion {
+			t.Fatalf("unstable refusal projection: condition=%+v ETag=%q", condition, res.Header().Get("ETag"))
+		}
+	}
 }
 
 func TestCapturedObjectPaginationCanonicalQueryAndExactGeneration(t *testing.T) {
