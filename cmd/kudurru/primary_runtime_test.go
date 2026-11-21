@@ -22,6 +22,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime/network"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -53,6 +54,7 @@ type primaryNetworkFixture struct {
 	listeners       *dnsserver.Registry
 	pause           atomic.Bool
 	pauseNotify     atomic.Bool
+	updateOutcomes  atomic.Int32
 	entered, resume chan struct{}
 	// timeout replaces the client's five-second exchange timeout when set.
 	timeout time.Duration
@@ -149,7 +151,10 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		t.Fatal(err)
 	}
 	pin := servingbuild.NewTransferredRuntime(nil, nil, nil).PrimaryPin(f.keyrings.PrimaryPin(f.publisher))
-	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Pin: pin, Observe: func(out pr.UpdateOutcome) { t.Logf("UPDATE outcome: %+v", out) }})
+	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Pin: pin, Observe: func(out pr.UpdateOutcome) {
+		f.updateOutcomes.Add(1)
+		t.Logf("UPDATE outcome: %+v", out)
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,6 +385,45 @@ func TestPrimaryRuntimeNativeUpdateWaitsForPublicationBeforeAdmission(t *testing
 			}
 		})
 	}
+}
+
+func TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce(t *testing.T) {
+	fixture := newPrimaryNetworkFixture(t)
+	if err := fixture.store.Delete(t.Context(), store.Key{Kind: "DNSZone", Name: "home"}, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	var lease *serving.Lease
+	fixture.wait(t, func() bool {
+		candidate, err := fixture.publisher.CaptureHTTP(t.Context())
+		if err != nil {
+			return false
+		}
+		value, _ := candidate.Bundle().Component("runtime")
+		owner := value.(*servingbuild.RuntimeOwner)
+		member, found := owner.Primary().Cut(time.Now()).Member("example.")
+		if !found || member.Phase != zk.PhaseRetired || !fixture.runtime.driver.Status().Ready {
+			candidate.Release()
+			return false
+		}
+		lease = candidate
+		return true
+	})
+	defer lease.Release()
+	message := primaryUpdateMessage("example.", "late.example.", true)
+	marker := &nativeUpdateRecapture{}
+	writer := fixture.runtime.driver.Status().Writer
+	ctx := context.WithValue(pr.WithPublicationFence(t.Context(), writer), nativeUpdateRecaptureKey{}, marker)
+	capture := &pipeline.Request{Ctx: ctx, Msg: message, Client: pipeline.Client{Proto: pipeline.ProtoTCP}, Serving: servingdns.Wrap(lease)}
+	_, err := fixture.runtime.captureUpdate(capture, "example.")
+	var rejected *network.UpdateReject
+	if !errors.As(err, &rejected) || rejected.Rcode != dns.RcodeServerFailure || marker.stale {
+		t.Fatalf("retiring-zone capture must refuse without requesting recapture: stale=%t err=%v", marker.stale, err)
+	}
+	answer, err := fixture.exchange(message, true)
+	if out := fixture.updateOutcomes.Load(); err != nil || answer == nil || answer.Rcode != dns.RcodeServerFailure || answer.IsTsig() == nil || out != 0 {
+		t.Fatalf("signed native UPDATE for a retiring zone must fail before Apply: answer=%v outcomes=%d err=%v", answer, out, err)
+	}
+	t.Log("native capture was terminal; the signed TCP UPDATE returned SERVFAIL without reaching Apply")
 }
 
 func TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring(t *testing.T) {

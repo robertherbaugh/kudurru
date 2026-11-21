@@ -341,6 +341,9 @@ type Options struct {
 	// PolicyListReads supplies original text/RPZ state for complete policy GETs.
 	// Complete mode also requires CanonicalSettings and Catalogue.Read.
 	PolicyListReads PolicyListReadSource
+	// KubeRPZPolicyListState overrides shared status for lists with enabled RPZ
+	// sources using the node-local serving binding. Non-RPZ lists are not projected.
+	KubeRPZPolicyListState func(*v1alpha1.BlockList, time.Time) (entries int, ready, projected bool)
 	// BlockingReads replaces blocking GETs with admitted runtime observations.
 	// Complete SQLite retains the original serving cut; Kubernetes reconciles
 	// its durable cluster runtime through the mounted reader.

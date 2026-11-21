@@ -106,7 +106,11 @@ For a recursive query, kudurru:
 
 A hit is answered with status `blocked_rpz` in the query log, the list
 (`namespace/name`) and the rule (`<owner> <action>`). `kudurru query` and
-the dashboard's dig page show the same fields.
+the dashboard's dig page show the same fields from `POST /api/v1/dns/query`
+on both SQLite and Kubernetes. `GET /api/v1/policies/{namespace}/{name}/state`
+counts node-local RPZ rules alongside compiled text entries. An RPZ-backed
+list is `ready` only when the list is compiled and all its enabled feeds are
+available. An expired copy can still contribute its rule count but is not ready.
 
 ## Refresh, expiry and restarts
 

@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/secondary"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
@@ -313,22 +314,28 @@ func TestKnotInboundSecondaryTransfer(t *testing.T) {
 		}
 		t.Logf("real Knot journal IXFR applied two delete/add transitions across 4294967294 -> 4294967295 -> 0; %d records match a fresh AXFR", len(got))
 		current = got
-		// Knot 3.6.2 answers an IXFR at the current serial with one signed SOA
-		// but without the AA bit (BIND sets it). The receiver requires AA on
-		// every transfer message and refuses that reply without data. A
-		// refresh against a single consistent primary does not ask for it: at
-		// an unchanged SOA serial the Manager keeps its stored copy and sends
-		// no transfer (manager.go, refresh). It can still be reached when the
-		// SOA poll and the IXFR land on different instances behind one
-		// address, or the primary moves back to the stored serial between the
-		// two requests; that refresh then fails and is not confirmed, and no
-		// data is lost (followup: accept a signed single-SOA reply at the
-		// client's serial without AA?).
-		confirmed, err := good.IXFR(t.Context(), zone, p.addr, got)
-		if err == nil || confirmed != nil || !strings.Contains(err.Error(), "non-authoritative response") {
-			t.Fatalf("Knot same-serial IXFR reply was not the known AA-less refusal: %v", err)
+		storedSOA := got[0].(*dns.SOA)
+		query := new(dns.Msg).SetQuestion(knotIXFROrigin, dns.TypeIXFR)
+		query.RecursionDesired = false
+		query.Ns = []dns.RR{dns.Copy(storedSOA)}
+		query.SetTsig(knotPrimaryKey, dns.HmacSHA256, 300, time.Now().Unix())
+		probe := &dns.Client{Net: "tcp", Timeout: 3 * time.Second, TsigProvider: dnsserver.TSIGProvider(good.Keyring)}
+		reply, _, err := probe.ExchangeContext(t.Context(), query, p.addr)
+		if err != nil {
+			t.Fatalf("read and verify Knot same-serial IXFR reply: %v", err)
 		}
-		t.Logf("Knot same-serial IXFR: one SOA without AA; refused without data: %v", err)
+		if !reply.Response || reply.Rcode != dns.RcodeSuccess || reply.Authoritative || len(reply.Answer) != 1 || len(reply.Ns) != 0 || reply.IsTsig() == nil {
+			t.Fatal("expected Knot to return a signed, AA-less NOERROR reply with one answer and no authority records")
+		}
+		if replySOA, ok := reply.Answer[0].(*dns.SOA); !ok || !dns.IsDuplicate(replySOA, storedSOA) {
+			t.Fatal("Knot same-serial IXFR reply did not contain the stored SOA")
+		}
+		before := secondaryTransportRecords(got)
+		confirmed, err := good.IXFR(t.Context(), zone, p.addr, got)
+		if confirmed != nil || err == nil || err.Error() != "secondary: non-authoritative response" || !reflect.DeepEqual(secondaryTransportRecords(got), before) {
+			t.Fatalf("Knot same-serial IXFR must be refused for missing AA without changing the snapshot: %v", err)
+		}
+		t.Logf("Knot same-serial IXFR: verified TSIG, NOERROR, one SOA without AA; refused with no data or new confirmation: %v", err)
 		wrong := &secondary.TransferClient{Keyring: secondaryKeyring(t, knotPrimaryKey, "hmac-sha256", newSecret(t)), Timeout: time.Second}
 		if invalid, err := wrong.IXFR(t.Context(), zone, p.addr, base); err == nil || invalid != nil {
 			t.Fatalf("Knot IXFR accepted the wrong TSIG secret: %v", err)

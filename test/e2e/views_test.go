@@ -28,6 +28,12 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 		"printer.overlay.e2e.test.": "198.51.100.90",
 	})
 	spec, cfg := kudurrutest.NewNodeSpec(t, t.TempDir(), "views")
+	lanSecret, lanKeys := enrolledUpdateSecret(t, t.TempDir())
+	kidsSecret, kidsKeys := enrolledUpdateSecret(t, t.TempDir())
+	const kidsTransferKey = "kids-transfer."
+	kidsKeys[0].(map[string]any)["name"] = kidsTransferKey
+	cfg["tsigKeys"] = append(lanKeys, kidsKeys...)
+	transferKeys := map[string]string{enrolledUpdateKey: lanSecret, kidsTransferKey: kidsSecret}
 	cfg["upstreams"].(map[string]any)["groups"] = map[string]any{
 		"default": map[string]any{"servers": []string{up.Addr}, "timeout": "1s"},
 	}
@@ -48,7 +54,7 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	cfg["objects"] = []any{
 		object("DNSZone", "split", map[string]any{
 			"zoneName": "split.e2e.test.", "type": "primary", "nameservers": []any{"ns1.split.e2e.test."},
-			"policy": map[string]any{"zoneTransfer": "allow"},
+			"policy": map[string]any{"zoneTransfer": "allow", "transferTSIGKeyRefs": []string{enrolledUpdateKey, kidsTransferKey}},
 		}),
 		object("DNSZone", "overlay", map[string]any{
 			"zoneName": "overlay.e2e.test.", "type": "primary", "nameservers": []any{"ns1.overlay.e2e.test."},
@@ -126,17 +132,19 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	}
 	// AXFR from a lan client carries the default data only.
 	private := []string{"10.0.0.", "10.9.0.", "nas.split", "tunnel"}
-	transfer := func(m *dns.Msg) []dns.RR {
+	transfer := func(m *dns.Msg, key string) []dns.RR {
 		t.Helper()
 		attempt := func() ([]dns.RR, error) {
-			tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second}
+			tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second, TsigSecret: transferKeys}
 			conn, err := (&net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}).DialContext(t.Context(), "tcp", spec.Ports.DNS)
 			if err != nil {
 				return nil, err
 			}
 			defer func() { _ = conn.Close() }()
 			tr.Conn = &dns.Conn{Conn: conn}
-			envelopes, err := tr.In(m, spec.Ports.DNS)
+			request := m.Copy()
+			request.SetTsig(key, dns.HmacSHA256, 300, time.Now().Unix())
+			envelopes, err := tr.In(request, spec.Ports.DNS)
 			if err != nil {
 				return nil, err
 			}
@@ -189,7 +197,7 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	}
 	axfr := new(dns.Msg)
 	axfr.SetAxfr("split.e2e.test.")
-	records := transfer(axfr)
+	records := transfer(axfr, enrolledUpdateKey)
 	var lines []string
 	for _, rr := range records {
 		lines = append(lines, rr.String())
@@ -241,7 +249,7 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	}
 	ixfr := new(dns.Msg)
 	ixfr.SetIxfr("split.e2e.test.", before, "ns1.split.e2e.test.", "hostmaster.split.e2e.test.")
-	delta := transfer(ixfr)
+	delta := transfer(ixfr, enrolledUpdateKey)
 	if len(delta) == 0 {
 		t.Fatal("empty IXFR response")
 	}
@@ -263,6 +271,11 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	}
 	if last, ok := delta[len(delta)-1].(*dns.SOA); !ok || last.Serial != after || defaults(delta) != defaults(records) {
 		t.Fatalf("IXFR %d to %d is not the unchanged default data with the new serial:\n%v", before, after, delta)
+	}
+	for _, request := range []*dns.Msg{axfr, ixfr} {
+		if other := transfer(request, kidsTransferKey); defaults(other) != defaults(records) {
+			t.Fatalf("transfer with the second allowed TSIG key did not return the same default data: %v", other)
+		}
 	}
 	var deltaLines []string
 	for _, rr := range delta {
