@@ -13702,6 +13702,31 @@ hosted CI. The full `./cmd/kudurru` suite and `test/e2e` were not run.
 **Review and verification state at 17b7c87a.** The review accepted the package with seven findings (one major: the newest-revision-per-owner rule held only within one pull; four minor: a failed save was never retried, the live acceptance blocked only IPv4 hosts, `kudurru edge unblock` did not escape its argument, the Kubernetes audit wiring had no mounted test; two nits). The fixer resolved all five; the verifier confirmed them and reported **three new minor problems, open**: the five-minute restore hold measures wall time since the first lower-revision sighting, so two pulls five minutes apart with only failed pulls between them accept a stale revision at once (shown with an overlay probe); after a deliberate restore, new blocks of the restored backend are also ignored for up to five minutes, which the runbook does not say; and an owner whose only backend misses a pull has its blocks cleared and reinstalled. No package at this head takes them up. Merged and pushed at `ecd633b1`; the integrator fixed the follower contract counts for the two new routes (`2943cd6b`).
 
 
+**November 20, 2026 follow-up (#128; local regression evidence).** The test
+command is `CGO_ENABLED=1 go test -race -count=3 ./ee/edge/dnsdist -run 'EdgeBlock'`.
+The controlled-clock fixture runs `Supervisor.Run` with the real internal
+HTTPS client, loopback test backends, and the fake dnsdist console. On
+`ce3ab6e2` plus clock and fixture seams only, the supervisor replaced floor
+10 with revision 2 after sparse pulls, a failed pull, and a long restart.
+The transient twin miss emitted `dynblock clear` and reinstalled the missing
+block when the twin returned. The deliberate restore already kept both the
+restored set and a new block out until the five-minute boundary.
+
+With the fix, all three interruptions leave the newer set in place, as do
+a backward clock step, restart immediately after a failed pull, and upgrade
+from a version-2 cache. A transient twin miss emits no clear or reinstall
+command. An all-backend failure resets absence across a restart; only after
+five minutes of confirmed absence is the twin removed without forgetting
+its floor. A restored owner's new block appears on the first qualifying pull
+after a short restart, and a later revision applies on the next pull. The
+fake console verifies commands, not the actual rate-block table. Separately,
+`TestRunServeEdgeBlockLiveDnsdist` passed locally against the pinned image in
+an isolated Docker daemon: IPv4 and IPv6 block enforcement, revoke, offline
+restart, and expiry. See the
+[operator runbook](../../../docs/deploy/runbooks.md#block-an-abusive-client-at-the-edge)
+for the retained delay, the re-observation rule after interruption, and the
+cache format caveat. No backend wire change or hosted qualification is implied.
+
 ### IAM-1 / IAM-4 Kubernetes impersonation and the Kubernetes account-command position — November 10, 2026 (D386, D387)
 
 `auth.kubernetes.mode` now accepts `impersonate` with `store.driver: kube`; `sar` remains the default and an `impersonate` setting with the SQLite driver is refused at load. Kudurru still authorizes every request itself (bindings, SubjectAccessReview for Kubernetes service accounts). In impersonate mode the kube driver then sends each API write of a `kudurru.io` object (server-side apply, create, delete, and the forced-takeover managed-fields patch and its dry run) with `Impersonate-User` and `Impersonate-Group` headers for the request's principal: a Kubernetes service account as itself with its token's groups, a local or OIDC user as `kudurru:user:<name>` with `kudurru:group:<group>` for the groups the request carries, a kudurru service account as `kudurru:serviceaccount:<namespace>:<name>`. Only local users (stored groups, reloaded per request) and OIDC bearer JWTs (the groups claim) carry groups: D48 keeps an OIDC user's groups out of cookie sessions and personal API tokens, so dashboard and personal-token writes by OIDC users send no `Impersonate-Group` and those users must be bound by name. The store marks only those write requests; the managedBy/resourceVersion reads before them, reads, informers, status and finalizer updates, Leases, internal-kind Secrets and the audit log stay on kudurru's identity, and so do the unix-socket peer, peer nodes and writes that carry no principal (controllers, RFC 2136 UPDATE, the external-dns webhook, integrations). A principal whose credential bounds ended during the request (or that names no user) is `store.ErrNoIdentity`, answered 401 `unauthenticated`; a name that is not a valid header value is 403; neither is ever written as kudurru, and a kubeconfig that already impersonates is refused at driver start. An apiserver 403 for an impersonated write becomes `store.ErrForbidden` and the API answers 403 `forbidden` with the apiserver's reason and a hint that does not assume RBAC is the cause; nothing is written. A 403 for kudurru's own impersonate verb (the legacy check, or Kubernetes 1.35+ constrained impersonation's `impersonate-on:` verb) is `store.ErrImpersonationDenied`: 503 `unavailable`, without kudurru's ServiceAccount name in the answer, and logged with the apiserver's reason. RoleBinding, ServiceAccount and IdentityProvider are `kudurru.io` CRDs, so their API writes are impersonated too; the internal Secret kinds (local users, API tokens, principal state, migration runs, runtime kinds) are not. The kustomize bases never grant `impersonate`; helm.md gives the rule kustomize users add themselves. The Helm chart has a new value `auth.kubernetes.mode`; only `impersonate` renders it into the node file and adds `impersonate` on `users`, `groups` and `serviceaccounts` to the ClusterRole. The chart refuses the mode set through `config.node`/`config.settings` or with `mode: standalone`. access.md, helm.md, the Kubernetes start page and SECURITY.md state that the grant makes a compromised kudurru cluster-admin-equivalent.
