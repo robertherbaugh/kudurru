@@ -1,14 +1,79 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration"
+	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
+
+func TestIntegrationAdminReportsHostCaptureFailure(t *testing.T) {
+	f := &integrationOperationFixture{}
+	f.s, f.path = integrationFixture(t, nil, func(string) (integration.Integration, error) {
+		return &integrationProbe{observe: func(context.Context, ih.OwnerHost) (ih.SourceSnapshot, error) {
+			return ih.SourceSnapshot{Complete: true}, nil
+		}}, nil
+	})
+	integrationOperationCaller(t, f)
+	options, err := f.s.integrations.hostOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fail atomic.Bool
+	capture := options.Capture
+	options.Capture = func(ctx context.Context) (ih.Input, error) {
+		if fail.Load() {
+			return ih.Input{}, context.DeadlineExceeded
+		}
+		return capture(ctx)
+	}
+	f.s.integrations.host, err = ih.New(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	integrationOperationStart(t, f, integrationDefinition("manual", f.path))
+	router := integrationAdminRouter(t, f)
+	fail.Store(true)
+	f.s.integrations.host.Wake()
+	awaitServingRuntime(t, f.s, func() bool {
+		_, reason := f.s.integrations.host.StatusSnapshot()
+		return reason == "CaptureDeadlineExceeded"
+	})
+	read := func(path string, value any) {
+		t.Helper()
+		w := integrationAdminCall(t, router, f, http.MethodGet, path, nil, f.token)
+		if w.Code != http.StatusOK {
+			t.Fatalf("capture failure status: HTTP %d", w.Code)
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertFailure := func(summary api.IntegrationSummary) {
+		t.Helper()
+		if summary.Reason != "CaptureDeadlineExceeded" || summary.Phase != "Unknown" || summary.StatusKnown || summary.Leader || summary.UID != string(f.d.UID) {
+			t.Fatalf("unexpected capture failure summary: %+v", summary)
+		}
+	}
+	var summary api.IntegrationSummary
+	read("/integrations/default/manual", &summary)
+	assertFailure(summary)
+	var list struct {
+		Items []api.IntegrationSummary `json:"items"`
+	}
+	read("/integrations?namespace=default", &list)
+	if len(list.Items) != 1 {
+		t.Fatalf("unexpected integration count: %d", len(list.Items))
+	}
+	assertFailure(list.Items[0])
+}
 
 // TestIntegrationAdminStatusOnlyWriteKeepsReviewCurrent proves D384 through
 // the mounted admin API on the complete SQLite runtime: the host's own status

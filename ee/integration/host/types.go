@@ -228,10 +228,12 @@ type Host struct {
 	incarnation string
 	// forgetBatch is how many operations a cleanup run reads to forget them
 	// together with their ledger rows (D367).
-	forgetBatch int
-	mu          sync.RWMutex
-	jobs        map[string]*job
-	statuses    map[string]InstanceStatus
+	forgetBatch    int
+	mu             sync.RWMutex
+	jobs           map[string]*job
+	statuses       map[string]InstanceStatus
+	captureFailure string
+	captureMetrics captureMetrics
 	// refusalFailures counts consecutive failed refusal publications per
 	// instance name, across the jobs that replace each other, for backoff.
 	refusalFailures map[string]uint32
@@ -374,5 +376,9 @@ func New(o Options) (*Host, error) {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrInvalid
 	}
-	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, provisionFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
+	metrics, err := newCaptureMetrics(o.Metrics)
+	if err != nil {
+		return nil, err
+	}
+	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, captureMetrics: metrics, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, provisionFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
 }
