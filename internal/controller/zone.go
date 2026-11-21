@@ -102,8 +102,13 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		st.ContentHash = build.Hash
 	}
 	v := zoneVerdict(cur, view, build)
-	if cur.Spec.Type == v1alpha1.ZoneTypeExternal && !c.opts.ExternalZoneSources {
-		v = withoutSources(v, c.opts.ExternalZoneSourcesUnsupported)
+	if cur.Spec.Type == v1alpha1.ZoneTypeExternal {
+		if sources := c.opts.ExternalZoneSources; sources == nil {
+			v = withoutSources(v, c.opts.ExternalZoneSourcesUnsupported)
+		} else if !v1alpha1.IsDisabled(cur) {
+			problems, checked := sources.Problems(cur.Spec.External)
+			v = withSourceProblems(v, problems, checked, meta.FindStatusCondition(cur.Status.Conditions, v1alpha1.ConditionDegraded))
+		}
 	}
 	v.observedGen, v.transitionNow = cur.Generation, now
 	v.apply(&st.Conditions)
@@ -119,6 +124,44 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 			fmt.Sprintf("serial %d -> %d: content changed (%d records, contentHash %.12s)", cur.Status.Serial, st.Serial, st.RecordCount, st.ContentHash))
 	}
 	return true, nil
+}
+
+// ExternalZoneSources is the adapter's in-process health snapshot and
+// close-and-replace signal. Neither method reads the Kubernetes API.
+type ExternalZoneSources interface {
+	Problems(*v1alpha1.ExternalSpec) (problems []string, checked bool)
+	HealthChanged() <-chan struct{}
+}
+
+func (c *Controller) requeueExternalZones(ctx context.Context, sources ExternalZoneSources) {
+	for ctx.Err() == nil {
+		changed := sources.HealthChanged()
+		for _, obj := range c.cache.list(KindDNSZone, "") {
+			if zone, ok := obj.(*v1alpha1.DNSZone); ok && zone.Spec.Type == v1alpha1.ZoneTypeExternal {
+				c.queues[KindDNSZone].Add(store.KeyOf(zone))
+			}
+		}
+		select {
+		case <-ctx.Done():
+		case <-changed:
+		}
+	}
+}
+
+func withSourceProblems(v verdict, problems []string, checked bool, previous *metav1.Condition) verdict {
+	if len(problems) == 0 {
+		if !checked && !v.Degraded && previous != nil && previous.Status == metav1.ConditionTrue && previous.Reason == v1alpha1.ReasonSourcesIncomplete {
+			v.Degraded, v.DegradedRsn, v.DegradedMsg = true, previous.Reason, previous.Message
+		}
+		return v
+	}
+	msg := "Kubernetes sources incomplete: " + strings.Join(problems, "; ") + ". Failed lists do not remove previously derived record sets."
+	if v.Degraded {
+		v.DegradedMsg += "; " + msg
+		return v
+	}
+	v.Degraded, v.DegradedRsn, v.DegradedMsg = true, v1alpha1.ReasonSourcesIncomplete, msg
+	return v
 }
 
 // withoutSources marks an external zone that no source adapter fills. A

@@ -1,0 +1,8 @@
+Negative control: removed terminal retirement branch on ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61
+=== RUN   TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce
+    primary_runtime_test.go:417: retiring-zone capture must refuse without requesting recapture: stale=true err=primary network: UPDATE capture rejected
+--- FAIL: TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce (0.31s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	0.344s
+FAIL
+test exit=1

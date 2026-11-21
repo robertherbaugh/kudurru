@@ -824,6 +824,21 @@ not export stored secrets. A successful diagnostic confirms the authenticated
 packet path, not Kubernetes leadership or zone readiness. Pending or refused
 startup key inventory fails even when a local file key would otherwise match.
 
+## Secondary refresh reports a non-authoritative response
+
+Knot 3.6.2 can return a TSIG-signed IXFR reply with a single SOA at the
+secondary's stored serial, but without AA. Kudurru rejects it with
+`secondary: non-authoritative response`. A normal unchanged SOA poll does not
+send IXFR. If this happens repeatedly, check whether the poll and transfer
+reach different primary instances, or whether the primary rolls back between
+the two requests. Check serials on each primary and correct inconsistent
+routing or replication; do not disable TSIG.
+
+A refused reply neither changes the records nor extends the existing copy's
+expiry. If no other configured primary completes that refresh, the secondary
+keeps serving the last confirmed copy until its original expiry and retries
+normally.
+
 ## Recursive group gets no answers
 
 Symptoms: every name routed to a recursive group (`mode: recursive`) gets
@@ -864,18 +879,27 @@ answering an old address.
    message adds that no sources are read. On the SQLite store the message
    says that this store does not read Kubernetes sources: the setting cannot
    be turned on there, and the zone keeps only record sets derived earlier.
-2. The elected replica's log warns `external zone reconciliation incomplete`
-   with the refused kind. `forbidden` means the ClusterRole lacks `list` and
-   `watch` on that kind (with the kustomize bases, add the rules from
-   [the Helm guide](helm.md#external-zones-externalzonesenabled)).
-   `object too large` means the kind has more than 4,096 objects or 32 MiB in the
-   cluster (every Service counts, whatever its type). A single list page of
-   64 objects over 4 MiB is cut off at 4 MiB instead, and the warning then
-   names a decode error of the list answer (for example `unexpected EOF`).
-   Either way that kind is skipped on every pass: its record sets are kept
-   but no longer follow their sources. Reduce the number of
-   objects of that kind or disable the kind in `spec.external` of every zone.
-3. A warning `external zone record set name held by another writer` means a
+2. `SourcesIncomplete` means the enabled adapter could not fully observe one
+   or more kinds selected by the zone. `Ready` still describes DNS serving,
+   not source freshness. Check the named kind and verb in the message for
+   RBAC denials (compare with [the Helm guide](helm.md#external-zones-externalzonesenabled)).
+   A denied watch leaves periodic lists running. For a kind not served by the
+   API, check the installed Gateway API CRDs and versions. A more specific
+   Degraded reason can take precedence and include the source issue in its message.
+3. On the elected replica, check the `external zone reconciliation incomplete`
+   warning and `kudurru_external_zone_source_list_total{kind,result}`. An
+   increasing `tooLarge` count means the complete list would exceed 4,096
+   objects or 32 MiB for that kind. `truncated` means a page (up to 64 objects)
+   exceeded the 4 MiB response cap; the warning can include a decode error
+   such as `unexpected end of JSON input`, not `object too large`. The
+   `kudurru_external_zone_source_objects{kind}` gauge includes a cap-triggering
+   object but excludes objects from an undecodable page. Every Service counts,
+   whatever its type. A failed list cannot withdraw last-good record sets;
+   the kind resumes following its sources after a successful pass. Reduce
+   the number or size of objects, or disable the kind in `spec.external` of
+   every zone. A source may project to at most eight zones, and each derived
+   record set may contain at most 1,000 endpoints.
+4. A warning `external zone record set name held by another writer` means a
    record set with the derived name exists and belongs to someone else; it is
    never taken over. Delete it if it is not needed.
 

@@ -351,18 +351,23 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 	}
 	// Distinct source addresses are carried by the actual authenticated
 	// PROXYv2 listener. Identical questions must never share client verdicts.
-	from := func(source, qname string) (*dns.Msg, error) {
+	fromProtocol := func(transport, source, qname string) (*dns.Msg, error) {
 		q := new(dns.Msg)
 		q.SetQuestion(qname, dns.TypeA)
-		c := &dns.Client{Timeout: 5 * time.Second, Dialer: &net.Dialer{LocalAddr: &net.UDPAddr{IP: net.ParseIP(source)}}}
+		var addr net.Addr = &net.UDPAddr{IP: net.ParseIP(source)}
+		if transport == "tcp" {
+			addr = &net.TCPAddr{IP: net.ParseIP(source)}
+		}
+		c := &dns.Client{Net: transport, Timeout: 5 * time.Second, Dialer: &net.Dialer{LocalAddr: addr}}
 		m, _, err := c.ExchangeContext(t.Context(), q, address)
 		return m, err
 	}
-	clientAnswer := func(source, qname, ip string, rcode int) {
+	from := func(source, qname string) (*dns.Msg, error) { return fromProtocol("udp", source, qname) }
+	clientAnswerOn := func(transport, source, qname, ip string, rcode int) {
 		t.Helper()
-		m, err := from(source, qname)
+		m, err := fromProtocol(transport, source, qname)
 		if err != nil || m == nil || m.Rcode != rcode {
-			t.Fatal("original client response failed", source, qname)
+			t.Fatal("original client response failed", transport, source, qname)
 		}
 		if ip == "" {
 			if len(m.Answer) != 0 {
@@ -377,6 +382,10 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 		if !ok || a.A.String() != ip {
 			t.Fatal("shared packet cache leaked another client's verdict", source)
 		}
+	}
+	clientAnswer := func(source, qname, ip string, rcode int) {
+		t.Helper()
+		clientAnswerOn("udp", source, qname, ip, rcode)
 	}
 	if !authoritativeOnly {
 		exchange := func(name string) (*dns.Msg, error) {
@@ -694,6 +703,11 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 			clientAnswer("127.0.0.3", "nas.private.example.", "", dns.RcodeNameError)
 			clientAnswer("127.0.0.2", "nas.private.example.", "10.0.0.20", dns.RcodeSuccess)
 		}
+		clientAnswerOn("tcp", "127.0.0.2", "probe.private.example.", "10.0.0.2", dns.RcodeSuccess)
+		clientAnswerOn("tcp", "127.0.0.3", "probe.private.example.", "10.9.0.3", dns.RcodeSuccess)
+		clientAnswerOn("tcp", "127.0.0.4", "probe.private.example.", "192.0.2.81", dns.RcodeSuccess)
+		clientAnswerOn("tcp", "127.0.0.2", "nas.private.example.", "10.0.0.20", dns.RcodeSuccess)
+		clientAnswerOn("tcp", "127.0.0.3", "nas.private.example.", "", dns.RcodeNameError)
 		if mode, _, after, size := authoritativeStatus(); !isolated(mode) || after != hits || size != 0 {
 			t.Fatalf("the edge answered client-group view questions from a cache: mode %s, hits %v then %v, size %v", mode, hits, after, size)
 		}

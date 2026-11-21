@@ -105,12 +105,9 @@ type Options struct {
 	// CommittedPrimaryStatus replaces the primary serial/hash/readiness stamper
 	// with exact committed status admission. Nil preserves legacy behavior.
 	CommittedPrimaryStatus CommittedPrimaryStatus
-	// ExternalZoneSources reports that the Kubernetes source adapter of
-	// external zones runs (the host setting externalZones.enabled). When
-	// false, every DNSZone of type external is Degraded{SourcesNotRead}:
-	// it is served, but only from record sets derived earlier, and no
-	// source change reaches it.
-	ExternalZoneSources bool
+	// ExternalZoneSources reports the elected Kubernetes adapter's health.
+	// Nil means no adapter runs and the zone reports SourcesNotRead.
+	ExternalZoneSources ExternalZoneSources
 	// ExternalZoneSourcesUnsupported reports that this store cannot run
 	// that adapter at all (it is not the Kubernetes store), so the
 	// SourcesNotRead message does not point at externalZones.enabled.
@@ -238,6 +235,10 @@ func (c *Controller) Run(ctx context.Context) error {
 		if capability := c.opts.CommittedPrimaryStatus; capability != nil {
 			wg.Add(1)
 			go func() { defer wg.Done(); c.requeueCommittedPrimaries(ctx, capability) }()
+		}
+		if sources := c.opts.ExternalZoneSources; sources != nil {
+			wg.Add(1)
+			go func() { defer wg.Done(); c.requeueExternalZones(ctx, sources) }()
 		}
 	}
 	<-ctx.Done()
