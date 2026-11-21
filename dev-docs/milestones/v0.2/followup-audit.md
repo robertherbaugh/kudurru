@@ -15478,6 +15478,38 @@ copy, keeps its fields and now says why it is unusable. The no-copy message
 says "This node holds no copy" instead of "No copy has been transferred". The
 CLI fake API and `lists-rpz-all-wide.txt` carry the current pending message.
 
+#### SQLite restart and pending filters (#163)
+
+On November 20, 2026, local `TestRunServeSQLiteRPZRestartCompileWindow` mounted
+SQLite with `allowDegraded: true`, primed an unsigned RPZ feed and a 50,000-entry
+download, stopped the node, and restarted with both origins unavailable. The
+first sampled TCP DNS response arrived 150 ms after restart and the first RPZ
+NXDOMAIN 152 ms after that. Of 100 probes, 52 received answers (51 SERVFAIL and
+one NXDOMAIN, no NOERROR). The downloaded rule was also enforced again from its
+persisted body. A second run measured 173 ms to the first response and 303 ms
+from that response to NXDOMAIN (112 probes, 56 SERVFAIL, no NOERROR). This
+measures the observed serving window, including RPZ rebind/publication, not
+the compiler in isolation or a hosted latency bound.
+
+Removing the append of `Decision.PendingBlockLists()` in
+`internal/servingbuild/dns.go` and running this test with `-count=3` also
+passed each time. The mounted result therefore does not independently test
+SQLite's pending-list selector; the production selector stays in place.
+
+`TestPendingBlockListsReachTheDecision` reproduces download-only and
+disabled-source lists making an uncompiled decision filter on `ce3ab6e2`.
+Only a list with an enabled RPZ source now counts as pending coverage; downloaded
+lists still gate strict readiness. Blocking's `TestReady` also checks the
+per-group gauge projection for a pending download.
+
+`TestRPZCLIGoldenMessagesMatchProjection` matches the API's pending, expired,
+and serving-with-refresh-error messages to the wide CLI golden, and
+`TestConvenienceGolden/lists-rpz-all-wide` matches that golden to the fake API.
+The old pending-message allegation no longer reproduces. The existing local
+envtest `TestRunServeKubeRPZFeeds` still proves D390: an offline signed restart
+fails closed, while an unexpired unsigned copy is reused. No live acceptance
+is inferred from these tests.
+
 **CoreDNS importer (D392).** `cache.minTTL` is always emitted (the `success`
 MINTTL or the CoreDNS default 5 s) and lowered to `cache.maxTTL` when larger,
 with a loss line, as CoreDNS lets the TTL win; `prefetch` amounts above 2^30,

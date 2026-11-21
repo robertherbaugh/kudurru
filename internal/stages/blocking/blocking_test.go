@@ -548,6 +548,9 @@ func TestReady(t *testing.T) {
 	if ok, why := strict.Ready(); ok || len(why) != 1 || !strings.Contains(why[0], "default/ads") {
 		t.Errorf("not ready while a list is missing: %v %v", ok, why)
 	}
+	if enabled, found := strict.groupState()["default/default"]; !found || enabled {
+		t.Errorf("blocking-enabled gauge for a pending download: enabled=%t, present=%t", enabled, found)
+	}
 	degraded, _ := New(Options{Index: policy.Static{Idx: ix}, AllowDegraded: true})
 	if ok, _ := degraded.Ready(); !ok {
 		t.Error("allowDegraded is ready")
