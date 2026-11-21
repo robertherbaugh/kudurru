@@ -244,6 +244,8 @@ func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTM
 	auxiliaryConfig := rest.CopyConfig(cfg)
 	ct := &contact{now: time.Now}
 	cfg.Wrap(ct.wrap)
+	// Test wrappers sit outside the contact tracker but inside impersonation,
+	// so a fixture can drain tracked I/O without wrapping auxiliary clients.
 	for _, wrap := range wrapTrackedTransport {
 		cfg.Wrap(wrap)
 	}

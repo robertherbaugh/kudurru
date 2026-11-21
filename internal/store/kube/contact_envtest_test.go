@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// outage admits I/O in connection epochs. Disconnect refuses new I/O,
+// cancels the current epoch, and drains admitted round trips and reads.
+// Bodies from an old epoch stay refused after reconnect.
 type outage struct {
 	mu      sync.Mutex
 	epoch   *outageEpoch
@@ -111,11 +114,7 @@ func TestLastContactDuringPartition(t *testing.T) {
 	ctx := t.Context()
 	partition := &outage{}
 	partition.connect(ctx)
-	s, err := newStore(shared.cfg, Options{Namespace: "kudurru-system", Identity: "test-lastcontactduringpartition", Logger: testLogger()}, true, nil, partition.wrap)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
+	s := newStoreOn(t, shared.cfg, Options{}, partition.wrap)
 	if !s.WaitForSync(ctx) {
 		t.Fatal("informers did not sync")
 	}
