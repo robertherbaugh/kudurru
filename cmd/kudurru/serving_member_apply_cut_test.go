@@ -88,7 +88,8 @@ func TestRootMemberFollowerApplyCut(test *testing.T) {
 					messageParts = []string{"the follower's source changed while this request ran (it installed newer data from the primary)",
 						"this item was not sent and was not applied, and neither was any later one", "to the enrolled primary " + term.PrimaryName + ", which applies them in one request"}
 				default:
-					messageParts = []string{"the request's 30-second forwarding lifetime ended before this write was sent; it was not applied"}
+					messageParts = []string{"the request's 30-second forwarding lifetime ended before this write was sent; it was not applied",
+						"send this item to the enrolled primary " + term.PrimaryName}
 				}
 				if wantKey == api.KeyUnavailable && !errors.Is(err, store.ErrNotFound) {
 					test.Errorf("%s: want unavailable item absent on the primary, got %v", name, err)
