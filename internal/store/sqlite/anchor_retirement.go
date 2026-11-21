@@ -224,6 +224,8 @@ func dormantAnchorGate(owner accepted.Snapshot) (*retirement.Gate, error) {
 // attempted, database/sql itself rolled the transaction back (or discarded
 // its connection), and SQLite makes nothing durable without a COMMIT, so
 // the ErrTxDone of the final Rollback confirms that nothing committed.
+// Once confirmed, a statement error whose only cause is ErrTxDone reports
+// the context error instead. Joined errors keep their independent causes.
 // Commit errors remain unknown even if cleanup succeeds. All classification
 // and the matching Gate resolution occur under the same R.
 type anchorSQL struct {
@@ -258,6 +260,13 @@ func (a *anchorSQL) finish(result *error) {
 		// unavailable" until the process restarted (HA-OPEN6).
 		if *result == sql.ErrTxDone {
 			*result = a.ctx.Err()
+		} else {
+			for cause := errors.Unwrap(*result); cause != nil; cause = errors.Unwrap(cause) {
+				if cause == sql.ErrTxDone {
+					*result = fmt.Errorf("%w (%v)", a.ctx.Err(), *result)
+					break
+				}
+			}
 		}
 		err = nil
 	}
