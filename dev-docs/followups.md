@@ -8,7 +8,8 @@ creation does not waive release requirements.
 Package lifecycle (#167, part of #133): the optional `packages` workflow
 exercises maintainer scripts and systemd on an Ubuntu VM and in Rocky Linux.
 The [verified closeout](milestones/v0.2/final-acceptance.md#verified-issue-closeout-november-21-2026)
-retains a green hosted `package-lifecycle` artifact for both snapshot formats.
+records green hosted `package-lifecycle` results and the checksums for both
+snapshot formats.
 The check remains optional. The November 16, 2026 RPM rehearsal did not run
 maintainer scripts or systemd, and snapshot results do not replace evidence
 for the published packages.

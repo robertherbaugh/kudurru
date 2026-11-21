@@ -76,9 +76,9 @@ The current report closes the specific final-source ClickHouse/Loki and
 issued-production-signature gaps within #131/#133. GitHub denied attempts to
 update the existing issue bodies with HTTP 403 (`Resource not accessible by
 integration`); those issue texts may still name the original uncompleted scope.
-No issue body or issue state was changed. This report and its committed
-evidence record the specific completed checks; remaining requirements in those
-issues stay open.
+The final-source report above changed no issue body or issue state. Its
+committed evidence records the specific completed checks; remaining requirements
+in those issues stay open.
 
 ### Verified issue closeout, November 21, 2026
 
@@ -89,9 +89,20 @@ the published release artifacts or waive any other acceptance gate.
 |---|---|
 | [#122: query-log hour boundaries](https://github.com/robertherbaugh/kudurru/issues/122) | [#186](https://github.com/robertherbaugh/kudurru/pull/186) (`bec88078`) persists dirty-hour markers across restart on top of the live-read fix `63004b9c`. Fixed-clock regressions cover the hour boundary, a restarted and stopped source, and local and cluster agreement between raw, summary and client counts in partial-hour windows. The restart and stopped-source regressions failed on the old base; [hosted CI](https://github.com/robertherbaugh/kudurru/actions/runs/44809011740) passed with PostgreSQL 16 and 18. |
 | [#123: Kubernetes external-source health](https://github.com/robertherbaugh/kudurru/issues/123) | [#196](https://github.com/robertherbaugh/kudurru/pull/196) (`6757c340`) adds per-kind source conditions and metrics without replacing last-good answers. Mounted envtest exercises denied Ingress, Gateway API and Service reads, permission restoration and watch recovery. Focused tests pin cap accounting and watch-only recovery; [#213](https://github.com/robertherbaugh/kudurru/pull/213) (`115ba9bd`) verifies bounded retries and selector compatibility without changing the [documented caps](../../../docs/architecture/zones.md). |
-| [#130: RPZ diagnostics and CoreDNS import](https://github.com/robertherbaugh/kudurru/issues/130) | [#195](https://github.com/robertherbaugh/kudurru/pull/195) (`0d01b9df`) verifies both drivers' RPZ explanation and corrects Kubernetes policy state; [#188](https://github.com/robertherbaugh/kudurru/pull/188) (`48a80232`) pins retained answers and distinct omitted-name counts for multi-port imports. [#208](https://github.com/robertherbaugh/kudurru/pull/208) (`e12f07e1`) measured local SQLite restart windows of 152 ms and 303 ms (891 ms under race), with no NOERROR samples, and verifies pending filters, CLI messages and the signed Kubernetes fail-closed behavior. The timings are samples, not release thresholds. |
+| [#130: RPZ diagnostics and CoreDNS import](https://github.com/robertherbaugh/kudurru/issues/130) | [#195](https://github.com/robertherbaugh/kudurru/pull/195) (`0d01b9df`) verifies both drivers' RPZ explanation and corrects Kubernetes policy state; [#188](https://github.com/robertherbaugh/kudurru/pull/188) (`48a80232`) pins retained answers and distinct omitted-name counts for multi-port imports. [#208](https://github.com/robertherbaugh/kudurru/pull/208) (`e12f07e1`) verifies pending filters, CLI messages and the signed Kubernetes fail-closed behavior. The [committed audit](followup-audit.md#sqlite-restart-and-pending-filters-163) records SQLite restart windows of 152 ms and 303 ms; the #208 description records 891 ms under the race detector. These runs had no NOERROR samples. The timings are samples, not release thresholds. |
 | [#155: definite Kubernetes head-write refusals](https://github.com/robertherbaugh/kudurru/issues/155) | [#193](https://github.com/robertherbaugh/kudurru/pull/193) (`adafd18d`) implements D384 option A for definite 400/403/413/422 rejections and preserves a single read-back and no replay for ambiguous outcomes. Unit tests and a mounted API-proxy 403 regression verify the classification and unchanged state; this was not a live RBAC change. [Hosted CI](https://github.com/robertherbaugh/kudurru/actions/runs/44811605270) passed. |
-| [#167: hosted DEB/RPM lifecycle](https://github.com/robertherbaugh/kudurru/issues/167) | [#180](https://github.com/robertherbaugh/kudurru/pull/180) (`07881d30`) adds the optional workflow. The [hosted job](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/job/136114422668) ran the real maintainer scripts and systemd lifecycle, including checksum-verified upgrade with edited config retained, restart, removal, DEB purge and RPM `.rpmsave` retention. The [result artifact](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/artifacts/14606526721) records both SHA-256 values. This is snapshot-package evidence only. |
+| [#167: hosted DEB/RPM lifecycle](https://github.com/robertherbaugh/kudurru/issues/167) | [#180](https://github.com/robertherbaugh/kudurru/pull/180) (`07881d30`) adds the optional workflow. The [hosted job](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/job/136114422668) ran the real maintainer scripts and systemd lifecycle, including checksum-verified upgrade with edited config retained, restart, removal, DEB purge and RPM `.rpmsave` retention. This is snapshot-package evidence only. |
+
+The #167 [result artifact](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/artifacts/14606526721)
+reported `maintainerScriptsRun: true` and `systemdLifecycleRun: true` for both
+formats. The SHA-256 values from that run are recorded here before the artifact expires:
+
+| Package | SHA-256 |
+|---|---|
+| `kudurru_0.1.0_amd64.deb` | `8e331f16743b4ce7f5cfe3d71a6d6b4f9d52a0dab60f4d633abc29efbd1c36ec` |
+| `kudurru_0.2.0~SNAPSHOT-07881d30_amd64.deb` | `17fe476af85c5fe66e8e6897cb626cc2ccebf2c728c68cf6e4961f222820d022` |
+| `kudurru-0.1.0-1.x86_64.rpm` | `ddd5aec37db4a17050d1c0f5629a6566012e2eabe6a88b0ba0229addfba06437` |
+| `kudurru-0.2.0~SNAPSHOT_07881d30-1.x86_64.rpm` | `d81414c4868b7141d5b5a4980c1879328d07d9434654528f78988d87420b77e5` |
 
 Related issues remain open where the merged work covers only part of their scope:
 
