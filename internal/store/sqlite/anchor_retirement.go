@@ -256,6 +256,9 @@ func (a *anchorSQL) finish(result *error) {
 		// A pull canceled or timed out in the middle of an install ended
 		// here, and every later install was refused as "anchor lifecycle
 		// unavailable" until the process restarted (HA-OPEN6).
+		if *result == sql.ErrTxDone {
+			*result = a.ctx.Err()
+		}
 		err = nil
 	}
 	if a.attempted || err != nil {
