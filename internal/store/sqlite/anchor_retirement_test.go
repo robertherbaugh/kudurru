@@ -310,7 +310,7 @@ func TestAnchorLifecycleBoundsBeforeOwnerAllocation(t *testing.T) {
 }
 
 func TestAnchorSQLActualTermination(t *testing.T) {
-	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error", "context-ended", "context-ended-after-commit"} {
+	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error", "context-ended", "context-ended-statement", "context-ended-after-commit"} {
 		t.Run(kind, func(t *testing.T) {
 			s := openTemp(t)
 			ctx, cancel := context.WithCancel(t.Context())
@@ -349,6 +349,14 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 				cancel()
 				awaitTxDone(t, tx)
 				result = ctx.Err()
+			case "context-ended-statement":
+				cancel()
+				awaitTxDone(t, tx)
+				var one int
+				result = tx.QueryRowContext(t.Context(), "SELECT 1").Scan(&one)
+				if result != sql.ErrTxDone {
+					t.Fatal("statement did not see the canceled transaction end", result)
+				}
 			case "context-ended-after-commit":
 				// A commit attempt stays unknown even when the context
 				// ended first.
@@ -370,7 +378,7 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 			if kind == "already-rolled-back" && !errors.Is(result, sql.ErrTxDone) {
 				t.Fatal("lost unconfirmed rollback category")
 			}
-			if kind == "context-ended" && (!errors.Is(result, context.Canceled) || errors.Is(result, sql.ErrTxDone)) {
+			if (kind == "context-ended" || kind == "context-ended-statement") && (!errors.Is(result, context.Canceled) || errors.Is(result, sql.ErrTxDone)) {
 				t.Fatal("a context rollback changed the caller's error", result)
 			}
 		})
