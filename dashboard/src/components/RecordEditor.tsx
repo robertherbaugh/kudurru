@@ -42,6 +42,7 @@ export interface RecordEditorProps {
    * stored but never listed, so the editor says so before saving.
    */
   listsServed?: boolean | undefined;
+  viewRefusals?: string | undefined;
 }
 
 /** "Served to" for the default data (no kudurru.view). */
@@ -206,7 +207,7 @@ export function hasErrors(e: EditorErrors): boolean {
   return !!e.owner || !!e.ttl || !!e.view || e.targets.some((t) => Object.keys(t).length > 0);
 }
 
-export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, onCancel, groups = [], signed = false, listsServed = false }: RecordEditorProps) {
+export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, onCancel, groups = [], signed = false, listsServed = false, viewRefusals }: RecordEditorProps) {
   const [owner, setOwner] = useState(initial ? dnsNameToOwner(initial.dnsName, zoneName) : '');
   const [ttl, setTTL] = useState(initial?.recordTTL !== undefined ? String(initial.recordTTL) : '');
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial));
@@ -356,6 +357,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
         help={initial ? 'The view is part of the record’s identity; add the record again to serve it to another group.' : 'Who gets this record. A client-group view replaces the default data of the same name and type for that group only.'}
         error={shown.view}
       />
+      {viewRefusals ? <Banner status="warning" title="Some views in this record set are not served" description={viewRefusals} /> : null}
       {isGroupView(view) ? (
         <Banner
           status={signed ? 'warning' : 'info'}

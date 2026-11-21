@@ -80,7 +80,7 @@ export function license(licenseApi: string): Html {
 <section class="sec lic-sec" aria-labelledby="lic-table-title">
   <div class="wrap">
     <h2 id="lic-table-title">What each key unlocks</h2>
-    <div class="shapes lic-table">
+    <div class="shapes lic-table" role="region" aria-labelledby="lic-table-title" tabindex="0">
       <table>
         <caption class="mono dim">The free personal/nonprofit key covers up to ${LICENSE_FREE_NODES} nodes for eligible community use.</caption>
         <thead>

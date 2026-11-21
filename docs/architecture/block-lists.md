@@ -415,6 +415,11 @@ manager is not a leader-only runnable. The shared dnsdist cache eligibility
 above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
 changes, so an edge-cached answer can outlive a feed update by its TTL.
 
+Kubernetes HTTP dig runs through that same selector. The Kubernetes policy-state
+read uses the node's binding for the requested BlockList revision: it adds RPZ
+rule counts to the compiled text-list count, and requires both a compiled list
+and available feeds for readiness. Shared BlockList status is unchanged.
+
 ```mermaid
 flowchart LR
     KManager["rpz.Manager<br/>(every Kubernetes replica)"] --> KSnap["Feed snapshot"]
@@ -428,6 +433,7 @@ flowchart LR
     Zc --> Bind
     Decision --> KSelect["Blocking stage selector<br/>(per request)"]
     Bind --> KSelect
+    Bind --> KRead["RPZ-backed policy list reads"]
     KSelect --> KHit["blocked_rpz + list + rule"]
 ```
 
