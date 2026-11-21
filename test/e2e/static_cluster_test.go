@@ -29,7 +29,7 @@ type staticProcessClient struct {
 
 // Every command is one original attempt, with no body replay or retry. Read
 // readiness observation below may poll; it never resubmits a refused mutation.
-func (c *staticProcessClient) request(t *testing.T, method, path string, body any, want int, out any) {
+func (client *staticProcessClient) request(t *testing.T, method, path string, body any, want int, out any) {
 	t.Helper()
 	var data []byte
 	var err error
@@ -39,7 +39,7 @@ func (c *staticProcessClient) request(t *testing.T, method, path string, body an
 			t.Fatal(err)
 		}
 	}
-	status, data, err := c.do(t.Context(), method, path, data)
+	status, data, err := client.do(t.Context(), method, path, data)
 	if err != nil {
 		t.Fatalf("static process %s %s: %v", method, path, err)
 	}
