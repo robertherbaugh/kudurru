@@ -310,6 +310,99 @@ var attrs = map[string]rbac.Attributes{"x": {Resource: "records", Verb: "write"}
 `},
 		found:        "records.write,zones.read",
 		unrecognized: "cache.flush,tokens.revoke,users.disable",
+	}, {
+		name: "approved method name also a named func field",
+		files: map[string]string{"internal/api/a.go": `package api
+
+import "context"
+
+func (s *Server) allowed(ctx context.Context, resource, verb string) bool { return true }
+
+type allowFunc func(context.Context, string, string) bool
+type hooks struct{ allowed allowFunc }
+
+func h(ctx context.Context, v hooks) {
+	_ = v.allowed(ctx, "zones", "write")
+}
+`},
+		unrecognized: "zones.write",
+	}, {
+		name: "approved function name shadowed by a parameter",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+
+func h(zoneRequirement func(string, string) error) {
+	_ = zoneRequirement("zones", "sign")
+}
+`},
+		unrecognized: "zones.sign",
+	}, {
+		name: "approved function name shadowed by a short declaration",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+func other(resource, verb string) error { return nil }
+
+func h() {
+	zoneRequirement := other
+	_ = zoneRequirement("zones", "delete")
+}
+`},
+		unrecognized: "zones.delete",
+	}, {
+		name: "approved function name shadowed by a named result",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+func other(resource, verb string) error { return nil }
+
+var h = func() (zoneRequirement func(string, string) error) {
+	zoneRequirement = other
+	_ = zoneRequirement("zones", "sign")
+	return
+}
+`},
+		unrecognized: "zones.sign",
+	}, {
+		name: "approved function name shadowed by a var declaration",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+func other(resource, verb string) error { return nil }
+
+func h() {
+	var zoneRequirement = other
+	_ = zoneRequirement("zones", "delete")
+}
+`},
+		unrecognized: "zones.delete",
+	}, {
+		name: "approved function name shadowed by a range declaration",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+
+func h(checks []func(string, string) error) {
+	for _, zoneRequirement := range checks {
+		_ = zoneRequirement("zones", "sign")
+	}
+}
+`},
+		unrecognized: "zones.sign",
+	}, {
+		name: "approved function name shadowed by a method receiver",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+
+type requirementFunc func(string, string) error
+
+func (zoneRequirement requirementFunc) check() {
+	_ = zoneRequirement("zones", "delete")
+}
+`},
+		unrecognized: "zones.delete",
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -349,20 +442,18 @@ var attrs = map[string]rbac.Attributes{"x": {Resource: "records", Verb: "write"}
 // checkSymbol names one approved permission-check helper by the package
 // directory that declares it (slash-separated, relative to the repository
 // root), its receiver type ("" for a function) and its name. The scan
-// credits a call only inside that package, and only when the package
-// declares exactly one symbol of that name: a same-named helper in another
-// package, or a second declaration of the name in the same package, is
-// ambiguous and is reported instead of credited.
+// credits a call only inside that package, and only when the call form
+// (bare or selector) has exactly one candidate declaration of that name
+// in the package and it matches the approved symbol.
 type checkSymbol struct{ pkg, recv, name string }
 
 // permissionCheckCallees are the functions and methods whose adjacent
 // string-literal resource and verb arguments are authorization checks:
 // Server.require, Server.allowed, Server.listAllowed and Server.authorize
 // (internal/api), zoneRequirement (zone command plans),
-// servingHTTP.permission and servingHTTPCluster (cmd/kudurru). A method
-// call is matched by name on any receiver inside its declaring package; the
-// scan reads syntax only, so it cannot tell two receivers of one package
-// apart, which is why a second declaration of the name there is refused.
+// servingHTTP.permission and servingHTTPCluster (cmd/kudurru). Because the
+// scan reads syntax only, a second candidate for a bare or selector call
+// makes that form ambiguous throughout the package.
 var permissionCheckCallees = []checkSymbol{
 	{"internal/api", "Server", "require"},
 	{"internal/api", "Server", "allowed"},
@@ -406,9 +497,10 @@ var permissionCheckTypes = []checkSymbol{
 // not prove the checking code is reachable (a perm{} in a registration
 // function nobody calls still counts), a check whose resource or verb is
 // computed is not seen and needs a route declaration or a reservation, and
-// it reads syntax, not types, so a method is identified by its name within
-// its package (interface methods and func-typed fields count as further declarations
-// for selector calls, closures for bare calls).
+// it reads syntax, not types or lexical scope. Interface methods and named
+// struct fields can make selector calls ambiguous; receivers, parameters,
+// named results, short declarations (including range), and var bindings
+// can make bare calls ambiguous.
 func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) (found, unrecognized map[string][]string) {
 	t.Helper()
 	const modulePrefix = "github.com/robertherbaugh/kudurru/"
@@ -485,10 +577,16 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 		file     *ast.File
 	}
 	var sources []source
-	// declared[pkg][name] lists the receivers of every top-level function
-	// or method of that name in the package ("" for a function), plus "?"
-	// (interface method, func field) and "!" (closure) look-alikes.
+	// declared[pkg][name] lists candidates for each approved name. In addition
+	// to receiver types ("" for a function), "?" marks selector look-alikes
+	// and "!" marks bare-call look-alikes.
 	declared := map[string]map[string][]string{}
+	for _, symbol := range permissionCheckCallees {
+		if declared[symbol.pkg] == nil {
+			declared[symbol.pkg] = map[string][]string{}
+		}
+		declared[symbol.pkg][symbol.name] = nil
+	}
 	for _, dir := range dirs {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -511,55 +609,65 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 			rel = filepath.ToSlash(rel)
 			pkg := pathpkg.Dir(rel)
 			sources = append(sources, source{rel, pkg, f})
+			candidates := declared[pkg]
+			if len(candidates) == 0 {
+				return nil
+			}
 			declare := func(name, recv string) {
-				if declared[pkg] == nil {
-					declared[pkg] = map[string][]string{}
+				if recvs, ok := candidates[name]; ok {
+					candidates[name] = append(recvs, recv)
 				}
-				declared[pkg][name] = append(declared[pkg][name], recv)
+			}
+			declareFields := func(fields *ast.FieldList, recv string) {
+				if fields == nil {
+					return
+				}
+				for _, field := range fields.List {
+					for _, id := range field.Names {
+						declare(id.Name, recv)
+					}
+				}
+			}
+			declareBareNames := func(exprs ...ast.Expr) {
+				for _, expr := range exprs {
+					if id, ok := expr.(*ast.Ident); ok {
+						declare(id.Name, "!")
+					}
+				}
 			}
 			for _, decl := range f.Decls {
 				if fd, ok := decl.(*ast.FuncDecl); ok {
 					declare(fd.Name.Name, receiver(fd))
+					declareFields(fd.Recv, "!")
 				}
 			}
-			// Look-alikes that are not top-level functions also count as a
-			// declaration of the name, with a receiver no approved symbol has:
-			// "?" for an interface method or a func-typed struct field (reached
-			// by a selector call, like a method) and "!" for a local closure
-			// (name := func(...) {...}, reached by a bare call). A call such as
-			// c.allowed(...) on an interface cannot be told from the approved
-			// helper by syntax, so the name becomes ambiguous for that call
-			// form.
+			// Record look-alikes even when a field's type or a binding's value
+			// is not written as a function. Syntax alone cannot prove that a
+			// named type or an inferred value is noncallable.
 			ast.Inspect(f, func(n ast.Node) bool {
 				switch n := n.(type) {
 				case *ast.InterfaceType:
-					for _, m := range n.Methods.List {
-						if _, ok := m.Type.(*ast.FuncType); ok {
-							for _, id := range m.Names {
-								declare(id.Name, "?")
-							}
-						}
-					}
+					declareFields(n.Methods, "?")
 				case *ast.StructType:
-					for _, fld := range n.Fields.List {
-						if _, ok := fld.Type.(*ast.FuncType); ok {
-							for _, id := range fld.Names {
-								declare(id.Name, "?")
-							}
-						}
-					}
+					declareFields(n.Fields, "?")
+				case *ast.FuncType:
+					declareFields(n.Params, "!")
+					declareFields(n.Results, "!")
 				case *ast.AssignStmt:
-					for i, rhs := range n.Rhs {
-						if _, ok := rhs.(*ast.FuncLit); ok && i < len(n.Lhs) {
-							if id, ok := n.Lhs[i].(*ast.Ident); ok {
-								declare(id.Name, "!")
-							}
-						}
+					if n.Tok == token.DEFINE {
+						declareBareNames(n.Lhs...)
 					}
-				case *ast.ValueSpec:
-					for i, v := range n.Values {
-						if _, ok := v.(*ast.FuncLit); ok && i < len(n.Names) {
-							declare(n.Names[i].Name, "!")
+				case *ast.RangeStmt:
+					if n.Tok == token.DEFINE {
+						declareBareNames(n.Key, n.Value)
+					}
+				case *ast.GenDecl:
+					if n.Tok != token.VAR {
+						break
+					}
+					for _, spec := range n.Specs {
+						for _, id := range spec.(*ast.ValueSpec).Names {
+							declare(id.Name, "!")
 						}
 					}
 				}
@@ -573,8 +681,8 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 	}
 	// approvedCallee: among the declarations a call of this form can reach,
 	// the package has exactly one of the name and it is the approved one. A
-	// selector call (x.name) reaches methods, interface methods and func
-	// fields; a bare call (name) reaches functions and local closures.
+	// selector call (x.name) reaches methods, interface methods and fields;
+	// a bare call (name) reaches functions and shadowing bindings.
 	approvedCallee := func(pkg, name string, viaSelector bool) bool {
 		var recvs []string
 		for _, r := range declared[pkg][name] {

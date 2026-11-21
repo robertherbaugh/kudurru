@@ -17,11 +17,12 @@ import (
 // Integration source errors (D384). ErrSourceConflict wraps store.ErrConflict:
 // the head moved, or a create found one, and nothing was written. A stored
 // carrier that does not match what a head references is ErrSourceCorrupt,
-// never an absent source. ErrSourceOutcomeUnknown marks a head write that was
-// sent and not acknowledged: the head may or may not have moved, and only a
-// later read of the head can tell.
+// never an absent source. ErrSourceRejected marks a definite rejection (400,
+// 403, 413 or 422). ErrSourceOutcomeUnknown marks a head write whose response
+// did not establish whether it committed; only a later read of the head can tell.
 var (
 	ErrSourceConflict       = fmt.Errorf("%w: integration source head changed", store.ErrConflict)
+	ErrSourceRejected       = errors.New("store/kube: integration source head write rejected")
 	ErrSourceOutcomeUnknown = errors.New("store/kube: integration source head write outcome unknown")
 	ErrSourceCorrupt        = errors.New("store/kube: integration source carrier does not match its head")
 	ErrSourceInvalid        = errors.New("store/kube: invalid integration source")
@@ -118,9 +119,10 @@ func (b *IntegrationSourceBackend) Head(ctx context.Context, owner integration.O
 // and carry the preceding sequence; a first head carries sequence 1. Exactly
 // one create or one update is sent. ErrSourceConflict means that write lost
 // and nothing changed. An error wrapping ErrSourceOutcomeUnknown means the
-// write was sent and not acknowledged: the caller resolves it by reading the
-// head again, never by repeating the write. Every other error precedes the
-// write and changed nothing.
+// response did not establish whether the write committed: the caller resolves
+// it by reading the head again, never by repeating the write. ErrSourceRejected
+// means the API server rejected the write outright (400, 403, 413 or 422).
+// Every other error precedes the write. Neither refusal changes the committed source.
 func (b *IntegrationSourceBackend) Commit(ctx context.Context, expected string, head *integration.IntegrationSourceHead, chunks []*integration.IntegrationSourceChunk, manager string) (*integration.IntegrationSourceHead, error) {
 	if head == nil || head.Validate() != nil || len(chunks) != len(head.Spec.Chunks) || manager == "" {
 		return nil, ErrSourceInvalid
@@ -189,7 +191,11 @@ func (b *IntegrationSourceBackend) Commit(ctx context.Context, expected string, 
 		return nil, ErrSourceConflict
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrSourceOutcomeUnknown, writeError("commit integration source head", store.KeyOf(head), err))
+		outcome := ErrSourceOutcomeUnknown
+		if apierrors.IsBadRequest(err) || apierrors.IsForbidden(err) || apierrors.IsRequestEntityTooLargeError(err) || apierrors.IsInvalid(err) {
+			outcome = ErrSourceRejected
+		}
+		return nil, fmt.Errorf("%w: %w", outcome, writeError("commit integration source head", store.KeyOf(head), err))
 	}
 	obj, err := decodeSecret(ki, out)
 	if err != nil {
