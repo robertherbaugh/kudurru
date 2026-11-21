@@ -63,12 +63,20 @@ A link to a missing page, file or anchor fails the build.
 
 ## Theme
 
-The theme lives in `layouts/` and `assets/`: plain HTML templates, one
-stylesheet and one small script (menu, copy buttons, search over
-`search-index.json`). Docsy was not used: it needs Hugo modules fetched from
+The theme lives in `layouts/` and `assets/`: plain HTML templates, stylesheets
+and small scripts for the menu, theme, copy buttons, and search over
+`search-index.json`. Docsy was not used: it needs Hugo modules fetched from
 GitHub at build time (or a vendored tree of Bootstrap and Font Awesome) and
 an npm toolchain (PostCSS, autoprefixer) for its stylesheets, while this
 site builds offline with the Hugo binary alone.
+
+Choose **System**, **Light**, or **Dark** in the header's Color theme control
+(inside Menu on narrow screens). As on the public website, an explicit choice
+is stored in the origin-local `kudurru-theme` key and applied to `<html>` as
+`data-theme` by a synchronous, fingerprinted script before the stylesheet.
+System clears the override and follows the OS live; it also works without
+JavaScript, with the control hidden. The logos, code highlighting, Mermaid
+diagrams, and API explorer follow the effective theme.
 
 ## Publishing
 
