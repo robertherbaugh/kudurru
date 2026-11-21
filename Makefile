@@ -123,7 +123,8 @@ test-postgres:
 
 ## test-sinks: the query-log sinks of querylog.sinks (D371) against real
 ## ClickHouse and Loki in Docker: the documented table reads the rows and
-## Loki serves the documented mapping. Optional; not run in CI.
+## Loki serves the documented mapping. Optional locally; the informational
+## sinks CI job runs the same tests with digest-pinned servers.
 CLICKHOUSE_IMAGE ?= clickhouse/clickhouse-server:25.8
 LOKI_IMAGE ?= grafana/loki:3.7.9
 test-sinks:
