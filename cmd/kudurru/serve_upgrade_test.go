@@ -674,7 +674,9 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		}
 		waitForTemp("served = true", tempServed)
 		upgradeMountedRequest(t, client, base, http.MethodDelete, "/objects/dnszones/temp", session.CSRF, nil, http.StatusNoContent, nil)
-		waitForTemp("served = false", func() bool { return !tempServed() })
+		waitForTemp("served = false and readiness = 200 on deletion", func() bool {
+			return !tempServed() && ready() == http.StatusOK
+		})
 		var problem struct {
 			Error api.ErrorBody `json:"error"`
 		}
@@ -690,7 +692,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("readiness %d after the refused zone", got)
 		}
 		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, temp, http.StatusCreated, nil)
-		waitForTemp("served = true and readiness = 200 after recreation", func() bool {
+		waitForTemp("served = true and readiness = 200 on recreation", func() bool {
 			return tempServed() && ready() == http.StatusOK
 		})
 	})
