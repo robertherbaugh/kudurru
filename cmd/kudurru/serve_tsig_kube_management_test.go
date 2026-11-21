@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,37 +122,93 @@ func TestRunServeKubeStoredTSIGManagementHotRotation(t *testing.T) {
 	awaitMountedDNS(t, cfg, "seed.management.test.", "192.0.2.97")
 	signedEventually(ring(first), dns.RcodeNotAuth)
 	c, base, csrf := login()
-	tsigMountAwaitRead(t, c, base+"/tsigkeys", nil)
-	var receipt api.TSIGKeyCommandReceipt
-	controlMountedRequest(t, c, base, http.MethodPost, "/tsigkeys", csrf, map[string]any{"keyName": "managed.", "algorithm": "hmac-sha256", "secret": base64.StdEncoding.EncodeToString(first)}, http.StatusCreated, &receipt)
+	var schema api.List[api.SettingKey]
+	controlMountedRequest(t, c, base, http.MethodGet, "/settings/_schema", "", nil, http.StatusOK, &schema)
+	authControls := map[string]bool{
+		"auth.localLogin":          false,
+		"auth.session.idleTimeout": false,
+		"auth.session.lifetime":    false,
+		"auth.session.secure":      false,
+		"auth.tokens.maxLifetime":  false,
+	}
+	for _, setting := range schema.Items {
+		if _, ok := authControls[setting.Path]; ok {
+			authControls[setting.Path] = setting.RestartRequired
+		}
+	}
+	for path, restart := range authControls {
+		if !restart {
+			t.Errorf("Kubernetes settings schema does not mark %s restartRequired", path)
+		}
+	}
+	cli := mountedCLIAs(t, cfg, "kube-tsig", "offline-test-password-1")
+	secrets := []string{base64.StdEncoding.EncodeToString(first), base64.StdEncoding.EncodeToString(second)}
+	run := func(args ...string) string {
+		t.Helper()
+		out, stderr, err := cli.run(append(append([]string{"tsigkeys"}, args...), "-o", "json")...)
+		for _, secret := range secrets {
+			if strings.Contains(out+stderr, secret) {
+				t.Fatal("CLI output contains TSIG secret material")
+			}
+		}
+		if err != nil {
+			t.Fatalf("tsigkeys %s: %v\n%s", args[0], err, stderr)
+		}
+		return out
+	}
+	command := func(args ...string) api.TSIGKeyCommandReceipt {
+		t.Helper()
+		var receipt api.TSIGKeyCommandReceipt
+		if err := json.Unmarshal([]byte(run(args...)), &receipt); err != nil {
+			t.Fatalf("tsigkeys %s receipt: %v", args[0], err)
+		}
+		return receipt
+	}
+	list := func() api.TSIGKeyList {
+		t.Helper()
+		var keys api.TSIGKeyList
+		if err := json.Unmarshal([]byte(run("list")), &keys); err != nil {
+			t.Fatal(err)
+		}
+		return keys
+	}
+	cli.stdin = secrets[0]
+	receipt := command("create", "managed.", "--algorithm", "hmac-sha256", "--secret-file", "-")
+	cli.stdin = ""
 	if !receipt.Committed || !receipt.Published || receipt.Removed || receipt.Key.UID == "" || receipt.Key.ResourceVersion == "" {
 		t.Fatal("kube create receipt absent or unpublished", receipt)
 	}
 	signedEventually(ring(first), dns.RcodeSuccess)
-	var list api.TSIGKeyList
-	tsigMountAwaitRead(t, c, base+"/tsigkeys", &list)
-	stored := tsigMountMetadata(t, list, "managed.")
+	stored := tsigMountMetadata(t, list(), "managed.")
 	if stored.UID != receipt.Key.UID || stored.ResourceVersion != receipt.Key.ResourceVersion {
 		t.Fatal("metadata does not match the create receipt")
 	}
 	// A stale binding is refused without effect.
 	controlMountedRequest(t, c, base, http.MethodPost, "/tsigkeys/managed./replace", csrf, map[string]any{"uid": stored.UID, "resourceVersion": "1", "secret": base64.StdEncoding.EncodeToString(second)}, http.StatusConflict, nil)
-	controlMountedRequest(t, c, base, http.MethodPost, "/tsigkeys/managed./replace", csrf, map[string]any{"uid": stored.UID, "resourceVersion": stored.ResourceVersion, "secret": base64.StdEncoding.EncodeToString(second)}, http.StatusOK, &receipt)
+	cli.stdin = secrets[1]
+	receipt = command("replace", "managed.", "--uid", stored.UID, "--resource-version", stored.ResourceVersion, "--secret-file", "-")
+	cli.stdin = ""
 	if !receipt.Committed || !receipt.Published || receipt.Key.UID != stored.UID || receipt.Key.ResourceVersion == stored.ResourceVersion {
 		t.Fatal("kube replace receipt lost its binding")
 	}
 	signedEventually(ring(second), dns.RcodeSuccess)
 	signedEventually(ring(first), dns.RcodeNotAuth)
+	resealed := command("reseal", "managed.", "--uid", receipt.Key.UID, "--resource-version", receipt.Key.ResourceVersion)
+	if !resealed.Committed || !resealed.Published || resealed.Key.UID != receipt.Key.UID || resealed.Key.ResourceVersion == receipt.Key.ResourceVersion {
+		t.Fatal("kube reseal did not commit a new envelope")
+	}
 	// Restart retains the replaced key.
 	stop()
 	stop = startStaticMount(t, cfg)
 	awaitMountedDNS(t, cfg, "seed.management.test.", "192.0.2.97")
 	signedEventually(ring(second), dns.RcodeSuccess)
-	c, base, csrf = login()
-	tsigMountAwaitRead(t, c, base+"/tsigkeys", &list)
-	stored = tsigMountMetadata(t, list, "managed.")
-	controlMountedRequest(t, c, base, http.MethodPost, "/tsigkeys/managed./revoke", csrf, map[string]any{"uid": stored.UID, "resourceVersion": stored.ResourceVersion}, http.StatusOK, &receipt)
-	if !receipt.Committed || !receipt.Published || !receipt.Removed {
+	cli = mountedCLIAs(t, cfg, "kube-tsig", "offline-test-password-1")
+	stored = tsigMountMetadata(t, list(), "managed.")
+	if stored.UID != resealed.Key.UID || stored.ResourceVersion != resealed.Key.ResourceVersion {
+		t.Fatal("list after restart does not match the reseal receipt")
+	}
+	receipt = command("revoke", "managed.", "--uid", stored.UID, "--resource-version", stored.ResourceVersion)
+	if !receipt.Committed || !receipt.Published || !receipt.Removed || receipt.Key.UID != stored.UID {
 		t.Fatal("kube revoke receipt absent")
 	}
 	signedEventually(ring(second), dns.RcodeNotAuth)

@@ -20484,6 +20484,17 @@ Still open, stated plainly. `TestIntegrationUniFiPushMirrorPartialCreate`'s 30 s
 **Verification state at 7663c957.** Merged and pushed at `bae1c9df`, with `6259b61c` for the dashboard, whose typecheck failed until its mocks and field-limit rules followed the new manifest contract. The verifier resolved seven of eight findings (all 97 tests of `cmd/kudurru/integration*_test.go` under race at the lane head, 1,356 s; the whole host package) and left finding 8 (minor) **unresolved**: the 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is not explained. New, open: every changing SQLite command and every host capture reads the whole stored image, so on a large store a capture over 10 s drops every integration job and a cleanup whose commands exceed 30 s never finishes (the test raises both bounds to the host's maximums; production cannot configure them; the real threshold is unknown); permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; `docs/deploy/integrations.md` does not name the four inert record-mirror fields on Kubernetes; two new mounted Kubernetes steps depend on timing (a fixed 5 s sleep, up to five resends).
 
 
+**Current Kubernetes CLI and refusal evidence (#154).** With local Kubernetes
+1.37 envtest and no skipped mounted tests,
+`TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` reads an Integration
+through `integrations get` in table and JSON formats.
+`TestRunServeKubeStoredTSIGManagementHotRotation` runs CLI list, create,
+replace, reseal and revoke and checks the sign-in settings' restart metadata
+through `/settings/_schema`. `TestKubernetesIntegrationLimitsDocumented`
+and `TestKubernetesOperationRefusalsDocumented` pin the deploy guide to the
+manifest field paths and Kubernetes refusal keys. This supersedes the missing
+CLI get and record-mirror documentation findings, not the K3/K7 findings.
+
 ### DASH-INVENTORY Dashboard inventory view and client-group record views — November 13, 2026 (D397, D403)
 
 The dashboard now has an inventory view, and its record editor can set
