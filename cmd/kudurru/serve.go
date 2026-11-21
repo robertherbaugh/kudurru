@@ -24,6 +24,7 @@ import (
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/dashboard"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/ee/branding"
@@ -1452,6 +1453,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if sql != nil && !cfg.Cluster.Static() {
 		apiMembership = cluster.Authority{SelfName: cfg.Node.Name, Elector: st.Elector(cluster.ElectionController)}
 	}
+	var kubeRPZPolicyListState func(*public.BlockList, time.Time) (int, bool, bool)
+	if kubeFeeds != nil {
+		kubeRPZPolicyListState = kubeFeeds.policyListState
+	}
 	apiSrv, err := api.New(api.Options{
 		DHCP:            dhcpServer,
 		DHCPKube:        dhcpCluster,
@@ -1459,7 +1464,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		KubeRPZPolicyListState: kubeRPZPolicyListState,
+		ZoneReads:              capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, EdgeBlocks: edgeBlocks, AuditEdgeBlocks: kubeEdge != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		InventoryReads: inventoryReads, InventoryLeases: leaseDNS,
@@ -1538,7 +1544,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return errors.New("externalZones.enabled requires the Kubernetes store")
 		}
 		externalZones, err = k8ssource.New(kubeStore.RESTConfig(), k8ssource.Options{
-			Store: st, Validator: v, Logger: logger.With("component", "external-zones"),
+			Store: st, Validator: v, Registerer: reg, Logger: logger.With("component", "external-zones"),
 			Admit: func(term context.Context) error { return term.Err() },
 		})
 		if err != nil {
@@ -1547,7 +1553,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSources: externalZones != nil, ExternalZoneSourcesUnsupported: kubeStore == nil}
+	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSourcesUnsupported: kubeStore == nil}
+	if externalZones != nil {
+		ctrlOpts.ExternalZoneSources = externalZones
+	}
 	if kubeStore != nil {
 		events, err := kubeevents.NewForConfig(kubeStore.RESTConfig(), kubeevents.Options{Registerer: reg, Logger: logger})
 		if err != nil {

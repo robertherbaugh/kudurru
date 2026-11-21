@@ -619,7 +619,7 @@ Only with this value does the ClusterRole gain `get`, `list` and `watch` on
 readable. The adapter never writes those objects. Set the value here, not in
 `config.node` or `config.settings` (the chart refuses those, because they
 would enable the adapter without the grant). The Gateway API CRDs are
-optional: a kind the API server does not serve is skipped.
+optional: unavailable kinds are skipped and reported on zones that enable Gateway sources.
 
 ```yaml
 externalZones:
@@ -632,11 +632,12 @@ configuration and add the two rules above to the kudurru ClusterRole.
 Operational limits: each source kind is read as one complete list of at most
 4,096 objects and 32 MiB (pages of 64 objects, each response at most 4 MiB).
 Every Service in the cluster counts toward the Service bound, whatever its
-type. A kind over a bound is skipped on every pass with the warning
-`external zone reconciliation incomplete`; its record sets are kept as they
-were but no longer follow their sources. An external zone on a server where
-`externalZones.enabled` is off is reported `Degraded`, reason
-`SourcesNotRead`.
+type. One source can own record sets in at most eight zones, with at most
+1,000 endpoints per record set. A refused list does not remove last-good
+record sets. An affected zone can be `Ready` and `Degraded` at the same time:
+`SourcesIncomplete` names the source failure, while `SourcesNotRead` means
+`externalZones.enabled` is off. See the
+[runbook](runbooks.md#external-zone-stays-empty-or-stale) for metrics and recovery.
 
 The server keeps one Secret of its own in the release namespace that the chart
 does not create or remove: `kudurru-grant-floors`, the record of removed role

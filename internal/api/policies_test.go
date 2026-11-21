@@ -20,6 +20,56 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
+func TestPolicyStateKubeRPZProjectionFallback(t *testing.T) {
+	const namespace = "home"
+	const sharedEntries = 42
+	plain := &v1alpha1.BlockList{ObjectMeta: objectMeta(namespace, "plain"), Spec: v1alpha1.BlockListSpec{Sources: []v1alpha1.ListSource{{Inline: []string{"ads.example"}}}}}
+	feed := &v1alpha1.BlockList{ObjectMeta: objectMeta(namespace, "feed"), Spec: v1alpha1.BlockListSpec{Mode: "block",
+		Sources: []v1alpha1.ListSource{{Format: "rpz", RPZ: &v1alpha1.RPZSource{ZoneName: "policy.test.", Primaries: []string{"192.0.2.53:53"}}}}}}
+	disabled := feed.DeepCopy()
+	disabled.Name = "disabled"
+	disabled.Annotations = map[string]string{v1alpha1.EnabledAnnotation: "false"}
+	calls := map[string]bool{}
+	h := newHarness(t, func(o *Options) {
+		o.KubeRPZPolicyListState = func(list *v1alpha1.BlockList, _ time.Time) (int, bool, bool) {
+			calls[list.Name] = true
+			return 7, false, list.Name != "plain"
+		}
+	})
+	h.seed(store.ManagerAPI, plain, feed, disabled,
+		&v1alpha1.Policy{ObjectMeta: objectMeta(namespace, "policy"), Spec: v1alpha1.PolicySpec{BlockListRefs: []string{plain.Name, feed.Name, disabled.Name}}})
+	for _, name := range []string{plain.Name, feed.Name, disabled.Name} {
+		var list v1alpha1.BlockList
+		if err := h.st.Get(t.Context(), store.Key{Kind: "BlockList", Namespace: namespace, Name: name}, &list); err != nil {
+			t.Fatal(err)
+		}
+		list.Status.Entries = sharedEntries
+		list.Status.Conditions = []metav1.Condition{{Type: v1alpha1.ConditionReady, Status: metav1.ConditionTrue, Reason: "Serving", LastTransitionTime: metav1.Now()}}
+		if err := h.st.UpdateStatus(t.Context(), &list); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var state PolicyState
+	h.do(http.MethodGet, "/api/v1/policies/home/policy/state", "viewer", nil).want(http.StatusOK).json(&state)
+	want := []PolicyList{
+		{Ref: plain.Name, Exists: true, Enabled: true, Entries: sharedEntries, Ready: true},
+		{Ref: feed.Name, Exists: true, Enabled: true, Entries: 7},
+		{Ref: disabled.Name, Exists: true, Entries: sharedEntries},
+	}
+	if len(state.Lists) != len(want) {
+		t.Fatalf("policy lists = %+v", state.Lists)
+	}
+	for index, expected := range want {
+		got := state.Lists[index]
+		if got.Ref != expected.Ref || got.Exists != expected.Exists || got.Enabled != expected.Enabled || got.Entries != expected.Entries || got.Ready != expected.Ready {
+			t.Errorf("policy list = %+v; want %s, enabled=%t entries=%d ready=%t", got, expected.Ref, expected.Enabled, expected.Entries, expected.Ready)
+		}
+	}
+	if !calls[plain.Name] || !calls[feed.Name] || calls[disabled.Name] {
+		t.Errorf("unexpected projection calls: %v", calls)
+	}
+}
+
 func TestPolicyState(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	w, err := sqlitelog.Open(context.Background(), sqlitelog.Options{
