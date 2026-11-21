@@ -12,25 +12,18 @@
 #
 #   hack/test-dnsdist-live.sh [suite...]
 #
-# Suites: f43-yaml f43-lua f28 f39 anchor f18c (default: all, in this order).
+# Suites: f43-yaml f43-lua f28 f39 anchor f18c client-id (default: all).
 # Set KUDURRU_DNSDIST_LIVE_WORKDIR to keep the scratch directory; it is
 # removed otherwise. Extra go test flags go in KUDURRU_DNSDIST_LIVE_GOFLAGS
 # (default: -race -v). The privilege-drop variant of F43
 # (KUDURRU_F43_CHILD_USER) needs a root test process and is not run here.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source hack/pinned-interop.sh
 
 socket=unix:///tmp/kudurru-lab-docker.sock
 docker=(docker --host "$socket")
-image=$(sed -n 's/^FROM \(powerdns\/dnsdist-[0-9]*:[^@ ]*@sha256:[0-9a-f]\{64\}\)$/\1/p' images/dnsdist/Dockerfile)
-if [ -z "$image" ]; then
-  echo "images/dnsdist/Dockerfile has no digest-pinned upstream FROM line" >&2
-  exit 1
-fi
-if ! grep -qF "\"$image\"" internal/testutil/kudurrutest/dnsdist.go; then
-  echo "kudurrutest.DnsdistImage is not $image (run go test ./deploy -run TestSupervisorVersions)" >&2
-  exit 1
-fi
+image=$(interop_dnsdist_image)
 if ! "${docker[@]}" version --format '{{.Server.Version}}' >/dev/null 2>&1; then
   echo "no private Docker daemon at $socket" >&2
   exit 1
@@ -56,23 +49,29 @@ mkdir -p "$work"
 read -r -a flags <<<"${KUDURRU_DNSDIST_LIVE_GOFLAGS:--race -v}"
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 suites=("$@")
-[ ${#suites[@]} -gt 0 ] || suites=(f43-yaml f43-lua f28 f39 anchor f18c)
+[ ${#suites[@]} -gt 0 ] || suites=(f43-yaml f43-lua f28 f39 anchor f18c client-id)
 status=0
 for suite in "${suites[@]}"; do
   echo "=== suite $suite"
   case $suite in
-    f43-yaml) env -u GORACE KUDURRU_F43_LIVE=1 KUDURRU_F43_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=5m "${flags[@]}" -run '^TestConsoleLiveSupervisor$' ./ee/edge/dnsdist || status=1 ;;
-    f43-lua) env -u GORACE KUDURRU_F43_LIVE=1 KUDURRU_F43_RENDERER=lua KUDURRU_F43_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=5m "${flags[@]}" -run '^TestConsoleLiveSupervisor$' ./ee/edge/dnsdist || status=1 ;;
+    f43-yaml|f43-lua) (
+      unset GORACE
+      KUDURRU_F43_LIVE=1 KUDURRU_F43_RENDERER="${suite#f43-}" KUDURRU_F43_WORKDIR="$work" \
+        interop_test "$suite" ./ee/edge/dnsdist TestConsoleLiveSupervisor -- -timeout=5m "${flags[@]}"
+      ) || status=1 ;;
     f28) KUDURRU_F28_EDGE_LIVE=1 KUDURRU_F28_EDGE_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=5m "${flags[@]}" -run '^TestManagedCacheLivePinnedTransition$' ./ee/edge/dnsdist || status=1 ;;
+      interop_test "$suite" ./ee/edge/dnsdist TestManagedCacheLivePinnedTransition -- -timeout=5m "${flags[@]}" || status=1 ;;
     f39) KUDURRU_F39_LIVE=1 KUDURRU_F39_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=8m "${flags[@]}" -run '^TestRunServeRemoteEdge(RegexAndLateFill|AuthoritativeCacheACL|ClientGroupViews)$' ./cmd/kudurru || status=1 ;;
+      interop_test "$suite" ./cmd/kudurru TestRunServeRemoteEdgeRegexAndLateFill TestRunServeRemoteEdgeAuthoritativeCacheACL \
+        TestRunServeRemoteEdgeClientGroupViews -- -timeout=8m "${flags[@]}" || status=1 ;;
     anchor) KUDURRU_ANCHOR_EDGE_LIVE=1 KUDURRU_ANCHOR_EDGE_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=6m "${flags[@]}" -run '^TestRunServeManagedEdgePinnedDaemonRestart$' ./cmd/kudurru || status=1 ;;
+      interop_test "$suite" ./cmd/kudurru TestRunServeManagedEdgePinnedDaemonRestart \
+        TestRunServeManagedEdgePinnedDaemonFollower -- -timeout=6m "${flags[@]}" || status=1 ;;
     f18c) KUDURRU_F18C_DNSDIST=1 \
-      go test -p 2 -count=1 -timeout=5m "${flags[@]}" -run '^TestRunServeUniFiHostnamePolicyLifecycle$' ./cmd/kudurru || status=1 ;;
+      interop_test "$suite" ./cmd/kudurru TestRunServeUniFiHostnamePolicyLifecycle -- -timeout=5m "${flags[@]}" || status=1 ;;
+    client-id) KUDURRU_EDGE_LIVE=1 KUDURRU_EDGE_LIVE_WORKDIR="$work" \
+      interop_test "$suite" ./cmd/kudurru TestRunServeEdgeClientIDLiveDnsdist \
+        TestH3PostClosesFINAlonePipeOnRoundTripError -- -timeout=6m "${flags[@]}" || status=1 ;;
     *) echo "unknown suite $suite" >&2; exit 2 ;;
   esac
 done

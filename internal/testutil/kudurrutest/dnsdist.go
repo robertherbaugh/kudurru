@@ -3,7 +3,8 @@ package kudurrutest
 // DnsdistImage is the dnsdist program that the opt-in live edge suites run
 // in a private Docker daemon (TestConsoleLiveSupervisor,
 // TestManagedCacheLivePinnedTransition, TestRunServeRemoteEdge*,
-// TestRunServeManagedEdgePinnedDaemonRestart and
+// TestRunServeManagedEdgePinnedDaemonRestart, TestRunServeManagedEdgePinnedDaemonFollower,
+// TestRunServeEdgeClientIDLiveDnsdist and
 // TestRunServeUniFiHostnamePolicyLifecycle). It is the upstream image of the
 // FROM line in images/dnsdist/Dockerfile, by registry digest, so any machine
 // can pull the same bytes (D383). The suites start it with --entrypoint

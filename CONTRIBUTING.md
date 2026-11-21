@@ -78,6 +78,22 @@ failure.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
+### Pinned DNS interoperability
+
+The separate `pinned-interop` workflow is informational, not part of `ci-ok`.
+On a disposable Linux host with Docker, passwordless `sudo`, `jq`, and a C
+compiler for the dnsdist race tests, reproduce the suites one at a time:
+
+```sh
+hack/lab-dockerd.sh knot .context/interop-knot
+CGO_ENABLED=1 hack/lab-dockerd.sh dnsdist .context/interop-dnsdist
+```
+
+Each job uses its own Docker daemon and records the checked-out commit,
+registry digests, image IDs, program versions, and per-suite Go JSON results.
+A missing or skipped test fails the job. The dnsdist client-ID suite still
+expects the [dnsdist 2.1.3 standalone empty QUIC FIN limitation](docs/deploy/client-identity.md).
+
 ## Branches and releases
 
 Open pull requests against `main`; each push to one builds `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` for trying the branch. Releases are cut by merging `main` into `release-candidate` (tags `v<VERSION>-rc.<N>`, a GitHub pre-release) and `release-candidate` into `release` (tags `v<VERSION>`, moves `latest`), where `VERSION` is the file in the repository root. Never push release tags by hand. The steps and the checks around them are in [dev-docs/release-checklist.md](dev-docs/release-checklist.md#release-pipeline).
