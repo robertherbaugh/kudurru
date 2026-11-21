@@ -1,0 +1,37 @@
+Negative control: remove staged credential instead of renaming it over active file; head=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+I1120 19:33:27.910956   84180 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 19:33:27.936001   84180 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 19:33:28.846826   84180 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:33:28.851641   84180 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:33:29.161706   84180 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 19:33:29.165085   84180 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 19:33:35.529444   84180 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:33:35.532448   84180 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:33:38.639108   84180 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:33:38.643218   84180 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:374: rotation did not cancel the held request: cause=context deadline exceeded (deadline remaining: -52.503356ms)
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 291 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x5e
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/log.go:60 +0xcd
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).Enabled(0x2c6cc7f768c0, 0x3)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/deleg.go:111 +0x32
+	>  github.com/go-logr/logr.Logger.Info({{0x7398d18?, 0x2c6cc7f768c0?}, 0x738ea28?}, {0x3b56959, 0x12}, {0x2c6cc8521e60, 0x6, 0x6})
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.4/logr.go:276 +0x6e
+	>  k8s.io/client-go/tools/cache.(*Reflector).RunWithContext(0x2c6cc92b9600, {0x73921b8, 0x2c6cc8c7cd20})
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/client-go@v0.37.2/tools/cache/reflector.go:434 +0x3db
+	>  k8s.io/apimachinery/pkg/util/wait.(*Group).StartWithContext.func1()
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/apimachinery@v0.37.2/pkg/util/wait/wait.go:63 +0x1f
+	>  k8s.io/apimachinery/pkg/util/wait.(*Group).Start.func1()
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/apimachinery@v0.37.2/pkg/util/wait/wait.go:72 +0x4c
+	>  created by k8s.io/apimachinery/pkg/util/wait.(*Group).Start in goroutine 144
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/apimachinery@v0.37.2/pkg/util/wait/wait.go:70 +0x7d
+--- FAIL: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (50.46s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	50.523s
+FAIL
+test exit=1

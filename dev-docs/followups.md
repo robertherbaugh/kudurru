@@ -220,6 +220,18 @@ missing policy-state rule counts and incorrectly ready unavailable feeds;
 it now pins the node-local projection alongside the equivalent assertions in
 `TestRunServeSQLiteRPZFeedDiagnostics`. Evidence is local (envtest and SQLite).
 
+### Current F09B evidence (#174)
+
+The historical F09B entries above describe budget classification as untested
+and credential rotation as proven by order only. These two evidence gaps are
+closed locally: the [host and envtest runs](milestones/v0.2/evidence/2026-11-20-issue-138/174-integration.md)
+pin the error classes and distinguish rotation cancellation from the request
+deadline. K3/K7 live qualification remains open, as does this diagnostic:
+
+| Item | Source | Target |
+|---|---|---|
+| Sync reports local budget contention (`ErrConflict` and `DeadlineExceeded`, no outbound request) as `ReconcileFailed` / `ErrProvider`. The tests pin the existing class; no behavior change is included. | F09B-OPEN; #174 | v0.2 |
+
 ## v0.2 completion pass: open at 7663c957
 
 Open findings of the packages merged after 17b7c87a, up to the PR branch as
