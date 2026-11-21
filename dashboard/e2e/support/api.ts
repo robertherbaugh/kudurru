@@ -28,8 +28,10 @@ export async function adminApi(page: Page): Promise<Api> {
       return { status: r.status(), body: (r.ok() ? await r.json() : await r.text()) as T };
     },
     post: async <T>(path: string, body: unknown) => {
-      const r = await page.request.post(`/api/v1${path}`, { data: body, headers });
-      expect(r.ok(), `POST ${path}: ${r.status()} ${await r.text()}`).toBe(true);
+      const r = await sendBeforeAdmission(
+        () => page.request.post(`/api/v1${path}`, { data: body, headers }),
+        `POST ${path}`,
+      );
       return (await r.json()) as T;
     },
   };
@@ -55,12 +57,11 @@ export async function hasListSourcesAPI(api: Api): Promise<boolean> {
 
 /**
  * Sends one write and repeats it only after the exact refusal that comes
- * before the request is read: 503 generation_pending with Retry-After, which
- * the node answers while it prepares the publication of a commit it just made
- * (the zone write before a record upsert, for example). Nothing ran, so this
- * is not a replay. Any other answer, including a 503 from a command, is
- * returned as is; the bound is the caller's usual ten seconds. The failure
- * message names the status and error key, never a body.
+ * before it dispatches the command: either 503 generation_pending while a
+ * preceding commit is published, or the exact unavailable response marked
+ * Retry-After by the command API. Nothing ran, so this is not a replay. Any
+ * other answer, including an unmarked 503 from a command, fails; the bound is
+ * ten seconds. The failure message names the status and error key, never a body.
  */
 export async function sendBeforeAdmission(send: () => Promise<APIResponse>, what: string): Promise<APIResponse> {
   const deadline = Date.now() + 10_000;
@@ -68,15 +69,22 @@ export async function sendBeforeAdmission(send: () => Promise<APIResponse>, what
     const response = await send();
     if (response.ok()) return response;
     let key: unknown;
+    let message: unknown;
     const bytes = await response.body();
     if (bytes.length <= 4096) {
-      try { key = (JSON.parse(bytes.toString()) as { error?: { key?: unknown } }).error?.key; } catch { /* No raw body diagnostics. */ }
+      try {
+        const error = (JSON.parse(bytes.toString()) as { error?: { key?: unknown; message?: unknown } }).error;
+        key = error?.key;
+        message = error?.message;
+      } catch { /* No raw body diagnostics. */ }
     }
     const retry = Number(response.headers()['retry-after']);
-    if (response.status() !== 503 || key !== 'generation_pending' || !(retry >= 1) || Date.now() + retry * 1000 > deadline) {
+    const safePreDispatch = key === 'generation_pending'
+      || (key === 'unavailable' && message === 'current writable serving generation unavailable');
+    if (response.status() !== 503 || !safePreDispatch || !(retry >= 1) || Date.now() + retry * 1000 > deadline) {
       throw new Error(`${what}: HTTP ${response.status()} ${typeof key === 'string' ? key : ''}`);
     }
-    console.log(`${what}: 503 generation_pending, asked again after Retry-After ${retry}s`);
+    console.log(`${what}: 503 ${typeof key === 'string' ? key : ''}, asked again after Retry-After ${retry}s`);
     await new Promise((resolve) => setTimeout(resolve, retry * 1000));
   }
 }
