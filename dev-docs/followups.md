@@ -211,7 +211,7 @@ term (F28-HISTORY-RECHECK, D369).
 | Settings after the first 0.2 start: `PreparedImage.CommittedDynamicOwnership` rebuilds the zone's dynamic index on every publication; `docs/deploy/runbooks.md` (near line 600) and `docs/deploy/compose-ha.md` (near line 108) say a later file edit of any cluster key is not applied, which is inaccurate for restart-required keys; static twins cannot change a cluster setting after their first 0.2 start; `TestAnchorUpgradeStaticTwinV010/LaterFileEditNotApplied` does not assert the seeded value | QUAL-OPEN2 and QUAL-MIXED-VERSION verify | v0.2 |
 | G21-PERMISSIONS (#139), closed with local evidence at `62763b3750cbaf025407fbec7d11a6c778ae1fdf`: five same-package negative controls fail on `c36efe14` and `ce3ab6e2` and pass with the existing six after the fix. The 75 verbose `uses, first` inventory lines match both baselines. `CGO_ENABLED=1 go test ./internal/api -run '^Test(RoutePermissionLint\|HandlerPermissionScanCreditsOnlyChecks\|PermissionVerbsAreUsedOrReserved\|LintVerbUseCatchesUnusedAndStale)$' -race -count=1 -v` passed (4 tests, 11 subtests); `CGO_ENABLED=0 go vet ./internal/api` passed; `CGO_ENABLED=0 golangci-lint run ./internal/api/...` (v2.15.0) reported 0 issues; `python3 -B -m unittest discover -s hack -p 'test_bench_*.py'` passed all 53 bench-guard tests on an isolated rerun after one `Text file busy` fixture failure. These results replace the missing evidence without reclassifying the empty historical `fix-bench01.log` and `fix-lint02.log`. The bare-name item is closed; D393 in `dev-docs/design-record.md` already closes the `settings.operatorSeesQueryLog` wording item. The review follow-up adds range-declaration and method-receiver controls: both fail on `7c3f1355`, all 13 scanner subtests pass under race after the follow-up, and the 75 inventory lines still match. No hosted acceptance or performance claim. | G21-PERMISSIONS verify | v0.2 |
 | Evidence gaps: FLAKE-PORT-RACE's ledger points at unfinished logs (use `verify-01-mounted-race.log`, `verify-03-lint.log`) | FLAKE-PORT-RACE verify | v0.2 |
-| Low-severity notes left open: HA-SELF (200 for any token authentication failure on the new-hash view; every seal error reported as `committed_output_unavailable`; no mounted follower audit test); OBS-TRACING (about 5 KB per traced query); F09B-OPEN (joined budget error classification untested; timing-dependent bounds); QUAL-OPEN3 wording of the measured percentages | verify results in `followups/*.json` | v0.2 |
+| Low-severity notes left open: OBS-TRACING (about 5 KB per traced query); F09B-OPEN (joined budget error classification untested; timing-dependent bounds); QUAL-OPEN3 wording of the measured percentages | verify results in `followups/*.json` | v0.2 |
 | Hosted job for the local-only interop suites: start a private dockerd on the runner and run `hack/test-knot-catalog.sh` (Knot `cznic/knot@sha256:174b0fcb24c6c3bc5065c9d1ce46b588eec607a5f32bc40ff0cda60150f00bd9`, knotd 3.6.2; `TestKnotCatalogConsumer` and `TestKnotInboundSecondaryTransfer`, last unskipped pass at `2e4e89fc`) and `hack/test-dnsdist-live.sh` (`powerdns/dnsdist-21:2.1.3@sha256:c70ae7363712188ab2878d22bc9f1801cae29190688474a224caee2089f74837`; all live dnsdist tests: F43 YAML/Lua, F28, F39b (both tests), anchor edge and F18c, last unskipped pass at `d2039002`, `out/QUAL-OPEN3`). Until then both are local-only evidence | QUAL-INTEROP, G23-R5; D383 | after v0.2.0 |
 
 RPZ diagnostics (#162): mounted `TestRunServeKubeRPZFeeds` already reports
@@ -219,6 +219,13 @@ RPZ diagnostics (#162): mounted `TestRunServeKubeRPZFeeds` already reports
 missing policy-state rule counts and incorrectly ready unavailable feeds;
 it now pins the node-local projection alongside the equivalent assertions in
 `TestRunServeSQLiteRPZFeedDiagnostics`. Evidence is local (envtest and SQLite).
+
+The historical HA-SELF notes were addressed in the HA-OPEN5 batch (`7bae1238`,
+`532a5cd7`) and its review fix (`1737eb2e`).
+`TestRootMemberForwardPasswordTransportRefusalActualHTTP` distinguishes a
+retained password refusal from a member transport refusal and checks that
+neither leaves a durable mutation audit row. See the
+[current #137 evidence](milestones/v0.2/followup-audit.md#follower-self-service-refusal-evidence-137).
 
 ### Current F09B evidence (#174)
 
