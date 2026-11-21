@@ -243,6 +243,71 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	testEnrolledProcessesWith(t, promote, nil)
 }
 
+func enrolledRecordSetNames(ctx context.Context, client *staticProcessClient) (map[string]bool, error) {
+	const maxRequests = 101
+	present := map[string]bool{}
+	continuation := ""
+	restarts := 0
+	for range maxRequests {
+		path := "/objects/dnsrecordsets?limit=50"
+		if continuation != "" {
+			path += "&continue=" + url.QueryEscape(continuation)
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, client.base+path, nil)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		if client.csrf != "" {
+			request.Header.Set("X-Kudurru-CSRF", client.csrf)
+		}
+		if client.ifMatch != "" {
+			request.Header.Set("If-Match", client.ifMatch)
+		}
+		response, err := client.client.Do(request)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
+		_ = response.Body.Close()
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		if response.StatusCode != http.StatusOK {
+			var problem api.Error
+			if json.Unmarshal(body, &problem) == nil && continuation != "" &&
+				response.StatusCode == http.StatusConflict && problem.Body.Key == api.KeyConflict &&
+				problem.Body.Message == "object pagination generation or query changed" &&
+				problem.Body.Hint == "restart pagination without continue" {
+				clear(present)
+				continuation = ""
+				restarts++
+				continue
+			}
+			return nil, fmt.Errorf("status %d want %d, error %s: %s", response.StatusCode, http.StatusOK, problem.Body.Key, problem.Body.Message)
+		}
+		var listed api.List[struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		}]
+		if err := json.Unmarshal(body, &listed); err != nil {
+			return nil, err
+		}
+		for _, item := range listed.Items {
+			present[item.Metadata.Name] = true
+		}
+		continuation = listed.Continue
+		if continuation == "" {
+			return present, nil
+		}
+	}
+	return nil, fmt.Errorf("no complete scan after %d requests (%d stale cursors)", maxRequests, restarts)
+}
+
 // testEnrolledProcessesWith runs the flow with managed root anchors when
 // anchors is set (F28-HA-3, HA-4; see enrolled_anchors_test.go).
 func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnchors) {
@@ -702,30 +767,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		name   string
 		client *staticProcessClient
 	}{{"primary", apiA}, {"follower", apiB}} {
-		// The request helper reads at most 128 KiB of a body, so the record
-		// sets are read in small pages.
-		present := map[string]bool{}
-		for page, cont := 0, ""; ; page++ {
-			if page > 100 {
-				t.Fatalf("%s: listing the record sets did not end after %d pages", c.name, page)
-			}
-			var listed api.List[struct {
-				Metadata struct {
-					Name string `json:"name"`
-				} `json:"metadata"`
-			}]
-			path := "/objects/dnsrecordsets?limit=50"
-			if cont != "" {
-				path += "&continue=" + url.QueryEscape(cont)
-			}
-			c.client.request(t, http.MethodGet, path, nil, http.StatusOK, &listed)
-			for _, item := range listed.Items {
-				present[item.Metadata.Name] = true
-			}
-			if listed.Continue == "" {
-				break
-			}
-			cont = listed.Continue
+		present, err := enrolledRecordSetNames(t.Context(), c.client)
+		if err != nil {
+			t.Fatalf("%s: listing the record sets: %v", c.name, err)
 		}
 		for i, name := range names {
 			if !present[name] {
