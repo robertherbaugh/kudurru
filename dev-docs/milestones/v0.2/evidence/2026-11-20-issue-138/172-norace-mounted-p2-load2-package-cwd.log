@@ -1,0 +1,66 @@
+2026-11-20T19:34:10+00:00
+ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61
+go version go1.27.4 linux/amd64
+8
+pid 74439's current affinity list: 0-7
+max 100000
+6.27 7.04 4.44 7/474 85375
+mode=norace taskset=0 GOMAXPROCS=2 busy-loops=2 count=1 pattern=^Test(RunServe(SQLiteLongApplyKeepsServingDNSAndReads|SQLitePrimaryAnswersAcrossStatusWrites|StaticTwinsReadOnlyPeerLossRestart|RefusalInventory(Standalone|Static|Kubernetes))|ReadinessBudgetChargesOnlyRunnableTime|ProcessSchedStatReadsThisProcess)$
+=== RUN   TestReadinessBudgetChargesOnlyRunnableTime
+--- PASS: TestReadinessBudgetChargesOnlyRunnableTime (0.00s)
+=== RUN   TestProcessSchedStatReadsThisProcess
+--- PASS: TestProcessSchedStatReadsThisProcess (0.06s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 52.54408034s: 526 correct DNS answers, 0 SERVFAIL, longest time without one 306.001815ms, 24 reads ok, 11 reads failed; last failed read: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s): ; wall=1m5.61s process-cpu=23.694s runqueue-wait=1m54.01s gomaxprocs=2 loadavg="11.11 8.16 4.99 16/478 89440"
+    serve_apply_multi_mount_test.go:481: 11 reads of a second caller failed during one request (24 answered); last: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s):
+    panic.go:694: mounted failure load: wall=1m5.61s process-cpu=23.694s runqueue-wait=1m54.01s gomaxprocs=2 loadavg="11.11 8.16 4.99 15/478 89440"
+--- FAIL: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (65.67s)
+=== RUN   TestRunServeRefusalInventoryStandalone
+    serve_refusal_inventory_test.go:128: static server mount-test ready: wall=2.29s process-cpu=795ms runqueue-wait=4.317s gomaxprocs=2 loadavg="11.10 8.21 5.03 15/473 90000"
+    serve_refusal_inventory_test.go:129: standalone: 212/212 operations walked, 18 answered 501 or 503, 28 stopped at request validation, 42 answered 404; wall=3.682s process-cpu=1.252s runqueue-wait=6.878s gomaxprocs=2 loadavg="11.49 8.34 5.08 12/470 90222"
+--- PASS: TestRunServeRefusalInventoryStandalone (6.88s)
+=== RUN   TestRunServeRefusalInventoryStatic
+    serve_refusal_inventory_test.go:142: static server node-a ready: wall=2.412s process-cpu=845ms runqueue-wait=4.626s gomaxprocs=2 loadavg="11.49 8.34 5.08 14/470 90296"
+    serve_refusal_inventory_test.go:143: static: 212/212 operations walked, 102 answered 501 or 503, 7 stopped at request validation, 25 answered 404; wall=2.358s process-cpu=806ms runqueue-wait=4.116s gomaxprocs=2 loadavg="11.77 8.45 5.14 21/473 90462"
+--- PASS: TestRunServeRefusalInventoryStatic (5.74s)
+=== RUN   TestRunServeRefusalInventoryKubernetes
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 48129 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x5e
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/log.go:60 +0xcd
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).Enabled(0x5fbb1136e00, 0x1)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/deleg.go:111 +0x32
+	>  github.com/go-logr/logr.Logger.Info({{0x7390170?, 0x5fbb1136e00?}, 0x3b?}, {0x3b6bbff, 0x16}, {0x0, 0x0, 0x0})
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.4/logr.go:276 +0x6e
+	>  sigs.k8s.io/controller-runtime/pkg/envtest.(*Environment).Start(0x5fbb30a02c8)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/envtest/server.go:303 +0x3d2
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.startKubeRuntimeMount(0x5fbb376d448, 0x73b0558)
+	>  	/home/vercel-sandbox/kudurru/cmd/kudurru/serve_kube_auth_routes_test.go:89 +0x21c
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.TestRunServeRefusalInventoryKubernetes(0x5fbb376d448)
+	>  	/home/vercel-sandbox/kudurru/cmd/kudurru/serve_refusal_inventory_test.go:150 +0xd9
+	>  testing.tRunner(0x5fbb376d448, 0x73af150)
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2195 +0xea
+	>  created by testing.(*T).Run in goroutine 1
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2260 +0x4d4
+I1120 19:35:36.200042   85378 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 19:35:36.229744   85378 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+    serve_refusal_inventory_test.go:150: static server 8a5507f8-b67 ready: wall=1.521s process-cpu=353ms runqueue-wait=1.751s gomaxprocs=2 loadavg="11.43 8.49 5.19 12/481 90938"
+    serve_refusal_inventory_test.go:151: kubernetes: 212/212 operations walked, 51 answered 501 or 503, 28 stopped at request validation, 48 answered 404; wall=2.637s process-cpu=550ms runqueue-wait=4.278s gomaxprocs=2 loadavg="11.43 8.49 5.19 13/483 90945"
+--- PASS: TestRunServeRefusalInventoryKubernetes (11.49s)
+=== RUN   TestRunServeStaticTwinsReadOnlyPeerLossRestart
+    serve_static_cluster_test.go:160: static server node-a ready: wall=2.991s process-cpu=1.291s runqueue-wait=4.62s gomaxprocs=2 loadavg="11.15 8.48 5.20 8/468 90957"
+    serve_static_cluster_test.go:160: static server node-b ready: wall=4.062s process-cpu=1.827s runqueue-wait=6.626s gomaxprocs=2 loadavg="11.06 8.50 5.23 10/468 90957"
+    serve_static_cluster_test.go:257: static server node-b ready: wall=1.166s process-cpu=458ms runqueue-wait=2.056s gomaxprocs=2 loadavg="11.06 8.50 5.23 18/474 90975"
+--- PASS: TestRunServeStaticTwinsReadOnlyPeerLossRestart (11.19s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:260: 24 status writes of 24 new serials; probe: 4288 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 0 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending; wall=23.518s process-cpu=9.377s runqueue-wait=31.997s gomaxprocs=2 loadavg="10.07 8.49 5.31 10/483 91861"
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (23.52s)
+FAIL
+test exit=1
+2026-11-20T19:36:14+00:00
