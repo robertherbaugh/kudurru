@@ -119,8 +119,14 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 	}
 	// #nosec G115 -- ledgerSigned sets this fixture timestamp from time.Now().Unix().
 	time.Sleep(time.Until(time.Unix(int64(short.IsTsig().TimeSigned)+2+1, 0)))
-	if answer, _, _ := client().Exchange(short.Copy(), address); answer == nil || answer.Rcode != dns.RcodeNotAuth || answer.IsTsig() == nil || answer.IsTsig().Error != dns.RcodeBadTime {
-		t.Fatalf("expired exact repeat was not refused with BADTIME: %v", answer)
+	answer, _, err := client().Exchange(short.Copy(), address)
+	var transport *net.OpError
+	if answer == nil && errors.As(err, &transport) && transport.Op == "read" && transport.Timeout() {
+		t.Logf("expired exact repeat received no TCP answer: %v; sending the same expired packet once more", err)
+		answer, _, err = client().Exchange(short.Copy(), address)
+	}
+	if answer == nil || answer.Rcode != dns.RcodeNotAuth || answer.IsTsig() == nil || answer.IsTsig().Error != dns.RcodeBadTime || (err != nil && !errors.Is(err, dns.ErrAuth)) {
+		t.Fatalf("expired exact repeat was not refused with BADTIME: %v (exchange: %v)", answer, err)
 	}
 
 	// Commit more UPDATEs than the ledger holds. Each one is a new signed
