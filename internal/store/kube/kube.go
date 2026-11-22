@@ -47,6 +47,7 @@ import (
 	coordinationv1client "k8s.io/client-go/kubernetes/typed/coordination/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/transport"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -221,7 +222,7 @@ func New(cfg *rest.Config, opts Options) (*Store, error) {
 	return newStore(cfg, opts, true, nil)
 }
 
-func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTMapper) (*Store, error) {
+func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTMapper, wrapTrackedTransport ...transport.WrapperFunc) (*Store, error) {
 	if cfg == nil {
 		return nil, errors.New("store/kube: nil rest.Config")
 	}
@@ -243,6 +244,11 @@ func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTM
 	auxiliaryConfig := rest.CopyConfig(cfg)
 	ct := &contact{now: time.Now}
 	cfg.Wrap(ct.wrap)
+	// Test wrappers sit outside the contact tracker but inside impersonation,
+	// so a fixture can drain tracked I/O without wrapping auxiliary clients.
+	for _, wrap := range wrapTrackedTransport {
+		cfg.Wrap(wrap)
+	}
 	if opts.Impersonate != nil {
 		// client-go's own impersonation would overwrite the per-write
 		// identity with the kubeconfig's: refuse the combination.

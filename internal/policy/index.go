@@ -591,10 +591,10 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		for _, ref := range p.Spec.BlockListRefs {
 			if n, ok := b.resolveList(lists, id, p.Namespace, ref, "blockListRefs", v1alpha1.ListMode(blocking.ModeBlock)); ok {
 				cp.block = append(cp.block, n)
-			} else if obj := objectID(p.Namespace, ref); b.byObject[obj] != nil && !b.disabled["BlockList/"+obj] && !slices.Contains(cp.pending, obj) {
-				// Known and enabled but not compiled: resolveList counted it
-				// in NotLoaded.
-				cp.pending = append(cp.pending, obj)
+			} else if list := b.byObject[objectID(p.Namespace, ref)]; list != nil && !b.disabled["BlockList/"+list.Object] && hasEnabledRPZSource(list.object) && !slices.Contains(cp.pending, list.Object) {
+				// resolveList still counts every known, enabled, uncompiled list
+				// in NotLoaded; only RPZ is required coverage at query time.
+				cp.pending = append(cp.pending, list.Object)
 			}
 		}
 		svcs, unknownCats := EffectiveServices(&p.Spec, b.opts.Services)
@@ -643,6 +643,12 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 	for g := range ix.groupIDs {
 		ix.groupSets[g] = ix.policySetFor([]int{g})
 	}
+}
+
+func hasEnabledRPZSource(list *v1alpha1.BlockList) bool {
+	return slices.ContainsFunc(list.Spec.Sources, func(source v1alpha1.ListSource) bool {
+		return source.IsEnabled() && blocking.IsRPZSource(source)
+	})
 }
 
 func sortPolicies(ps []*compiledPolicy) {

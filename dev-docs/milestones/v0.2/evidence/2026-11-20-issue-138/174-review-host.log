@@ -1,0 +1,82 @@
+=== RUN   TestProviderRequestReservesAgainAfterLostBudgetCAS
+2026/11/20 20:08:28 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestProviderRequestReservesAgainAfterLostBudgetCAS (1.80s)
+=== RUN   TestJoinedBudgetContentionConsumerClassification
+=== RUN   TestJoinedBudgetContentionConsumerClassification/event
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/cleanup
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/sync
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestJoinedBudgetContentionConsumerClassification (0.14s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/event (0.05s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/cleanup (0.04s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/sync (0.05s)
+=== RUN   TestProviderRequestReservesAgainAfterLostBudgetCAS
+2026/11/20 20:08:30 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestProviderRequestReservesAgainAfterLostBudgetCAS (1.80s)
+=== RUN   TestJoinedBudgetContentionConsumerClassification
+=== RUN   TestJoinedBudgetContentionConsumerClassification/event
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/cleanup
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/sync
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestJoinedBudgetContentionConsumerClassification (0.14s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/event (0.05s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/cleanup (0.04s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/sync (0.04s)
+=== RUN   TestProviderRequestReservesAgainAfterLostBudgetCAS
+2026/11/20 20:08:32 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestProviderRequestReservesAgainAfterLostBudgetCAS (1.81s)
+=== RUN   TestJoinedBudgetContentionConsumerClassification
+=== RUN   TestJoinedBudgetContentionConsumerClassification/event
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/cleanup
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/sync
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestJoinedBudgetContentionConsumerClassification (0.14s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/event (0.05s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/cleanup (0.04s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/sync (0.05s)
+=== RUN   TestProviderRequestReservesAgainAfterLostBudgetCAS
+2026/11/20 20:08:34 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestProviderRequestReservesAgainAfterLostBudgetCAS (1.80s)
+=== RUN   TestJoinedBudgetContentionConsumerClassification
+=== RUN   TestJoinedBudgetContentionConsumerClassification/event
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/cleanup
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/sync
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestJoinedBudgetContentionConsumerClassification (0.14s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/event (0.05s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/cleanup (0.04s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/sync (0.04s)
+=== RUN   TestProviderRequestReservesAgainAfterLostBudgetCAS
+2026/11/20 20:08:36 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestProviderRequestReservesAgainAfterLostBudgetCAS (1.80s)
+=== RUN   TestJoinedBudgetContentionConsumerClassification
+=== RUN   TestJoinedBudgetContentionConsumerClassification/event
+2026/11/20 20:08:38 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:38 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/cleanup
+2026/11/20 20:08:38 INFO store synced; serving live objects component=zonecache previous=Unsynced
+=== RUN   TestJoinedBudgetContentionConsumerClassification/sync
+2026/11/20 20:08:38 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/20 20:08:38 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestJoinedBudgetContentionConsumerClassification (0.14s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/event (0.05s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/cleanup (0.04s)
+    --- PASS: TestJoinedBudgetContentionConsumerClassification/sync (0.04s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/ee/integration/host	10.753s

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -24,6 +25,42 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
+
+func TestRPZCLIGoldenMessagesMatchProjection(t *testing.T) {
+	golden, err := os.ReadFile("../../cmd/kudurru/testdata/golden/lists-rpz-all-wide.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, rows, _ := strings.Cut(string(golden), "\n")
+	messageColumn := strings.Index(header, "MESSAGE")
+	if messageColumn < 0 {
+		t.Fatal("wide golden has no MESSAGE column")
+	}
+	confirmed := time.Unix(1, 0)
+	for _, example := range []struct {
+		state  string
+		status rpz.Status
+	}{
+		{"serving", rpz.Status{Available: true, ConfirmedAt: confirmed, Error: "dial tcp 192.0.2.53:53: connection refused"}},
+		{"expired", rpz.Status{Expired: true, ConfirmedAt: confirmed}},
+		{"pending", rpz.Status{}},
+	} {
+		t.Run(example.state, func(t *testing.T) {
+			feed := rpzFeed("node-a", example.status)
+			for _, line := range strings.Split(rows, "\n") {
+				columns := strings.Fields(line)
+				if len(columns) <= 4 || columns[4] != example.state || len(line) <= messageColumn {
+					continue
+				}
+				if message := line[messageColumn:]; feed.State != example.state || feed.Message != message {
+					t.Errorf("API reports %s %q, CLI golden has %s %q", feed.State, feed.Message, example.state, message)
+				}
+				return
+			}
+			t.Errorf("CLI golden has no %s row with a message", example.state)
+		})
+	}
+}
 
 // rpzFeedPrimary is a real TCP transfer primary for policy.test. Failing makes
 // it answer SERVFAIL to every query.

@@ -1,0 +1,369 @@
+=== RUN   TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce
+    primary_runtime_test.go:428: retiring-zone native UPDATE returned SERVFAIL without recapture or Apply
+--- PASS: TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce (1.16s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:253: 24 status writes of 24 new serials; probe: 11390 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 1 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (44.33s)
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed
+--- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation (2.05s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed (0.00s)
+=== RUN   TestMemberUpdateRerunOnlyWhenNothingNewWasDecided
+--- PASS: TestMemberUpdateRerunOnlyWhenNothingNewWasDecided (0.00s)
+=== RUN   TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce
+--- PASS: TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce (3.21s)
+=== RUN   TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce
+    serving_member_update_test.go:422: forwarded UPDATE for a retiring zone answered SERVFAIL after 44.855211ms
+--- PASS: TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce (3.10s)
+=== RUN   TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce
+    primary_runtime_test.go:428: retiring-zone native UPDATE returned SERVFAIL without recapture or Apply
+--- PASS: TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce (1.29s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:253: 24 status writes of 24 new serials; probe: 18452 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 1 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (56.55s)
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed
+--- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation (3.02s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation (0.03s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed (0.00s)
+=== RUN   TestMemberUpdateRerunOnlyWhenNothingNewWasDecided
+--- PASS: TestMemberUpdateRerunOnlyWhenNothingNewWasDecided (0.00s)
+=== RUN   TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce
+--- PASS: TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce (6.03s)
+=== RUN   TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce
+    serving_member_update_test.go:422: forwarded UPDATE for a retiring zone answered SERVFAIL after 146.376906ms
+--- PASS: TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce (5.05s)
+=== RUN   TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce
+    primary_runtime_test.go:428: retiring-zone native UPDATE returned SERVFAIL without recapture or Apply
+--- PASS: TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce (1.69s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:253: 24 status writes of 24 new serials; probe: 10012 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 1 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (49.11s)
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server.
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused
+=== RUN   TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed
+--- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation (2.17s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/health.kudurru.internal. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/id.server. (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/forwarded (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/cached (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/blocked_alias (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unattributed (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/unavailable_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_special_status (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/capture_refusal_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/indeterminate_validation_of_a_contacted_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/failed_contacted_target (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/upstream_failure_success (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/authoritative_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/local_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/mixed_upstream_timeout (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/synthesized_upstream_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_empty_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_answer_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authority_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_additional_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_upstream_failure_authoritative_edns (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_bind_capture_failure (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_recursion_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_native_cache_admission_refused (0.00s)
+    --- PASS: TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation/actual_recursive_authorities_failed (0.00s)
+=== RUN   TestMemberUpdateRerunOnlyWhenNothingNewWasDecided
+--- PASS: TestMemberUpdateRerunOnlyWhenNothingNewWasDecided (0.00s)
+=== RUN   TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce
+--- PASS: TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce (3.65s)
+=== RUN   TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce
+    serving_member_update_test.go:422: forwarded UPDATE for a retiring zone answered SERVFAIL after 104.214593ms
+--- PASS: TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce (3.74s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	187.333s
+=== RUN   TestRunnableLastErrorSurvivesTermEnd
+--- PASS: TestRunnableLastErrorSurvivesTermEnd (0.02s)
+=== RUN   TestRunnableLastErrorIgnoresErrorAtCancellation
+--- PASS: TestRunnableLastErrorIgnoresErrorAtCancellation (0.01s)
+=== RUN   TestLeaderOnlyWriterEndOfTermIsNotAFailure
+--- PASS: TestLeaderOnlyWriterEndOfTermIsNotAFailure (0.33s)
+=== RUN   TestRunnableLastErrorSurvivesTermEnd
+--- PASS: TestRunnableLastErrorSurvivesTermEnd (0.02s)
+=== RUN   TestRunnableLastErrorIgnoresErrorAtCancellation
+--- PASS: TestRunnableLastErrorIgnoresErrorAtCancellation (0.01s)
+=== RUN   TestLeaderOnlyWriterEndOfTermIsNotAFailure
+--- PASS: TestLeaderOnlyWriterEndOfTermIsNotAFailure (0.30s)
+=== RUN   TestRunnableLastErrorSurvivesTermEnd
+--- PASS: TestRunnableLastErrorSurvivesTermEnd (0.02s)
+=== RUN   TestRunnableLastErrorIgnoresErrorAtCancellation
+--- PASS: TestRunnableLastErrorIgnoresErrorAtCancellation (0.01s)
+=== RUN   TestLeaderOnlyWriterEndOfTermIsNotAFailure
+--- PASS: TestLeaderOnlyWriterEndOfTermIsNotAFailure (0.31s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cluster	5.533s
+=== RUN   TestFailureUpstreamContacted
+=== RUN   TestFailureUpstreamContacted/forwarder_failed
+=== RUN   TestFailureUpstreamContacted/query_ended_before_any_server
+=== RUN   TestFailureUpstreamContacted/serving_capture_failed
+=== RUN   TestFailureUpstreamContacted/native_recursion_refused
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused
+=== RUN   TestFailureUpstreamContacted/native_authorities_failed
+=== RUN   TestFailureUpstreamContacted/native_authorities_timed_out
+=== RUN   TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended
+--- PASS: TestFailureUpstreamContacted (0.81s)
+    --- PASS: TestFailureUpstreamContacted/forwarder_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/query_ended_before_any_server (0.00s)
+    --- PASS: TestFailureUpstreamContacted/serving_capture_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_recursion_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_timed_out (0.50s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking (0.30s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_after_asking (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended (0.00s)
+=== RUN   TestFailureUpstreamContacted
+=== RUN   TestFailureUpstreamContacted/forwarder_failed
+=== RUN   TestFailureUpstreamContacted/query_ended_before_any_server
+=== RUN   TestFailureUpstreamContacted/serving_capture_failed
+=== RUN   TestFailureUpstreamContacted/native_recursion_refused
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused
+=== RUN   TestFailureUpstreamContacted/native_authorities_failed
+=== RUN   TestFailureUpstreamContacted/native_authorities_timed_out
+=== RUN   TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended
+--- PASS: TestFailureUpstreamContacted (0.81s)
+    --- PASS: TestFailureUpstreamContacted/forwarder_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/query_ended_before_any_server (0.00s)
+    --- PASS: TestFailureUpstreamContacted/serving_capture_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_recursion_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_timed_out (0.50s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking (0.30s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_after_asking (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended (0.00s)
+=== RUN   TestFailureUpstreamContacted
+=== RUN   TestFailureUpstreamContacted/forwarder_failed
+=== RUN   TestFailureUpstreamContacted/query_ended_before_any_server
+=== RUN   TestFailureUpstreamContacted/serving_capture_failed
+=== RUN   TestFailureUpstreamContacted/native_recursion_refused
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused
+=== RUN   TestFailureUpstreamContacted/native_authorities_failed
+=== RUN   TestFailureUpstreamContacted/native_authorities_timed_out
+=== RUN   TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_after_asking
+=== RUN   TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended
+--- PASS: TestFailureUpstreamContacted (0.81s)
+    --- PASS: TestFailureUpstreamContacted/forwarder_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/query_ended_before_any_server (0.00s)
+    --- PASS: TestFailureUpstreamContacted/serving_capture_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_recursion_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_failed (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_authorities_timed_out (0.50s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_commit_reached_the_deadline_after_asking (0.30s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_after_asking (0.00s)
+    --- PASS: TestFailureUpstreamContacted/native_cache_admission_refused_as_the_query_ended (0.00s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/stages/upstream	3.449s

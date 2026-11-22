@@ -284,9 +284,16 @@ Rules and limits:
   records): the view endpoints are refused as `Invalid` and the group gets the
   default data.
 - A refused view endpoint is reported on its record set like any other
-  dropped endpoint. On SQLite a record set's projection carries one outcome,
-  so the refusal is visible only when nothing else in the record set is
-  served; a record set that serves other data stays `served`.
+  dropped endpoint. On SQLite a record set that serves other endpoints stays
+  `served`. Its existing projection reason summarizes refused view endpoints
+  with their name, type, namespaced view and refusal reason (up to 512 bytes,
+  with a count when entries are omitted). Only the single-record-set GET
+  (not the record set list) exposes the `ViewEndpointsRefused` status condition
+  when the served source matches the current record set. The source envelope
+  does not store a transition time, so this projected condition uses the
+  record set's stable creation timestamp. Open the editor on a served row
+  with that proven record set to see the warning; refused endpoints are not
+  served rows.
 - AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
   integration sinks (Cloudflare, UniFi) carry the default data only. A
   secondary never receives group data, and there is no per-key view transfer.
@@ -300,6 +307,12 @@ Rules and limits:
   default endpoint would, although the view serves only its group. Default
   clients then lose that dynamic data; authorize a takeover only for record
   sets whose view endpoints are meant to replace it.
+- Kubernetes reserves the names and types of **served** static view RRsets
+  against UPDATE, in the UPDATE record set's namespace and any other namespace.
+  Unlike SQLite, a view that did not build does not acquire this reservation.
+  Reservations are not prerequisite data: a name only in a view still does not
+  exist in the default data. Kubernetes does not perform SQLite's authorized
+  takeover on a recompile.
 - The content hash covers the views, so a view change advances the serial.
   On SQLite the committed aggregate keeps views in their own `views` list,
   apart from the default `records`.
@@ -387,6 +400,7 @@ The derived record set carries the source's labels, so the zone's
 flowchart LR
     Sources["Ingress, routes + Gateways, LoadBalancer Services (read-only list and watch)"] --> Adapter["Elected source adapter (bounded pass)"]
     Zones["DNSZones of type external"] --> Adapter
+    Adapter -->|"per-kind list health and watch denials"| Controller
     Adapter -->|"create-only or exact resourceVersion"| Sets["Source-owned DNSRecordSets (managedBy kubernetes-source:UID)"]
     Sets --> Controller["Zone controller: status, serial"]
     Sets --> Cache["Zone cache on every replica"]
@@ -406,6 +420,13 @@ RFC 2136 UPDATE finds no primary zone for the apex and is refused with
 zone controller reports an external zone `Degraded`, reason
 `SourcesNotRead`: it is still served, but only from record sets derived
 earlier, and source changes do not reach it.
+With the adapter enabled, health changes requeue external zones on the
+elected replica. `Degraded{SourcesIncomplete}` lists the problems for the
+source kinds each zone enables, including RBAC denials, unavailable API
+kinds, and exceeded list bounds. A more specific Degraded reason takes
+precedence. This does not change `Ready`, the records, or the serial.
+A new elected term observes sources again rather than publishing results from
+an interrupted pass. Until then, it does not report a new failure or recovery.
 
 Writes follow D303. A record set is written only after the zone and the
 source are confirmed unchanged since the list: the source by UID and
@@ -416,20 +437,25 @@ every record set a pass writes;
 creation requires absence and an update requires the observed
 resourceVersion. A record set with the derived name that someone else owns is
 never taken over. A record set is removed only when its source is confirmed
-absent or replaced (a fresh read by name), when its zone no longer takes it,
+absent, replaced or no longer a LoadBalancer Service (a fresh read by name),
+when its zone no longer takes it,
 or when no external zone enables its kind any more; the delete carries the
 observed UID and resourceVersion. A failed or refused list (a missing
-Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB, or a list page
-of 64 objects over the 4 MiB response bound) never authorizes cleanup: the
-kind keeps the record sets of the last complete pass, which are no longer
-updated. Every Service in the cluster counts toward the 4,096-object bound of
-its kind, not only LoadBalancer Services. Invalid source data (an unusable TTL
+Gateway API CRD, RBAC, or a list over 4,096 objects or 32 MiB) never authorizes
+cleanup: the kind keeps the record sets of the last complete pass. If a
+64-object page exceeds the 4 MiB response cap, the adapter discards the
+partial list and tries once more at eight objects per page under the same
+bounds. Only a complete list can start reconciliation. The adapter lists and
+watches Services with `spec.type=LoadBalancer` when supported; otherwise,
+every Service counts toward the caps, and only LoadBalancer Services publish.
+Invalid source data (an unusable TTL
 annotation) withdraws only that source's records. Watch events only wake a
 new pass; without events a pass runs every ten seconds. Passes start at least
 one second apart, so a burst of source events (controllers updating status)
 coalesces into one relist, and a pass that met a concurrent change
 (`conflict`) is retried after that second instead of after the full ten.
-Sources are never written.
+When watch access is denied, periodic lists still run; when access returns,
+watch-driven reconciliation resumes. Sources are never written.
 
 Kubernetes has no transaction across the source, the zone and the record
 sets, so the adapter converges eventually. When the elected replica loses
@@ -1465,6 +1491,16 @@ answers SERVFAIL without a write. A prerequisite or policy refusal writes
 nothing. The controller advances `status.serial`, which drives NOTIFY. API, file
 and integration writers keep their own objects; an UPDATE cannot change their
 records, and the API cannot edit the `dns-update`-owned object.
+
+An upgrade does not remove pre-existing UPDATE records that collide with
+client-group views. The view reservation is used for planning, not for filtering
+what the UPDATE-owned object persists. A Kubernetes operator can inspect
+`rfc2136-<zone>` in the namespace described above and remove only the colliding
+endpoint from `spec.endpoints` through the Kubernetes API, preserving unrelated
+endpoints. Delete the object only if no endpoints should remain. Verify that the
+record set reconciles and that group and default clients receive the expected
+answers. A cross-namespace view can remain `Duplicated` until that collision is
+removed.
 
 ```mermaid
 sequenceDiagram

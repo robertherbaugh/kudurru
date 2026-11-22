@@ -42,17 +42,21 @@ type partitionGate struct {
 	fault   atomic.Pointer[gateFault]
 }
 
-// gateFault is a one-shot lost answer: the first request match selects is
-// either forwarded to the API server (forward) or not, and in both cases
-// its connection is closed without an answer.
+// gateFault selects one request to answer locally or close without an answer
+// (with or without forwarding the write to the API server).
 type gateFault struct {
 	match   func(*http.Request) bool
 	forward bool
+	status  *metav1.Status
 }
 
 // loseAnswer arms one gateFault.
 func (g *partitionGate) loseAnswer(match func(*http.Request) bool, forward bool) {
 	g.fault.Store(&gateFault{match: match, forward: forward})
+}
+
+func (g *partitionGate) answer(match func(*http.Request) bool, status metav1.Status) {
+	g.fault.Store(&gateFault{match: match, status: &status})
 }
 
 // faultPending reports whether an armed gateFault has not fired yet.
@@ -84,6 +88,12 @@ func newPartitionGate(t *testing.T, restConfig *rest.Config, modifyResponse ...f
 			return
 		}
 		if f := g.fault.Load(); f != nil && f.match(r) && g.fault.CompareAndSwap(f, nil) {
+			if f.status != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(int(f.status.Code))
+				_ = json.NewEncoder(w).Encode(f.status)
+				return
+			}
 			if f.forward {
 				proxy.ServeHTTP(httptest.NewRecorder(), r)
 			}

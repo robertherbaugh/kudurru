@@ -292,11 +292,14 @@ UniFi writes are explicit operator commands on SQLite; the Kubernetes root
 refuses an Integration that enables one. The record mirror makes the UniFi
 provider a publisher whose roles say `Reviewed`: a periodic or reconcile sync
 of such a publisher builds no plan and applies nothing. It reads the provider
-only when a ledger row is pending, and then only settles that intent from a
-fresh complete reread (confirm, or abandon when the site shows exactly the
-baseline and none of the policies a partial create had acknowledged). New operations run only from a reviewed sync bound to a preview
-digest. DNS policies cannot carry an ownership marker, so the adapter reports
-every A and CNAME policy as an `Unmarked` row, and every other policy as a
+only when a ledger row is pending. A complete reread confirms the intended
+state or abandons the exact baseline with its original IDs. For a partial
+create, all acknowledged IDs must also be gone to abandon the intent. Mixed
+state or a foreign claim at the record's name keeps the intent pending. A
+restart or lease handoff does not replay it. New operations run only from a
+reviewed sync bound to a preview digest. DNS policies cannot carry an
+ownership marker, so the adapter reports every A and CNAME policy as an
+`Unmarked` row, and every other policy as a
 claim on its name. The planner treats an unmarked row as the Integration's
 exactly when the confirmed ledger of its RRset lists its ID; recovery also
 accepts an ID that the provider acknowledged to the pending intent's own
@@ -312,7 +315,10 @@ action failure is an uncertain outcome, and nothing is replayed.
 flowchart TD
     Tick["Poll or reconcile tick"] --> Pending{"Ledger row pending?"}
     Pending -- no --> Observe["Observe inventory only"]
-    Pending -- yes --> Reread["Complete DNS policy reread"] --> Settle["Confirm, abandon, or stay pending"] --> Observe
+    Pending -- yes --> Reread["Read complete DNS policy state"] --> State{"Exact intended state or baseline?"}
+    State -- "Intended, ownership intact" --> Confirm["Confirm without replay"] --> Observe
+    State -- "Baseline, no acknowledged create IDs" --> Abandon["Abandon without replay"] --> Observe
+    State -- "Mixed or foreign claim" --> Retain["Keep pending"] --> Observe
     Review["Reviewed sync with preview digest"] --> Plan["Plan: unmarked rows owned only by ledger IDs"]
     Plan --> Effects["One request per policy effect, no retry"]
     Effects --> Receipt["Reread and receipt"]
@@ -464,8 +470,10 @@ sequenceDiagram
 
 `kube.IntegrationSourceBackend` stages the chunks and rechecks that each is
 durable before the head write; a lost head CAS writes nothing and leaves the
-previous source plus unreferenced chunks. A head write that was sent and not
-acknowledged (`kube.ErrSourceOutcomeUnknown`) is resolved by one read of the
+previous source plus unreferenced chunks. A Kubernetes API rejection of a
+head write (400, 403, 413 or 422) also leaves the source unchanged and is
+reported as a refusal (`kube.ErrSourceRejected`). A head write whose outcome
+is unknown (`kube.ErrSourceOutcomeUnknown`) is resolved by one read of the
 head: the head written is a commit; anything else is reported as an
 uncertain outcome (`integration_uncertain`, the intent pending) and never
 written again. Every private integration carrier

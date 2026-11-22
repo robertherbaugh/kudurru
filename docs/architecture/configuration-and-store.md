@@ -115,8 +115,10 @@ converted take part in that routing: a classless reverse prefix with the zones
 CoreDNS expands it to, and a block whose keys cannot be read makes the routing
 unknown, so no local answer is imported (imported conditional routes are
 reported as possibly taken by it). When blocks on different ports answer the
-same name, the block on the lowest port wins and the other answers are
-reported; on one port such a conflict is refused. Every emitted plan is checked in tests
+same name, the block on the lowest port wins. The report counts distinct names
+whose answers were omitted and lists the ports where those omitted answers were
+served. Only retained answers are reported as imported on every listener. On
+one port such a conflict is refused. Every emitted plan is checked in tests
 with the CRD validator and the configuration validation (D392). Every other plugin is named in the loss report;
 directive names that are not documented CoreDNS plugins are counted with the
 name redacted. The resulting `Plan` follows the same selection, size checks and
@@ -800,8 +802,10 @@ write block that precedes a durable fence, ends the current term: the store
 cancels the term context before the new authority becomes visible, so a
 leader-only loop that sees its token retired always finds its term already
 over and stops quietly instead of failing and restarting. The cluster runner
-treats an error returned after the term ended as the end of the term: it logs
-nothing, counts no restart and leaves the runnable's last error empty.
+treats a non-panic error returned after the term ended as the end of the term:
+it does not log a failure or count a restart. `RunnableStatus.LastError` is
+empty if the runner has not recorded a failure; otherwise it retains the prior
+failure across term end and later successful invocations.
 
 ### The controller
 
@@ -817,8 +821,12 @@ status only when it differs; a full re-list every 10 minutes.
 | ClientGroup | `members` |
 | Policy | `Degraded` (MissingReference, UnknownService, UnknownCategory) |
 
-Events (`SerialBumped`, `Duplicated`, `OutsideZone`, …) go to the log only;
-the Kubernetes Events sink exists but is not wired yet.
+Events (`SerialBumped`, `Duplicated`, `OutsideZone`, …) go to the structured
+log. On Kubernetes, the leader also offers them to a bounded core/v1 Event
+writer. Event writes are not part of the store or status-write path. The
+controller watches only the kinds listed above, not core/v1 Events, so
+posting or aggregating an Event cannot enqueue another reconcile. SQLite
+continues to use the structured log alone.
 
 ## Settings
 
@@ -1340,8 +1348,14 @@ secret. A revocation keeps the owner or `tokens.delete` rule and its retained
 `404`, and is emitted under the command scope only, because it may revoke the
 token that sent it. For both commands a credential that the primary no longer
 accepts or authorizes is a retained `401` or `403`, with the same dedup guard
-as `auth.logout`. After a commit the follower pulls once and answers after its
-own view serves the result: it seals the new cookie, or waits (at most five
+as `auth.logout`. A member transport refusal is different: if the primary
+rejects the member exchange before command execution (`401` or an authority
+`409`), a forwarded password, token, session, or object mutation answers
+`503 unavailable` with "cluster authority changed," not a user credential
+error. If the primary may have run the command and the outcome cannot be
+relayed, the follower answers `503 completion_unknown`; it does not replay
+the request. After a commit the follower pulls once and answers after its own
+view serves the result: it seals the new cookie, or waits (at most five
 seconds) until its view carries the new password hash, authenticates the new
 token, or no longer lists the revoked one. A token caller's password change is
 answered for the original principal with `mustChangePassword` cleared, as the
@@ -1356,9 +1370,9 @@ is answered `503 committed_output_unavailable` (the password changed; sign in
 with the new one), and the message names the cause: the route's bound ran out,
 the cookie settings changed before the session could be issued, or another
 refusal of the seal. Every such refusal comes before the cookie and the answer
-are written. A committed change is never answered `unavailable`, which means that
-nothing was sent. Every one of these routes gets the 30-second bound before
-body read. A mutation without a typed command is
+are written. A committed change is never answered `unavailable`, which means
+that the change did not run. Every one of these routes gets the 30-second
+bound before body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
 
@@ -1370,9 +1384,14 @@ sequenceDiagram
     C->>F: PUT /objects/dnsrecordsets/default/www
     F->>F: Normalize document, early admission, capture source (30 s)
     F->>P: objects.write (member mTLS, raw credential proof)
-    P->>P: Same command body, exact reauthorization, effect + audit + dedup
-    P-->>F: Outcome before the writer lock is released: committed object or exact refusal
-    F-->>C: Primary's public result (served locally after the next pull)
+    alt Member exchange rejected before execution
+        P-->>F: Member transport 401 or authority 409
+        F-->>C: 503 unavailable (cluster authority changed)
+    else Command accepted
+        P->>P: Same command body, exact reauthorization, effect + audit + dedup
+        P-->>F: Outcome before the writer lock is released: committed object or exact refusal
+        F-->>C: Primary's public result (served locally after the next pull)
+    end
 ```
 
 ### What a follower does with a mutation

@@ -493,6 +493,14 @@ read every matching boundary fact. Local readers pin a real WAL snapshot while
 copying pending totals, after acquiring a reader connection and before releasing
 the writer lock. SQL facts, index cells and pending totals describe one cut.
 
+Late writes into a completed hour make that hour and its day unsafe to read
+from the coarse tiers until maintenance rebuilds them. SQLite records the
+dirty hour in the same transaction as its minute rollups and removes the
+marker in the rebuild transaction. After a restart the reader still falls back
+to finer tiers, and the shipper still sees the held-back completion boundary.
+Count-based statistics use minute buckets at partial-hour edges; raw history
+filters use exact timestamps.
+
 Names, clients, upstreams, zones, lists and policies are stored once in
 `dict_*` tables and referenced by ID. Charts read the rollups, so a 30-day
 chart does not scan 30 days of rows. The database is per node: in a
@@ -664,6 +672,15 @@ sequenceDiagram
 Off (the default), nothing reads or removes the option and the chain does
 one nil check per stage.
 
+## Kubernetes controller Events
+
+The controller logs its operational transitions and, with the Kubernetes
+driver, offers them to a 128-entry queue without waiting. A single worker
+uses client-go's Event correlation and spam filtering before creating or
+patching core/v1 Events. Each delivery has a five-second deadline. Shutdown
+cancels the worker without flushing the queue. The API write cannot hold up
+DNS, a status write, or the next reconcile. SQLite uses only the log sink.
+
 ## Metrics
 
 All metric labels are bounded: list names, upstream names and status values,
@@ -676,10 +693,12 @@ never client addresses or query names.
 | Upstreams, recursion and cache | see [upstreams and the cache](upstreams-and-cache.md#metrics) (`kudurru_upstream_*`, `kudurru_recursor_*`, `kudurru_cache_*`) |
 | Store and zonecache | `kudurru_store_operations_total`, `kudurru_store_snapshot_age_seconds`, `kudurru_zonecache_rebuild_duration_seconds`, `kudurru_zone_serial`, `kudurru_zone_records` |
 | Control plane | `kudurru_leader`, `kudurru_controller_reconcile_duration_seconds`, `kudurru_objects_diagnoses` |
+| External zones | `kudurru_external_zone_source_list_total{kind,result}`, `kudurru_external_zone_source_objects{kind}` (latest attempted list for currently selected kinds, on the elected replica) |
 | Blocking | `kudurru_blocking_enabled`, `kudurru_blockpage_requests_total` |
 | Query log | `kudurru_querylog_events_total`, `kudurru_querylog_dropped_total{stage,sink}`, `kudurru_querylog_db_bytes`, `kudurru_querylog_write_duration_seconds` |
 | Additional query-log sinks | `kudurru_sink_sent_total{sink}`, `kudurru_sink_errors_total{sink}` (failed attempts to open, write, flush or close), `kudurru_sink_queue_length{sink}`, `kudurru_sink_last_success_timestamp_seconds{sink}`; one series per configured `querylog.sinks` name, removed with the sink. `GET /querylog/sinks` returns the same state of the answering node (`SinkHost.Status`) |
 | Tracing | `kudurru_tracing_traceparent_total{result}` (accepted, untrusted, ignored, malformed), `kudurru_tracing_traces_total{result}` (not_kept, tail_limited, exported, queue_full, export_failed, shutdown), `kudurru_tracing_queue_length`; kept traces add a `trace_id` exemplar to `kudurru_dns_request_duration_seconds` |
+| Kubernetes controller Events | `kudurru_controller_events_dropped_total{reason}` (`queue_full`, `write_failed`, `invalid_event`); excludes intentional spam filtering and shutdown |
 | API | `kudurru_api_requests_total`, `kudurru_api_request_duration_seconds` |
 | Edge and VIP | `kudurru_edge_renders_total`, `kudurru_edge_dnsdist_restarts_total`, `kudurru_edge_backend_up`, `kudurru_vip_master` (on the supervisors' own ports) |
 

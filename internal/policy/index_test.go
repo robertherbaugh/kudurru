@@ -549,13 +549,24 @@ func BenchmarkBuild(b *testing.B) {
 func TestPendingBlockListsReachTheDecision(t *testing.T) {
 	disabled := blockList(ns, "off", "block")
 	disabled.Annotations = map[string]string{"kudurru.io/enabled": "false"}
+	feed := blockList(ns, "feed", "block")
+	feed.Spec.Sources = []v1alpha1.ListSource{{Format: "rpz", RPZ: &v1alpha1.RPZSource{ZoneName: "policy.test.", Primaries: []string{"192.0.2.53:53"}}}}
+	download := blockList(ns, "download", "block")
+	download.Spec.Sources = []v1alpha1.ListSource{{URL: "https://lists.example/ads.txt", Format: "domains"}}
+	disabledSource := feed.DeepCopy()
+	disabledSource.Name = "disabled-source"
+	disabledSource.Spec.Sources[0].Enabled = new(false)
 	ix := Build(Input{
-		ClientGroups: []*v1alpha1.ClientGroup{group(ns, "default", v1alpha1.ClientMatcher{CIDR: "0.0.0.0/0"})},
-		Policies: []*v1alpha1.Policy{
-			pol(ns, "default", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockListRefs: []string{"feed", "off", "missing", "feed"}}),
-			pol(ns, "second", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, Priority: -1, BlockListRefs: []string{"feed"}}),
+		ClientGroups: []*v1alpha1.ClientGroup{
+			group(ns, "default", v1alpha1.ClientMatcher{CIDR: "10.0.0.0/24"}),
+			group(ns, "download", v1alpha1.ClientMatcher{CIDR: "10.0.1.0/24"}),
 		},
-		BlockLists: []*v1alpha1.BlockList{blockList(ns, "feed", "block"), disabled},
+		Policies: []*v1alpha1.Policy{
+			pol(ns, "default", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockListRefs: []string{"feed", "off", "missing", "feed", "download", "disabled-source"}}),
+			pol(ns, "second", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, Priority: -1, BlockListRefs: []string{"feed"}}),
+			pol(ns, "download", v1alpha1.PolicySpec{ClientGroupRefs: []string{"download"}, BlockListRefs: []string{"download", "disabled-source"}}),
+		},
+		BlockLists: []*v1alpha1.BlockList{feed, disabled, download, disabledSource},
 	}, Options{})
 	d := ix.SelectPolicy(client("10.0.0.1"), time.Now())
 	if got := d.PendingBlockLists(); !slices.Equal(got, []string{"default/feed"}) {
@@ -566,6 +577,12 @@ func TestPendingBlockListsReachTheDecision(t *testing.T) {
 	}
 	if list := d.List("default/feed").BlockList(); list == nil || list.Name != "feed" {
 		t.Fatalf("pending list object = %v", list)
+	}
+	if onlyDownload := ix.SelectPolicy(client("10.0.1.1"), time.Now()); onlyDownload.Filters() || len(onlyDownload.PendingBlockLists()) != 0 {
+		t.Fatalf("no enabled RPZ source: filters=%t pending=%v", onlyDownload.Filters(), onlyDownload.PendingBlockLists())
+	}
+	if !slices.Contains(ix.NotLoaded(), "default/download") {
+		t.Fatalf("pending download no longer gates strict readiness: %v", ix.NotLoaded())
 	}
 	if (*Decision)(nil).PendingBlockLists() != nil {
 		t.Fatal("nil decision has pending lists")

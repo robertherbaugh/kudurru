@@ -1,0 +1,12 @@
+go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2 use 1.37.x --bin-dir /home/vercel-sandbox/kudurru/bin -p path
+go: downloading sigs.k8s.io/controller-runtime v0.25.2
+go: downloading sigs.k8s.io/controller-runtime/tools/setup-envtest v0.25.2
+go: downloading github.com/spf13/pflag v1.0.10
+go: downloading go.uber.org/zap v1.27.0
+go: downloading github.com/spf13/afero v1.12.0
+go: downloading github.com/go-logr/logr v1.4.3
+go: downloading github.com/go-logr/zapr v1.3.0
+go: downloading golang.org/x/text v0.40.0
+go: downloading go.yaml.in/yaml/v2 v2.4.4
+go: downloading go.uber.org/multierr v1.10.0
+/home/vercel-sandbox/kudurru/bin/k8s/1.37.0-linux-amd64
