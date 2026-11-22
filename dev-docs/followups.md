@@ -7,9 +7,12 @@ creation does not waive release requirements.
 
 Package lifecycle (#167, part of #133): the optional `packages` workflow
 exercises maintainer scripts and systemd on an Ubuntu VM and in Rocky Linux.
-Retain a green hosted `package-lifecycle` artifact before proposing a required
-check. The November 16, 2026 RPM rehearsal did not run maintainer scripts or
-systemd, and snapshot results do not replace evidence for the published packages.
+The [verified closeout](milestones/v0.2/final-acceptance.md#verified-issue-closeout-november-21-2026)
+records green hosted `package-lifecycle` results and the checksums for both
+snapshot formats.
+The check remains optional. The November 16, 2026 RPM rehearsal did not run
+maintainer scripts or systemd, and snapshot results do not replace evidence
+for the published packages.
 See [the release checklist](release-checklist.md#3-checks-before-ga-ci-and-the-owners-hardware).
 
 For #133, use the [manual release acceptance runbook](milestones/v0.2/manual-acceptance.md)
@@ -197,6 +200,12 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+Current K3/K7 follow-through: [mounted Kubernetes evidence for #156](milestones/v0.2/followup-audit.md#k3k7-mounted-evidence-156)
+supersedes the historical test gaps below for election, shared budgets,
+holder recovery, partition and re-acquisition, cleanup fencing, rotation,
+license expiry and UID replacement. This is local envtest evidence only;
+it does not change deployment support or claim live qualification.
+
 | Item | Source | Target |
 |---|---|---|
 | Define what `kudurru integrations list/get -o name` should print. The current list prints a table and get prints YAML; #154 preserves both formats. | PR #192 review | Integration CLI follow-up |
@@ -207,7 +216,7 @@ term (F28-HISTORY-RECHECK, D369).
 | Kubernetes integration host: K3 and K7 stay partial (two-replica budget sharing with hand-placed Leases only, credential rotation proven by order only, no holder-change, partition or mid-cleanup lease-loss qualification, expired license and re-created Integration proven at the adapter only); UniFi record publication and Tier-B webhooks are refused on Kubernetes; native Secret credential references are disabled; the CLI `get` is not run on Kubernetes | F09B-KUBE-ROOT, F09B-KUBE-SOURCES, F09B-OPEN | v0.2 |
 | Edge blocks: the five-minute restore hold measures wall time since the first lower sighting, so two pulls five minutes apart accept a stale revision at once; after a deliberate restore new blocks are delayed up to five minutes (not in the runbook); an owner whose only backend misses a pull has its blocks cleared and reinstalled | EDGE-DYNBLOCK verify | v0.2 |
 | Known issue: the pinned dnsdist 2.1.3 edge never answers a DoQ or DoH3 request whose QUIC FIN arrives in its own empty frame. The live client-ID test's canary fails once an image bump fixes it (then drop the retry and the known-issue text); the canary cannot tell the defect from another failure; `h3Post` leaks a goroutine on a dial failure; one DoQ loss was attributed to the defect by inference only | EDGE-CLIENT-ID | dnsdist upstream; after v0.2.0 |
-| CoreDNS same-name multi-port loss reporting (#161) and Kubernetes RPZ diagnostics (#162) remain open. The local #162 baseline already exposes RPZ fields in dig; the policy-state count and readiness are incorrect. The [RPZ-OPEN follow-up](milestones/v0.2/followup-audit.md#sqlite-restart-and-pending-filters-163) measured local SQLite restart windows of 152 ms and 303 ms from first response to first RPZ NXDOMAIN (no NOERROR), limited pending filters to RPZ, and pinned the CLI fixture messages. The signed Kubernetes offline restart still fails closed by design (D390). | RPZ-KUBE, RPZ-DIAG, RPZ-OPEN; #130, #161, #162, #163 | v0.2 |
+| CoreDNS same-name multi-port loss reporting (#161) and Kubernetes RPZ policy-state counts and readiness (#162) are fixed. The [RPZ-OPEN follow-up](milestones/v0.2/followup-audit.md#sqlite-restart-and-pending-filters-163) measured local SQLite restart windows of 152 ms and 303 ms from first response to first RPZ NXDOMAIN (no NOERROR), limited pending filters to RPZ, and pinned the CLI fixture messages. The signed Kubernetes offline restart still fails closed by design (D390). | RPZ-KUBE, RPZ-DIAG, RPZ-OPEN; #130, #161, #162, #163 | Implemented; see the [verified closeout](milestones/v0.2/final-acceptance.md#verified-issue-closeout-november-21-2026) |
 | Settings after the first 0.2 start: `PreparedImage.CommittedDynamicOwnership` rebuilds the zone's dynamic index on every publication; `docs/deploy/runbooks.md` (near line 600) and `docs/deploy/compose-ha.md` (near line 108) say a later file edit of any cluster key is not applied, which is inaccurate for restart-required keys; static twins cannot change a cluster setting after their first 0.2 start; `TestAnchorUpgradeStaticTwinV010/LaterFileEditNotApplied` does not assert the seeded value | QUAL-OPEN2 and QUAL-MIXED-VERSION verify | v0.2 |
 | G21-PERMISSIONS (#139), closed with local evidence at `62763b3750cbaf025407fbec7d11a6c778ae1fdf`: five same-package negative controls fail on `c36efe14` and `ce3ab6e2` and pass with the existing six after the fix. The 75 verbose `uses, first` inventory lines match both baselines. `CGO_ENABLED=1 go test ./internal/api -run '^Test(RoutePermissionLint\|HandlerPermissionScanCreditsOnlyChecks\|PermissionVerbsAreUsedOrReserved\|LintVerbUseCatchesUnusedAndStale)$' -race -count=1 -v` passed (4 tests, 11 subtests); `CGO_ENABLED=0 go vet ./internal/api` passed; `CGO_ENABLED=0 golangci-lint run ./internal/api/...` (v2.15.0) reported 0 issues; `python3 -B -m unittest discover -s hack -p 'test_bench_*.py'` passed all 53 bench-guard tests on an isolated rerun after one `Text file busy` fixture failure. These results replace the missing evidence without reclassifying the empty historical `fix-bench01.log` and `fix-lint02.log`. The bare-name item is closed; D393 in `dev-docs/design-record.md` already closes the `settings.operatorSeesQueryLog` wording item. The review follow-up adds range-declaration and method-receiver controls: both fail on `7c3f1355`, all 13 scanner subtests pass under race after the follow-up, and the 75 inventory lines still match. No hosted acceptance or performance claim. | G21-PERMISSIONS verify | v0.2 |
 | Evidence gaps: FLAKE-PORT-RACE's ledger points at unfinished logs (use `verify-01-mounted-race.log`, `verify-03-lint.log`) | FLAKE-PORT-RACE verify | v0.2 |
