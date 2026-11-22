@@ -17,12 +17,41 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import type { Page } from '@playwright/test';
 import { env, expect, expectRendered, main, selector, settle, SIGNED_OUT_401, test } from './fixtures';
 import { choose } from './support/astryx';
-import { adminApi, object, suffix } from './support/api';
+import { adminApi, type Api, object, suffix } from './support/api';
 import { startInventoryPeer, type InventoryPeer } from './support/inventorypeer';
 import { ADMIN_USER, startServer, type Server } from './support/kudurru';
 import type { DNSZone, ZoneRecord } from '../src/api/types';
+
+async function cleanupZone(page: Pick<Page, 'goto'>, api: Pick<Api, 'del'>, paths: string[]): Promise<void> {
+  let cleanupFailure: unknown;
+  try {
+    await page.goto('/zones');
+  } catch (error) {
+    cleanupFailure = error;
+  }
+  for (const cleanupPath of paths) {
+    try {
+      await api.del(cleanupPath);
+    } catch (error) {
+      cleanupFailure ??= error;
+    }
+  }
+  if (cleanupFailure) throw cleanupFailure;
+}
+
+test('zone cleanup continues after a navigation failure', async () => {
+  const navigationFailure = new Error('test navigation failure');
+  const deleted: string[] = [];
+  await expect(cleanupZone(
+    { goto: async () => { throw navigationFailure; } },
+    { del: async (cleanupPath) => { deleted.push(cleanupPath); } },
+    ['/zones/test', '/objects/clientgroups/default/test'],
+  )).rejects.toBe(navigationFailure);
+  expect(deleted).toEqual(['/zones/test', '/objects/clientgroups/default/test']);
+});
 
 test.describe('inventory with a webhook inventory peer', () => {
   let server: Server;
@@ -132,6 +161,7 @@ test('a client-group view is added beside the default data, listed and deleted a
   const api = await adminApi(page);
   await api.put(`/objects/clientgroups/default/${group}`, object('ClientGroup', group, { clients: [{ ip: '192.0.2.200' }] }));
   await api.put(`/objects/dnszones/${name}`, { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec: { zoneName: apex, type: 'primary' } });
+  let failed = false;
   try {
     await expect.poll(async () => {
       const current = await api.get<DNSZone>(`/objects/dnszones/${name}`);
@@ -193,11 +223,16 @@ test('a client-group view is added beside the default data, listed and deleted a
     await expect(records.getByRole('row').filter({ hasText: '203.0.113.10' })).toHaveCount(1);
     const left = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.recordType === 'A');
     expect(left.map((r) => `${r.kudurru?.view ?? ''}=${r.targets.join(',')}`)).toEqual(['=203.0.113.10']);
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    // Leave the detail page before deleting so its queries cannot race cleanup.
-    await page.goto('/zones');
-    await api.del(`/zones/${name}`);
-    await api.del(`/objects/clientgroups/default/${group}`);
+    try {
+      // Leave the detail page before deleting so its queries cannot race cleanup.
+      await cleanupZone(page, api, [`/zones/${name}`, `/objects/clientgroups/default/${group}`]);
+    } catch (error) {
+      if (!failed) throw error;
+    }
   }
 });
 
@@ -216,6 +251,7 @@ test('a view of a non-default namespace is edited in its own record set and dele
   await api.put(`/objects/dnszones/${name}`, { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec: { zoneName: apex, type: 'primary' } });
   const kidsEndpoints = async () =>
     (await api.get<{ spec: { endpoints: { dnsName: string; targets: string[]; kudurru?: { view?: string; comment?: string } }[] } }>(`/objects/dnsrecordsets/kids/${kidsSet}`));
+  let failed = false;
   try {
     await expect.poll(async () => {
       const current = await api.get<DNSZone>(`/objects/dnszones/${name}`);
@@ -286,11 +322,15 @@ test('a view of a non-default namespace is edited in its own record set and dele
     }, { timeout: 30_000, intervals: [1_000] }).toBe(0);
     const left = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.kudurru?.view);
     expect(left.map((r) => `${r.namespace}/${r.kudurru?.view}=${r.targets.join(',')}`)).toEqual([`default/${group}=10.0.0.20`]);
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    // Leave the detail page before deleting so its queries cannot race cleanup.
-    await page.goto('/zones');
-    await api.del(`/zones/${name}`);
-    await api.del(`/objects/clientgroups/default/${group}`);
-    await api.del(`/objects/clientgroups/kids/${group}`);
+    try {
+      // Leave the detail page before deleting so its queries cannot race cleanup.
+      await cleanupZone(page, api, [`/zones/${name}`, `/objects/clientgroups/default/${group}`, `/objects/clientgroups/kids/${group}`]);
+    } catch (error) {
+      if (!failed) throw error;
+    }
   }
 });
