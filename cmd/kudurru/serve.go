@@ -29,6 +29,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
 	"github.com/robertherbaugh/kudurru/ee/branding"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
+	"github.com/robertherbaugh/kudurru/ee/integration"
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
@@ -246,6 +247,10 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 }
 
 func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
+	return runServeWithKubeIntegrationFactory(ctx, cfg, licenseKey, nil)
+}
+
+func runServeWithKubeIntegrationFactory(ctx context.Context, cfg *config.Config, licenseKey string, factory func(string) (integration.Integration, error)) error {
 	if cfg.Cluster.Static() {
 		if err := cfg.Validate(); err != nil {
 			return err
@@ -1169,7 +1174,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// objects.
 	var kubeIntegrations *kubeIntegrationRuntime
 	if kubeStore != nil {
-		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger, Sources: kubeSources})
+		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger, Sources: kubeSources, Factory: factory})
 		if err != nil {
 			return err
 		}

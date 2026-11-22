@@ -16,18 +16,24 @@ import (
 // a signer for it.
 func trustTestKey(t *testing.T) func(c license.Claims) string {
 	t.Helper()
+	return trustTestKeyAt(t, time.Now)
+}
+
+func trustTestKeyAt(t *testing.T, now func() time.Time) func(c license.Claims) string {
+	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	old := newLicenseManager
 	newLicenseManager = func() (*license.Manager, error) {
-		return license.New(license.Options{Keyring: license.Keyring{"t": pub}})
+		return license.New(license.Options{Keyring: license.Keyring{"t": pub}, Now: now})
 	}
 	t.Cleanup(func() { newLicenseManager = old })
 	return func(c license.Claims) string {
 		if c.ExpiresAt == 0 {
-			c.IssuedAt, c.ExpiresAt = time.Now().Add(-time.Hour).Unix(), time.Now().Add(24*time.Hour).Unix()
+			at := now()
+			c.IssuedAt, c.ExpiresAt = at.Add(-time.Hour).Unix(), at.Add(24*time.Hour).Unix()
 		}
 		c.ID, c.Licensee = "lic_t", "Homelab Hank"
 		k, err := license.Sign(priv, "t", c)
