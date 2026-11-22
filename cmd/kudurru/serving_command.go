@@ -192,7 +192,8 @@ func (e notDispatchedError) Unwrap() error { return e.err }
 // publication check; afterRecapture runs after a pre-dispatch recapture.
 // dispatch runs when an attempt's transaction body begins. afterStage runs
 // after a successful callback, before the transaction's final commit checks;
-// afterCommit runs after a successful commit, before acknowledgment.
+// afterCommit runs after a successful commit of a command with an
+// acknowledgment step, before that acknowledgment.
 type commandHooks struct {
 	beforeCheck    func(ctx context.Context)
 	afterRecapture func(ctx context.Context)
