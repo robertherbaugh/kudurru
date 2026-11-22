@@ -466,25 +466,53 @@ func memberCaptureError(ctx context.Context, err error) error {
 	}
 }
 
+type memberForwardRefusal uint8
+
+const (
+	memberForwardUncertain memberForwardRefusal = iota
+	memberForwardForbidden
+	memberForwardAuthorityChanged
+	memberForwardUnavailable
+)
+
+// classifyMemberForwardRefusal gives an unverifiable outcome precedence over a
+// definite authorization refusal. sent means an authenticated outcome arrived,
+// not merely that the request was dispatched. Other failures after that outcome
+// are uncertain; without it, authority refusals are distinct from unavailability.
+func classifyMemberForwardRefusal(err error, sent bool) memberForwardRefusal {
+	switch {
+	case errors.Is(err, clusterreplica.ErrOutcomeUnknown):
+		return memberForwardUncertain
+	case errors.Is(err, clusterreplica.ErrForbidden), errors.Is(err, servingauth.ErrDenied):
+		return memberForwardForbidden
+	case sent:
+		return memberForwardUncertain
+	case errors.Is(err, clusterreplica.ErrUnauthorized), errors.Is(err, replication.ErrFenced), errors.Is(err, replication.ErrCAS),
+		errors.Is(err, replication.ErrReadOnly), errors.Is(err, replication.ErrPromotionConflict):
+		return memberForwardAuthorityChanged
+	default:
+		return memberForwardUnavailable
+	}
+}
+
 // objectForwardError keeps clean primary refusals distinct from an uncertain
 // outcome. Nothing is retried; an unknown result needs a fresh observation.
 func objectForwardError(err error, sent bool) error {
-	switch {
-	case errors.Is(err, clusterreplica.ErrForbidden), errors.Is(err, servingauth.ErrDenied):
+	switch classifyMemberForwardRefusal(err, sent) {
+	case memberForwardForbidden:
 		return &api.Error{Status: http.StatusForbidden, Body: api.ErrorBody{Key: api.KeyForbidden, Message: "the primary refused this credential for the object"}}
-	case errors.Is(err, clusterreplica.ErrUnauthorized):
-		return &api.Error{Status: http.StatusUnauthorized, Body: api.ErrorBody{Key: api.KeyUnauthenticated, Message: "the primary did not accept this credential"}}
-	case sent && (errors.Is(err, replication.ErrFenced) || errors.Is(err, replication.ErrCAS)):
-		// The primary answered, and this follower's recheck before relaying
-		// the answer failed: its own source or membership changed during the
-		// exchange. The primary may have committed.
-		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
-			Message: "the primary answered, but this follower's source changed before it could relay the answer; the write may have been applied; inspect the object before a new decision; do not replay this request"}}
-	case errors.Is(err, replication.ErrFenced), errors.Is(err, replication.ErrCAS), errors.Is(err, replication.ErrReadOnly), errors.Is(err, replication.ErrPromotionConflict), errors.Is(err, clusterreplica.ErrExpired):
-		return objectForwardUnavailable("cluster authority changed; review current state before a new decision")
-	case !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown):
+	case memberForwardAuthorityChanged:
+		return objectForwardUnavailable("cluster authority changed; the write was not applied; review current state before a new decision")
+	case memberForwardUnavailable:
 		return objectForwardUnavailable("the enrolled primary is unavailable; the write was not applied")
 	default:
+		if sent && (errors.Is(err, replication.ErrFenced) || errors.Is(err, replication.ErrCAS)) {
+			// The primary answered, and this follower's recheck before relaying
+			// the answer failed: its own source or membership changed during the
+			// exchange. The primary may have committed.
+			return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
+				Message: "the primary answered, but this follower's source changed before it could relay the answer; the write may have been applied; inspect the object before a new decision; do not replay this request"}}
+		}
 		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
 			Message: "the forwarded write's outcome is unknown; inspect the object before a new decision; do not replay this request"}}
 	}
