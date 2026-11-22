@@ -61,7 +61,8 @@ export async function hasListSourcesAPI(api: Api): Promise<boolean> {
  * preceding commit is published, or the exact unavailable response marked
  * Retry-After by the command API. Nothing ran, so this is not a replay. Any
  * other answer, including an unmarked 503 from a command, fails; the bound is
- * ten seconds. The failure message names the status and error key, never a body.
+ * ten seconds. The failure message names the status and parsed error fields,
+ * never a raw body.
  */
 export async function sendBeforeAdmission(send: () => Promise<APIResponse>, what: string): Promise<APIResponse> {
   const deadline = Date.now() + 10_000;
@@ -80,9 +81,11 @@ export async function sendBeforeAdmission(send: () => Promise<APIResponse>, what
     }
     const retry = Number(response.headers()['retry-after']);
     const safePreDispatch = key === 'generation_pending'
+      // Must equal currentCommandAPIError's message in
+      // cmd/kudurru/serving_settings_api.go; Retry-After marks notDispatchedError (D399).
       || (key === 'unavailable' && message === 'current writable serving generation unavailable');
     if (response.status() !== 503 || !safePreDispatch || !(retry >= 1) || Date.now() + retry * 1000 > deadline) {
-      throw new Error(`${what}: HTTP ${response.status()} ${typeof key === 'string' ? key : ''}`);
+      throw new Error(`${what}: HTTP ${response.status()} ${typeof key === 'string' ? key : ''}${typeof message === 'string' ? `: ${message}` : ''}`);
     }
     console.log(`${what}: 503 ${typeof key === 'string' ? key : ''}, asked again after Retry-After ${retry}s`);
     await new Promise((resolve) => setTimeout(resolve, retry * 1000));
