@@ -278,9 +278,10 @@ func TestBINDRPZRuntimeTransfersRefreshRestart(t *testing.T) {
 			fx.clock.add(10 * time.Second)
 			fx.m.Wake()
 			changed := awaitStatus(t, fx, func(s Status) bool { return s.Serial == 2 })
-			if !changed.ConfirmedAt.After(renewed.ConfirmedAt) || rx.ixfr.Load() != 1 || !b.log.contains("IXFR started") {
+			if !changed.ConfirmedAt.After(renewed.ConfirmedAt) || rx.ixfr.Load() != 1 {
 				t.Fatal("journal IXFR did not update feed")
 			}
+			eventually(t, func() bool { return b.log.contains("IXFR started") })
 			fresh, err := rx.TransferClient.AXFR(t.Context(), runtimeJob(t, fx).dz, list.Spec.Sources[0].RPZ.Primaries[0])
 			if err != nil {
 				t.Fatal(err)
