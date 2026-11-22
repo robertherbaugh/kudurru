@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/transport"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -248,7 +249,7 @@ func newTestStore(t testing.TB, opts Options) *Store {
 	return newStoreOn(t, shared.cfg, opts)
 }
 
-func newStoreOn(t testing.TB, cfg *rest.Config, opts Options) *Store {
+func newStoreOn(t testing.TB, cfg *rest.Config, opts Options, wrap ...transport.WrapperFunc) *Store {
 	t.Helper()
 	if opts.Namespace == "" {
 		opts.Namespace = "kudurru-system"
@@ -259,7 +260,7 @@ func newStoreOn(t testing.TB, cfg *rest.Config, opts Options) *Store {
 	if opts.Logger == nil {
 		opts.Logger = testLogger()
 	}
-	s, err := New(cfg, opts)
+	s, err := newStore(cfg, opts, true, nil, wrap...)
 	if err != nil {
 		t.Fatal(err)
 	}
