@@ -1,12 +1,15 @@
 // Copied from dashboard/src/test/setup.ts at dd3dcb0; keep in step by hand.
 // Changes: no MSW server (the portal's tests stub fetch per test with
 // ui/src/test/api.ts, which this file resets); no query-log, canvas or
-// TanStack Virtual stubs (the portal has none of those).
+// TanStack Virtual stubs (the portal has none of those); every test waits for
+// its QueryClients to settle before unmounting and clears them after
+// (ui/src/test/queryClients.ts).
 //
 // Vitest setup: jest-dom matchers and the browser APIs jsdom lacks.
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
+import { clearQueryClients, settleQueryClients } from './queryClients';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
 // Astryx 0.7 also announces EmptyState and Banner text in a visually hidden
@@ -64,7 +67,11 @@ if (typeof dialogProto.showModal !== 'function') {
   };
 }
 
-afterEach(() => {
+// Settle first, with the UI mounted and the fetch stub in place: nothing of
+// the test may still be in flight once jsdom goes away (queryClients.ts).
+afterEach(async () => {
+  await settleQueryClients();
   cleanup();
+  clearQueryClients();
   vi.unstubAllGlobals();
 });
