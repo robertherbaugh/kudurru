@@ -47,6 +47,10 @@ type peerStream struct {
 
 type partitionRule struct{ blocked func(string) bool }
 
+// errVoterUnreachable reports a peer that the partition hook isolates, whether
+// it is refused at dial time or cut on an established connection.
+var errVoterUnreachable = errors.New("dhcp HA: voter is unreachable")
+
 const (
 	maxPeerConnections = 32
 	peerIdleTimeout    = time.Minute
@@ -236,7 +240,7 @@ func (s *peerStream) dial(ctx context.Context, address, kind string, timeout tim
 		}
 	}
 	if peer == "" || s.isBlocked(peer) {
-		return nil, errors.New("dhcp HA: voter is unreachable")
+		return nil, errVoterUnreachable
 	}
 	if err := s.reserve(); err != nil {
 		return nil, err
@@ -380,7 +384,7 @@ func (c *trackedConn) partitioned() bool {
 
 func (c *trackedConn) sever() error {
 	_ = c.Close()
-	return errors.New("dhcp HA: voter is unreachable")
+	return errVoterUnreachable
 }
 
 func (c *trackedConn) Close() error {

@@ -3,6 +3,7 @@ package dhcpha
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -207,4 +208,81 @@ type gatedConn struct {
 func (g *gatedConn) Read(p []byte) (int, error) {
 	g.once.Do(func() { close(g.entered); <-g.proceed })
 	return g.Conn.Read(p)
+}
+
+// The partition must cut sockets made by the real dial and serve paths: both
+// bind the authenticated voter ID, including the accepted Raft socket a
+// follower's handler is already blocked reading when the partition starts.
+func TestPartitionSeversDialedAndAcceptedRaftStreams(t *testing.T) {
+	c := clusterFixture(t)
+	open := func(i int) *peerStream {
+		s, err := newPeerStream(c.configs[i], "transport-test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.start()
+		t.Cleanup(func() { _ = s.Close() })
+		return s
+	}
+	// Each side gets its own one-way rule, so one side cuts while the other
+	// still sends: the cut must come from the side under test.
+	var dialerCut, acceptorCut atomic.Bool
+	dialer, acceptor := open(0), open(1)
+	dialer.blocked.Store(&partitionRule{blocked: func(peer string) bool { return peer == "node2" && dialerCut.Load() }})
+	acceptor.blocked.Store(&partitionRule{blocked: func(peer string) bool { return peer == "node1" && acceptorCut.Load() }})
+	pair := func() (net.Conn, net.Conn) {
+		t.Helper()
+		out, err := dialer.dial(context.Background(), c.configs[1].ListenAddress, "raft", time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = out.Close() })
+		in, err := acceptor.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = in.Close() })
+		for conn, want := range map[net.Conn]string{out: "node2", in: "node1"} {
+			tracked, ok := conn.(*tls.Conn).NetConn().(*trackedConn)
+			if !ok {
+				t.Fatalf("peer socket is not tracked: %T", conn.(*tls.Conn).NetConn())
+			}
+			if peer := tracked.peer.Load(); peer == nil || *peer != want {
+				t.Fatalf("peer socket bound to %v, want %s", peer, want)
+			}
+		}
+		if _, err := out.Write([]byte("ping")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.ReadFull(in, make([]byte, 4)); err != nil {
+			t.Fatalf("connected peers could not exchange data: %v", err)
+		}
+		return out, in
+	}
+	cut := func(name string, isolate *atomic.Bool, reader, writer net.Conn) {
+		t.Helper()
+		reading := make(chan error, 1)
+		go func() { _, err := reader.Read(make([]byte, 16)); reading <- err }()
+		isolate.Store(true)
+		defer isolate.Store(false)
+		// The other side is not partitioned, so its write reaches the socket.
+		if _, err := writer.Write([]byte("append")); err != nil {
+			t.Fatalf("%s: unpartitioned side could not write: %v", name, err)
+		}
+		select {
+		case err := <-reading:
+			if !errors.Is(err, errVoterUnreachable) {
+				t.Fatalf("%s: partitioned read returned %v", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: partitioned read stayed open", name)
+		}
+		if _, err := reader.Write([]byte("reply")); err == nil {
+			t.Fatalf("%s: partitioned socket accepted a write", name)
+		}
+	}
+	out, in := pair()
+	cut("accepted", &acceptorCut, in, out)
+	out, in = pair()
+	cut("dialed", &dialerCut, out, in)
 }
