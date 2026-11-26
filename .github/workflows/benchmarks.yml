@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
           ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
           path: reference
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: 1.27.4
           cache: false
@@ -74,7 +74,7 @@ jobs:
           persist-credentials: false
           # Measure the exact candidate, not GitHub's synthetic merge commit.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
@@ -113,7 +113,7 @@ jobs:
           persist-credentials: false
           ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
           path: reference
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: control/go.mod
           cache: false
@@ -152,7 +152,7 @@ jobs:
           # Last source commit that established the retained original baseline.
           ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
           path: reference
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: control/go.mod
           cache: false
