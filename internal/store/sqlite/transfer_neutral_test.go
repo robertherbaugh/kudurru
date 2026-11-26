@@ -2,11 +2,14 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 	"github.com/robertherbaugh/kudurru/internal/zonestate/zonestatetest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -198,4 +201,132 @@ func TestTransferNeutralCommits(t *testing.T) {
 	if !neutral(t, after) || neutral(t, base) {
 		t.Fatal("the neutral run after a retiring commit has the wrong start")
 	}
+}
+
+// A transfer-neutral run ends at every authority change the store does not
+// note as neutral (D419): an ApplyCluster commit with a section row (noted as
+// not neutral), an authority transition and a fence (never noted, so the
+// published authority differs from the run's). A neutral commit after one of
+// them starts a new run at its own predecessor revision, so only tokens from
+// that revision on are covered.
+func TestTransferNeutralRunEndsAtSectionsTransitionsAndFences(t *testing.T) {
+	ctx := context.Background()
+	setup := func(t *testing.T) (*Store, func() GenerationToken, func()) {
+		t.Helper()
+		s := openTemp(t, zoneStateOptions)
+		if _, err := s.Apply(ctx, zone("home", "example."), store.ApplyOptions{Manager: "test"}); err != nil {
+			t.Fatal(err)
+		}
+		token := func() GenerationToken {
+			t.Helper()
+			_, tok, err := s.ReadServingCandidate(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return tok
+		}
+		statusWrite := func() {
+			t.Helper()
+			var z v1alpha1.DNSZone
+			if err := s.Get(ctx, store.Key{Kind: "DNSZone", Name: "home"}, &z); err != nil {
+				t.Fatal(err)
+			}
+			z.Status.RecordCount++
+			if err := s.UpdateStatus(ctx, &z); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return s, token, statusWrite
+	}
+	covered := func(s *Store, tok GenerationToken) bool { return s.TransferNeutral(tok, s.Authority()) }
+	// newRun checks that the latest (neutral) commit started a new run at its
+	// predecessor revision and that the run does not reach back before the
+	// change.
+	newRun := func(t *testing.T, s *Store, before GenerationToken) {
+		t.Helper()
+		run, a := s.transfer.Load(), s.Authority()
+		if run == nil || !reflect.DeepEqual(run.authority, a) || run.from != a.Installed.Revision-1 {
+			t.Fatalf("the neutral commit after the change did not start a new run at its predecessor: %+v at %d", run, a.Installed.Revision)
+		}
+		if covered(s, before) {
+			t.Fatal("the new run covers a token from before the change")
+		}
+	}
+	// startRun commits one neutral write and checks that it covers base.
+	startRun := func(t *testing.T, s *Store, base GenerationToken, statusWrite func()) {
+		t.Helper()
+		statusWrite()
+		if !covered(s, base) {
+			t.Fatal("the status projection did not start a run")
+		}
+	}
+
+	t.Run("ApplyCluster section row", func(t *testing.T) {
+		s, token, statusWrite := setup(t)
+		base := token()
+		startRun(t, s, base, statusWrite)
+		if _, err := s.ApplyCluster(ctx, nil, store.ApplyOptions{}, []SectionChange{{Section: "runtime", Key: "foreign/witness", Data: json.RawMessage(`{"intact":true}`)}}); err != nil {
+			t.Fatal(err)
+		}
+		if covered(s, base) {
+			t.Fatal("a run continued across an ApplyCluster section row")
+		}
+		if run := s.transfer.Load(); run == nil || !reflect.DeepEqual(run.authority, s.Authority()) || run.from != s.Authority().Installed.Revision {
+			t.Fatal("the section commit was not noted as an empty run at its own revision", run)
+		}
+		after := token()
+		statusWrite()
+		newRun(t, s, base)
+		if !covered(s, after) {
+			t.Fatal("the run after the section row does not cover its own start")
+		}
+	})
+
+	t.Run("authority transition", func(t *testing.T) {
+		s, token, statusWrite := setup(t)
+		base := token()
+		startRun(t, s, base, statusWrite)
+		before := s.Authority()
+		if _, err := s.EnablePrimary(ctx, imageOf(t, s).Generation()); err != nil {
+			t.Fatal(err)
+		}
+		if a := s.Authority(); a.Mode != replication.Primary || a.Incarnation == before.Incarnation {
+			t.Fatal("EnablePrimary did not transition the authority", a)
+		}
+		if covered(s, base) || reflect.DeepEqual(s.transfer.Load().authority, s.Authority()) {
+			t.Fatal("a run continued across an authority transition")
+		}
+		transitioned := token()
+		statusWrite()
+		newRun(t, s, base)
+		// The transition stamped the installed digest that the first commit
+		// of the new authority replaces, so a token from the transition
+		// itself stays uncovered (strict); later tokens are covered.
+		if covered(s, transitioned) {
+			t.Fatal("a token whose installed digest the commit replaced was covered")
+		}
+		after := token()
+		statusWrite()
+		if !covered(s, after) || covered(s, base) {
+			t.Fatal("the run after the transition has the wrong start")
+		}
+	})
+
+	t.Run("fence", func(t *testing.T) {
+		s, token, statusWrite := setup(t)
+		base := token()
+		startRun(t, s, base, statusWrite)
+		term := s.Authority().Term
+		term.Epoch++
+		term.PrimaryID, term.PromotionID = "other-primary", "other-promotion"
+		if _, err := s.ObserveAuthority(ctx, term); err != nil {
+			t.Fatal(err)
+		}
+		if a := s.Authority(); a.Mode != replication.Fenced {
+			t.Fatal("the observation did not fence the store", a)
+		}
+		if covered(s, base) || reflect.DeepEqual(s.transfer.Load().authority, s.Authority()) {
+			t.Fatal("a run continued across a fence")
+		}
+	})
 }
