@@ -11,6 +11,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Preserve pending query-log rollup repairs across restarts so late previous-hour
   writes stay visible to summaries and client counts (#122).
 
+- The elected writer no longer repeats an unchanged provider authority
+  admission every second. Each one held the publication and SQLite writers
+  across a full decode of the security section, which with a full section
+  delayed publication and commands; it now admits again only after a change
+  or at the host deadline, and keeps retrying a failed admission.
+
 ## [0.2.0] - unreleased
 
 ### Added

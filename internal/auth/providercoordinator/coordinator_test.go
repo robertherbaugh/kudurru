@@ -50,7 +50,7 @@ func ready(t *testing.T, f *fixture, count int) {
 func accept(t *testing.T, f *fixture, cs []*providerresources.AuthorityCandidate) {
 	t.Helper()
 	ctx, target := writer(t, f.store)
-	if err := f.coordinator.admit(ctx, target, cs); err != nil {
+	if _, err := f.coordinator.admit(ctx, target, cs); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -130,7 +130,7 @@ func TestCompleteBothOriginAdmissionDetachedDecisionRollbackAndOldCuts(t *testin
 		}
 		return tx.RequireCommitCheck(func(context.Context) error { return abort })
 	}
-	if err := f.coordinator.admit(ctx, target, cs); err != abort {
+	if _, err := f.coordinator.admit(ctx, target, cs); err != abort {
 		t.Fatal("final hook did not reject staged receipts", err)
 	}
 	if held.Sources() != nil || held.Receipts() != nil || held.RegistryDigest() != "" {
