@@ -2033,6 +2033,20 @@ full sections and never hold a failure. The cross-row checks of every decode
 exact owner names are checked in the same walk that bounds a row
 (`boundedOwnerJSON`), not in a separate pass.
 
+Complete-image validation itself is remembered per owner (D423). The Store
+and the serving schema each hold a `replication.ValidationMemo`, passed in
+their `Validation`. It records the images that configuration accepted, keyed
+by the SHA-256 of the exact canonical encoding `Decode` validated together
+with the schema version, kinds and effective limits. A hit returns a
+`Validated` of exactly those bytes. A changed byte, other configuration data,
+a validation without a memo, or a refusal (never remembered) runs every check.
+So one candidate's preparation validates it once per configuration: once with
+the Store's (the publisher's read, which the provider capture reuses), once
+with the schema's (the primary image, which the integration image reuses), and
+once with the generic capture validation (the provider capture, which the
+semantic owners reuse). Another read of the same generation is a new image,
+because its `CreatedAt` differs, and is validated again.
+
 Requests hold leases. Replacement releases the publisher's reference, while
 old pools and other resources remain alive until the final request or stream
 releases its lease. DNS capture needs no database read and may use last-good

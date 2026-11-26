@@ -2,6 +2,8 @@ package replication
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
 	"sync"
 )
 
@@ -114,3 +116,51 @@ var (
 )
 
 const maxRememberedImage = 8 << 20
+
+// ValidationMemo remembers which complete images one owner's validation
+// accepted, keyed by the SHA-256 of the exact canonical encoding Decode
+// validated together with the configuration's data fields (schema version,
+// kinds and effective limits). Validation is a pure function of those bytes
+// and that configuration, so a hit returns a Validated of the same bytes
+// without repeating the generic checks, owner validators and digest
+// verification; a miss or a refusal runs everything, and refusals are never
+// remembered. The owner (a Store, a serving schema) creates one memo, uses it
+// only with its own validation functions and keeps those functions fixed.
+// One candidate's preparation validated the same image several times with
+// each configuration (the Store read and the provider capture; the primary
+// and the integration image; the generic capture of the provider and semantic
+// owners), which under the race detector made a large security section miss
+// the preparation bound (D423). A separate read of the same generation is
+// another image (its CreatedAt differs) and is validated again.
+type ValidationMemo struct {
+	m *memo[struct{}]
+}
+
+// NewValidationMemo holds the last eight accepted images of one owner.
+func NewValidationMemo() *ValidationMemo {
+	return &ValidationMemo{m: newMemo(8, 8*entryOverhead, func(struct{}) int { return entryOverhead })}
+}
+
+func (v *ValidationMemo) key(canonical []byte, opts Validation, limits Limits) [sha256.Size]byte {
+	h := sha256.New()
+	config, _ := json.Marshal(struct {
+		SchemaVersion int
+		Kinds         []Kind
+		Limits        Limits
+	}{opts.SchemaVersion, opts.Kinds, limits})
+	var n [8]byte
+	binary.BigEndian.PutUint64(n[:], uint64(len(config)))
+	_, _ = h.Write(n[:])
+	_, _ = h.Write(config)
+	_, _ = h.Write(canonical)
+	var key [sha256.Size]byte
+	h.Sum(key[:0])
+	return key
+}
+
+func (v *ValidationMemo) accepted(key [sha256.Size]byte) bool {
+	_, ok := v.m.get(key)
+	return ok
+}
+
+func (v *ValidationMemo) accept(key [sha256.Size]byte) { v.m.put(key, struct{}{}) }

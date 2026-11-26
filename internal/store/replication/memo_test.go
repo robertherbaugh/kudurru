@@ -215,3 +215,65 @@ func TestMemoByteBudget(t *testing.T) {
 		t.Fatal("an entry larger than the budget was remembered")
 	}
 }
+
+// A validation memo answers only for the exact canonical bytes its owner's
+// configuration accepted. A hit skips the owner validators and returns those
+// bytes; a refusal is never remembered; another image, other configuration
+// data or no memo validates in full.
+func TestValidationMemoRemembersOnlyAcceptedEncodings(t *testing.T) {
+	i := sample(t)
+	calls := 0
+	refuse := false
+	opts := validation(i)
+	opts.Memo = NewValidationMemo()
+	opts.ValidateImage = func(*Image) error {
+		calls++
+		if refuse {
+			return ErrInvalid
+		}
+		return nil
+	}
+	want, err := Validate(i, Validation{SchemaVersion: opts.SchemaVersion, Kinds: opts.Kinds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n := range 3 {
+		got, err := Validate(i, opts)
+		if err != nil || !bytes.Equal(got.encoded, want.encoded) {
+			t.Fatalf("validation %d: %v, or other bytes than the uncached validation", n, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("owner validators ran %d times for one accepted encoding, want 1", calls)
+	}
+	// A refused image is checked on every attempt.
+	changed := sample(t)
+	changed.Payload.Security[0].Data = json.RawMessage(`{"ciphertext":"opaque-encrypted-by-owner!"}`)
+	if err := Seal(&changed); err != nil {
+		t.Fatal(err)
+	}
+	refuse = true
+	for range 2 {
+		if _, err := Validate(changed, opts); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("a refused image was accepted: %v", err)
+		}
+	}
+	if calls != 3 {
+		t.Fatalf("owner validators ran %d times, want each refusal checked", calls)
+	}
+	// A tampered copy of the accepted image (digest no longer matching) is
+	// not the accepted encoding, so it is checked in full and refused.
+	refuse = false
+	tampered := i
+	tampered.Payload.Security = []Entry{{Key: "sealed", Data: json.RawMessage(`{"ciphertext":"different"}`)}}
+	if _, err := Validate(tampered, opts); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a tampered image after a remembered validation: %v", err)
+	}
+	// Other configuration data is another key.
+	strict := opts
+	strict.Limits = Limits{MaxEntries: 1}
+	before := calls
+	if _, err := Validate(i, strict); err == nil && calls == before {
+		t.Fatal("other limits reused the remembered validation")
+	}
+}

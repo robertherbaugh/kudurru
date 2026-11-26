@@ -34,6 +34,11 @@ func (c *Cut) Base() replication.Generation {
 	return c.base
 }
 
+// captureValidations remembers the images CaptureImage's generic validation
+// accepted. That validation has no functions: its schema version, kinds and
+// limits, which are part of every key, are its whole configuration (D423).
+var captureValidations = replication.NewValidationMemo()
+
 // CaptureImage validates the full local manifest BEFORE projecting public IAM,
 // private identities, Kudurru and security. No store or watcher is retained.
 func CaptureImage(ctx context.Context, image *replication.Image, registry Schema) (*Cut, error) {
@@ -101,7 +106,7 @@ func CaptureImage(ctx context.Context, image *replication.Image, registry Schema
 			return nil, ErrManifest
 		}
 	}
-	validated, err := replication.Validate(*image, replication.Validation{SchemaVersion: registry.SchemaVersion, Kinds: slices.Clone(registry.Kinds)})
+	validated, err := replication.Validate(*image, replication.Validation{SchemaVersion: registry.SchemaVersion, Kinds: slices.Clone(registry.Kinds), Memo: captureValidations})
 	if err != nil {
 		return nil, ErrManifest
 	}
