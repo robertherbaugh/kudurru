@@ -639,7 +639,7 @@ func TestServingItemsRestEndsOnceWaitingCallersAreServed(t *testing.T) {
 		done := f.s.publisher.AwaitHTTP()
 		go func() {
 			defer done()
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
 			for {
 				changed := f.s.publisher.Subscribe()
@@ -714,7 +714,7 @@ func TestServingItemsRestOutlastsAFollowUpWriteForAWaitingCaller(t *testing.T) {
 			followed = time.Now()
 			token, err := f.s.opts.Store.WriterToken()
 			if err == nil {
-				ctx := sqlite.WithWriterToken(context.Background(), token)
+				ctx := sqlite.WithWriterToken(t.Context(), token)
 				err = f.s.opts.Store.Command(ctx, token.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
 					return tx.PutSection(ctx, "dedup", replication.Entry{Key: "outlast-during", Data: []byte(`{}`)})
 				})
