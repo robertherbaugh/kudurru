@@ -162,6 +162,7 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | RP-initiated logout, several identity providers, a metrics endpoint, audit export | design spec | later |
 | Dashboard `LicensePage` dates in UTC, and the "no restart" wording in LicensePage, the website, licensing.md and helm.md: the flag and `KUDURRU_LICENSE_KEY` are read once at startup | design critique, product | next licensing round |
 | `license.Manager` logs "license key replaced" when a key with the same jti but other claims or expiry arrives (today it logs only state, id or source changes) | design critique, compatibility | next licensing round |
+| UI test teardown in step with the dashboard's (PR 268): `ui/src/test/queryClients.ts` lacks the wait for React's scheduler to go idle, the second check after `waitFor` returns and the deadline over the whole settle; `ui/src/test/setup.ts` checks "queued by the unmount" in its `finally`, which replaces the error of a test that did not settle. Port them, or share one helper with `dashboard/src/test/queryClients.ts` | PR 268 review | next license-server test change |
 
 ## v0.2 completion pass: open at 68a709e2
 

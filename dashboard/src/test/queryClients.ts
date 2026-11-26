@@ -1,7 +1,8 @@
 // The QueryClients of the running test, and the teardown that leaves nothing
 // of them behind (src/test/setup.ts runs it after every test). The license
 // portal's ui/src/test/queryClients.ts started from the same code; this one
-// also waits for React's scheduler and checks again after waitFor returns.
+// also waits for React's scheduler, checks again after waitFor returns and
+// bounds the whole settle (porting that is in dev-docs/followups.md).
 //
 // React Query hands its notifications to components (and to cache listeners)
 // in a batch it schedules with setTimeout(0). A test that ends while a fetch
@@ -20,7 +21,7 @@
 // settling also waits until that scheduler has run every task queued so far.
 import { createRequire } from 'node:module';
 import { defaultScheduler, notifyManager, type QueryClient } from '@tanstack/react-query';
-import { waitFor } from '@testing-library/react';
+import { getConfig, waitFor } from '@testing-library/react';
 import { expect } from 'vitest';
 
 // The scheduler module react-dom itself loads (react-dom depends on it; the
@@ -34,11 +35,16 @@ const reactScheduler = requireFromReactDOM('scheduler') as {
 /**
  * Resolves once React's scheduler has nothing more urgent to run: an idle
  * task runs only after every task of a higher priority, including those
- * queued after it.
+ * queued after it. Rejects at the deadline (a performance.now() time) when
+ * React keeps queuing work, such as a component that renders in a loop.
  */
-function reactSchedulerIdle(): Promise<void> {
-  return new Promise((resolve) => {
-    reactScheduler.unstable_scheduleCallback(reactScheduler.unstable_IdlePriority, () => resolve());
+function reactSchedulerIdle(deadline: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('React scheduler still busy at the end of the test')), Math.max(deadline - performance.now(), 0));
+    reactScheduler.unstable_scheduleCallback(reactScheduler.unstable_IdlePriority, () => {
+      clearTimeout(timer);
+      resolve();
+    });
   });
 }
 
@@ -69,8 +75,9 @@ function expectSettled(): void {
 
 /**
  * Waits until no query fetches, no mutation runs, no notification batch is
- * still queued and React's scheduler is idle. Fails the test (after the
- * findBy* timeout) when something never settles, rather than leaving it to
+ * still queued and React's scheduler is idle. Fails the test when something
+ * does not settle within the findBy* timeout (asyncUtilTimeout, for the whole
+ * settling, well inside Vitest's hook timeout), rather than leaving it to
  * fire after the environment is gone.
  *
  * waitFor lets one more task run after its last passing check (Testing
@@ -80,14 +87,15 @@ function expectSettled(): void {
  * scheduler is idle, and waited for again if it changed.
  */
 export async function settleQueryClients(): Promise<void> {
-  for (let round = 1; ; round++) {
-    await waitFor(expectSettled);
-    await reactSchedulerIdle();
+  const deadline = performance.now() + getConfig().asyncUtilTimeout;
+  for (;;) {
+    await waitFor(expectSettled, { timeout: Math.max(deadline - performance.now(), 0) });
+    await reactSchedulerIdle(deadline);
     try {
       expectSettled();
       return;
     } catch (err) {
-      if (round >= 10) throw err;
+      if (performance.now() >= deadline) throw err;
     }
   }
 }
