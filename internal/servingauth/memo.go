@@ -8,7 +8,7 @@ import (
 
 // memo remembers a pure function of exact input bytes, keyed by the SHA-256
 // of those bytes, as replication's memo does for whole-image work (D378,
-// D421). Every reader of one generation (the publisher's candidate, its
+// D422). Every reader of one generation (the publisher's candidate, its
 // primary, integration and provider captures, provider reconciliation, the
 // primary driver and each command) validates and decodes the same security
 // rows, and a commit changes only a few of them. Only successes are stored,

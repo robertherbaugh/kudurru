@@ -140,9 +140,19 @@ func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...stri
 // it returns began and ended.
 func mountedRequestWindow(t *testing.T, cfg *config.Config, cli *harness, args ...string) (string, string, time.Time, time.Time) {
 	t.Helper()
+	return mountedRequestWindowFrom(t, cfg, cli, nil, args...)
+}
+
+// mountedRequestWindowFrom is mountedRequestWindow that calls sending, when
+// it is not nil, just before each attempt is sent.
+func mountedRequestWindowFrom(t *testing.T, cfg *config.Config, cli *harness, sending func(), args ...string) (string, string, time.Time, time.Time) {
+	t.Helper()
 	const stale = "current writable serving generation unavailable"
 	for attempt := 1; ; attempt++ {
 		mountedQuiet(t, cfg, cli)
+		if sending != nil {
+			sending()
+		}
 		began := time.Now()
 		out, stderr, err := cli.run(args...)
 		ended := time.Now()
@@ -360,21 +370,43 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	long := writeManifest(t, "long.yaml", documents...)
 
 	var mu sync.Mutex
-	var answered, servfail, read, failedRead []time.Time
+	var answered, read []time.Time
+	// refusal is one read of the second caller that failed, with when the
+	// CLI began and ended it.
+	type refusal struct {
+		from, to time.Time
+		err      string
+		pending  bool // the capture wait's generation_pending refusal
+	}
+	var refused []refusal
 	// missed holds every probe that got no correct answer, with what it got,
 	// so that a gap is explained in the failure message.
 	type miss struct {
-		at   time.Time
-		what string
+		at       time.Time
+		what     string
+		servfail bool
 	}
 	var missed []miss
-	var readErrors []miss
+	// stalls are the intervals in which this test process itself was not
+	// scheduled: a goroutine that sleeps 5 ms woke more than 50 ms late. The
+	// node and its probes run in this process, so such a stall delays every
+	// answer without the node withholding any.
+	type stall struct{ from, to time.Time }
+	var stalls []stall
+	var slowest time.Duration
+	var readError string
 	stop := make(chan struct{})
+	sending := make(chan struct{})
 	var probes sync.WaitGroup
 	stopProbes := sync.OnceFunc(func() { close(stop); probes.Wait() })
 	defer stopProbes()
 	probes.Go(func() {
-		client := &dns.Client{Timeout: 200 * time.Millisecond}
+		// The timeout is twice the grace within which an answer computed
+		// from a replaced publication is still sent (D395), so a probe that
+		// times out got no answer at all, and a slow answer is not mistaken
+		// for a withheld one (with a 200 ms timeout, a few slow answers in a
+		// row read as an unanswered record).
+		client := &dns.Client{Timeout: 2 * servedSuccessorGrace}
 		for {
 			select {
 			case <-stop:
@@ -386,41 +418,77 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			sent := time.Now()
 			answer, _, err := client.Exchange(query, cfg.Listeners.DNS[0].Address)
 			mu.Lock()
+			slowest = max(slowest, time.Since(sent))
 			switch {
 			case err != nil:
-				missed = append(missed, miss{sent, mountedRequestFailure(err) + ": " + err.Error()})
+				missed = append(missed, miss{sent, mountedRequestFailure(err) + ": " + err.Error(), false})
 			case answer.Rcode == dns.RcodeServerFailure:
-				servfail = append(servfail, time.Now())
-				missed = append(missed, miss{sent, "product refusal: SERVFAIL"})
+				missed = append(missed, miss{sent, "product refusal: SERVFAIL", true})
 			case answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 && probeAddress(answer.Answer[0]) == "198.51.100.200":
 				answered = append(answered, time.Now())
 			default:
-				missed = append(missed, miss{sent, "unexpected product response: " + dns.RcodeToString[answer.Rcode] + " " + fmt.Sprint(answer.Answer)})
+				missed = append(missed, miss{sent, "unexpected product response: " + dns.RcodeToString[answer.Rcode] + " " + fmt.Sprint(answer.Answer), false})
 			}
 			mu.Unlock()
 			time.Sleep(50 * time.Millisecond)
 		}
 	})
 	probes.Go(func() {
+		const tick = 5 * time.Millisecond
 		for {
 			select {
 			case <-stop:
 				return
-			case <-time.After(200 * time.Millisecond):
+			default:
 			}
+			slept := time.Now()
+			time.Sleep(tick)
+			if woke := time.Now(); woke.Sub(slept) > tick+50*time.Millisecond {
+				mu.Lock()
+				stalls = append(stalls, stall{slept.Add(tick), woke})
+				mu.Unlock()
+			}
+		}
+	})
+	probes.Go(func() {
+		// The second caller reads once per capture wait. The credit of
+		// D378 lets the request yield to waiting reads only while it has
+		// spent no longer waiting than working; a caller that asks again
+		// as soon as it is answered keeps the request at that limit, so each
+		// read waits for the credit to be earned back and then for one
+		// publication, which on a loaded machine exceeds the capture wait
+		// by design (the request is held to at most about twice as slow).
+		// Asking once per capture wait leaves the credit to the request, so
+		// each read waits for the node's next publication only: the
+		// condition under which D378 serves a read. The first read goes out
+		// as the request is sent, so that one is in flight however short the
+		// request is.
+		select {
+		case <-stop:
+			return
+		case <-sending:
+		}
+		for first := true; ; first = false {
+			if !first {
+				select {
+				case <-stop:
+					return
+				case <-time.After(servingHTTPCaptureWait):
+				}
+			}
+			asked := time.Now()
 			_, stderr, err := reader.run("get", "dnszones", "-o", "name")
 			mu.Lock()
 			if err == nil {
 				read = append(read, time.Now())
 			} else {
-				failedRead = append(failedRead, time.Now())
-				at := failedRead[len(failedRead)-1]
-				readErrors = append(readErrors, miss{at, fmt.Sprintf("%s: %v: %s", mountedCLIOutcome(err, stderr), err, strings.TrimSpace(stderr))})
+				readError = fmt.Sprintf("%s: %v: %s", mountedCLIOutcome(err, stderr), err, strings.TrimSpace(stderr))
+				refused = append(refused, refusal{asked, time.Now(), readError, strings.Contains(err.Error()+stderr, "generation_pending")})
 			}
 			mu.Unlock()
 		}
 	})
-	out, stderr, began, ended := mountedRequestWindow(t, cfg, cli, "apply", "-f", long)
+	out, stderr, began, ended := mountedRequestWindowFrom(t, cfg, cli, sync.OnceFunc(func() { close(sending) }), "apply", "-f", long)
 	stopProbes()
 	if created := strings.Count(out, " created"); created != count {
 		t.Fatalf("unexpected product result: one apply of %d new record sets created %d:\nstdout:\n%s\nstderr:\n%s", count, created, out, stderr)
@@ -435,14 +503,21 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		return in
 	}
 	mu.Lock()
-	answers, servfails, reads, failed := within(answered), len(within(servfail)), within(read), len(within(failedRead))
-	mu.Unlock()
-	var readError string
-	for _, failure := range readErrors {
-		if failure.at.After(began) && failure.at.Before(ended) {
-			readError = failure.what
+	answers, reads := within(answered), within(read)
+	// wrong is every probe sent during the request that got no correct
+	// answer and no SERVFAIL, which the check below counts on its own.
+	var servfails int
+	var wrong []string
+	for _, m := range missed {
+		switch {
+		case !m.at.After(began) || !m.at.Before(ended):
+		case m.servfail:
+			servfails++
+		default:
+			wrong = append(wrong, fmt.Sprintf("+%s %s", m.at.Sub(began).Round(time.Millisecond), m.what))
 		}
 	}
+	mu.Unlock()
 	edges := append(append([]time.Time{began}, answers...), ended)
 	slices.SortFunc(edges, func(a, b time.Time) int { return a.Compare(b) })
 	var gap time.Duration
@@ -452,7 +527,47 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			gap, gapFrom = d, edges[i-1]
 		}
 	}
-	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, longest time without one %s, %d reads ok, %d reads failed; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, gap, len(reads), failed, readError, load.loadSummary())
+	mu.Lock()
+	defer mu.Unlock()
+	// stalledWithin is how long this process was not scheduled at all
+	// between from and to.
+	stalledWithin := func(from, to time.Time) time.Duration {
+		var stalled time.Duration
+		for _, st := range stalls {
+			a, b := st.from, st.to
+			if a.Before(from) {
+				a = from
+			}
+			if b.After(to) {
+				b = to
+			}
+			if b.After(a) {
+				stalled += b.Sub(a)
+			}
+		}
+		return stalled
+	}
+	stalled := stalledWithin(gapFrom, gapFrom.Add(gap))
+	// A generation_pending refusal of a read during which this process was
+	// measured as not scheduled, for so long that the node had less than one
+	// capture wait of time to publish for it, is not the node's refusal to
+	// count. Every other failed read within the request counts: any other
+	// error, and a generation_pending refusal without such a stall.
+	var failed int
+	var excused []string
+	readError = ""
+	for _, r := range refused {
+		if !r.to.After(began) || !r.from.Before(ended) {
+			continue
+		}
+		readError = r.err
+		if paused := stalledWithin(r.from, r.to); r.pending && paused > 0 && r.to.Sub(r.from)-paused < servingHTTPCaptureWait {
+			excused = append(excused, fmt.Sprintf("+%s for %s, process not scheduled for %s", r.from.Sub(began).Round(time.Millisecond), r.to.Sub(r.from).Round(time.Millisecond), paused.Round(time.Millisecond)))
+			continue
+		}
+		failed++
+	}
+	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, %d other misses, slowest answer %s, longest time without one %s (process not scheduled for %s of it), %d reads ok, %d reads failed, %d more refused while the process was not scheduled %q; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, len(wrong), slowest, gap, stalled, len(reads), failed, len(excused), excused, readError, load.loadSummary())
 	// The zone answers its committed data across every status write of a new
 	// serial that follows each commit (D378 and the status-write row): a
 	// publication that lands while the zone's lifecycle receipt still names
@@ -465,36 +580,53 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	}
 	// DNS answers the served publication throughout (D378): a commit that is
 	// not published yet, and a replaced provider resource set, withhold
-	// nothing. The probe asks every 50 ms with a 200 ms timeout, so a gap is
-	// usually about 55 ms and one dropped query makes it about 0.3 s. One
-	// retained run (CORE-OPEN3 run05) had a 1.39 s gap without any SERVFAIL
-	// whose cause is not known; the message below says what each probe in
-	// such a gap got.
-	if gap > time.Second {
-		mu.Lock()
+	// nothing, and an answer whose publication was replaced while it was
+	// computed is still sent (D395). So every probe gets the committed
+	// record, however slowly the node answers under load; SERVFAIL is
+	// counted by the check above.
+	if len(wrong) > 0 {
+		t.Errorf("%d DNS queries for an existing record got no correct answer during one request: %q; %s", len(wrong), wrong, load.loadSummary())
+	}
+	// Nor does an answer wait for the request: the longest time without a
+	// correct answer is the probe's 50 ms pause plus one answer's time,
+	// usually under 0.1 s, and it stays within the D395 grace of one second
+	// after which an answer computed from a replaced publication is no
+	// longer sent. Time in which this process was not scheduled at all
+	// (a stalled or oversubscribed machine; once a stall of three minutes on
+	// the shared lab machine) delays the probe and the node alike and is not
+	// counted. The unexplained 1.39 s gap of CORE-OPEN3 run05 was measured
+	// with a 200 ms probe timeout and without this record of stalls, so five
+	// or six answers slower than 200 ms in a row, a stall of the process and
+	// withheld answers could not be told apart.
+	if gap-stalled > servedSuccessorGrace {
 		var inGap []string
 		for _, m := range missed {
 			if !m.at.Before(gapFrom) && m.at.Before(gapFrom.Add(gap)) {
 				inGap = append(inGap, fmt.Sprintf("+%s %s", m.at.Sub(gapFrom).Round(time.Millisecond), m.what))
 			}
 		}
-		mu.Unlock()
-		t.Errorf("DNS observation gap %s, %s after the request began, during one request of %s; probes in the gap: %q; %s", gap, gapFrom.Sub(began).Round(time.Millisecond), ended.Sub(began), inGap, load.loadSummary())
+		t.Errorf("DNS observation gap %s (the process was not scheduled for %s of it), %s after the request began, during one request of %s; probes in the gap: %q; %s", gap, stalled, gapFrom.Sub(began).Round(time.Millisecond), ended.Sub(began), inGap, load.loadSummary())
 	}
 	// A waiting read makes the request let the node publish at its next item,
 	// so a read is served within its two-second capture wait whenever the
 	// node publishes within it, as it does without the race detector (one
-	// publication of these 120 record sets takes 0.3 to 0.5 s there). Under
+	// publication of these 120 record sets and of the node's follow-up writes
+	// takes 0.2 to 1.5 s there, the latter on one loaded CPU). Under
 	// the race detector on a loaded machine one publication takes several
 	// seconds, longer than the capture wait, and most reads that wait for one
 	// are refused with generation_pending; the request still lets some reads
 	// through, which the last check requires.
+	// A read refused while this process was not scheduled for part of its
+	// wait, so that the node had less than a whole capture wait to publish,
+	// is reported but not counted: it says nothing about the node.
 	// `make test` (hack/go-test.py, NORACE_TESTS) runs this test a second
 	// time without the race detector, so CI asserts the strict bound.
 	if !raceEnabled && failed > 0 {
 		t.Fatalf("%d reads of a second caller failed during one request (%d answered); last: %s; %s", failed, len(reads), readError, load.loadSummary())
 	}
-	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
+	// The first read goes out as the request is sent, so without the race
+	// detector at least one read is answered during every request.
+	if elapsed := ended.Sub(began); (!raceEnabled || elapsed > 5*defaultItemPace.work) && len(reads) == 0 {
 		t.Fatalf("no read of a second caller was answered during the %s of one request; last failure: %s; %s", elapsed, readError, load.loadSummary())
 	}
 }

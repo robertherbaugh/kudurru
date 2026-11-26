@@ -54,6 +54,16 @@ func (p *remoteCachePoll) Zones(ctx context.Context, addr string) (internalapi.Z
 	return c.Zones(ctx, addr)
 }
 
+// remoteCacheHeadStatusQuery counts the active primary heads without their
+// DNSZone (so the projection check below cannot pass vacuously) and the heads
+// whose serial that zone's status does not report yet.
+const remoteCacheHeadStatusQuery = `SELECT
+    (SELECT count(*) FROM objects s WHERE s.kind='ZoneState' AND json_extract(s.data,'$.spec.lifecycle')='active'
+        AND NOT EXISTS (SELECT 1 FROM objects z WHERE z.kind='DNSZone' AND z.uid=json_extract(s.data,'$.spec.zone.uid'))),
+    (SELECT count(*) FROM objects s JOIN objects z ON z.kind='DNSZone' AND z.uid=json_extract(s.data,'$.spec.zone.uid')
+        WHERE s.kind='ZoneState' AND json_extract(s.data,'$.spec.lifecycle')='active'
+            AND COALESCE(json_extract(z.data,'$.status.serial'),0) != json_extract(s.data,'$.spec.serial'))`
+
 // This opt-in case runs the real root, SQLite publications, authenticated
 // internal listener and generated supervisor against the pinned external daemon.
 func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
@@ -271,7 +281,11 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 	address := net.JoinHostPort("127.0.0.1", port)
 	// sourceSettled observes, read-only, that every status, NOTIFY and zone
 	// lifecycle commit of the current objects has landed (heads < 0 accepts
-	// any number of committed primary heads).
+	// any number of committed primary heads), and that the DNSZone status of
+	// every active primary head reports that head's serial. The status
+	// projection commits after its head (and the lifecycle realignment after
+	// the status), so until it lands the other receipts still read as
+	// settled for the head before it.
 	sourceSettled := func(label string, wantHeads int) {
 		t.Helper()
 		dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
@@ -282,56 +296,63 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
-			var pending, notify, heads, unavailable, unaligned int
+			var pending, notify, heads, unavailable, unaligned, unmatched, unprojected int
 			err = db.QueryRowContext(ctx, controlMountedSourceQuery).Scan(&pending, &notify, &heads, &unavailable, &unaligned)
+			if err == nil {
+				err = db.QueryRowContext(ctx, remoteCacheHeadStatusQuery).Scan(&unmatched, &unprojected)
+			}
 			closeErr := db.Close()
 			if err != nil || closeErr != nil {
 				t.Fatal("source observation read/close failed")
 			}
-			return pending == 0 && notify == 0 && (wantHeads < 0 || heads == wantHeads) && unavailable == 0 && unaligned == 0
+			return pending == 0 && notify == 0 && (wantHeads < 0 || heads == wantHeads) && unavailable == 0 && unaligned == 0 && unmatched == 0 && unprojected == 0
 		})
+	}
+	read := func() (uint64, bool) {
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		defer cancel()
+		z, err := poller.good.Zones(ctx, cfg.Listeners.Internal.Address)
+		if err != nil || z.Resolver == nil {
+			return 0, false
+		}
+		return z.Resolver.Publication, true
+	}
+	// The internal listener admits internalapi.DefaultRateLimit requests
+	// per second per client address, and this observer shares 127.0.0.1
+	// with the supervisor's own 100 ms zone poll. Polling every 30 ms
+	// alone exceeded that budget, so roughly half of the reads were
+	// refused with 429, every refusal restarted the quiet window, and
+	// the wait could never observe 500 ms of quiescence (the refused
+	// supervisor polls also flipped its caches to bypass-unavailable).
+	// Observe at a pace that leaves the supervisor its budget instead;
+	// the deadline and the 500 ms quiet window are unchanged.
+	const observe = 150 * time.Millisecond
+	// quiet observes one complete publication read successfully and
+	// unchanged for 500 ms. Until every commit is installed in a publication,
+	// the read is refused (503, generation pending), as is every supervisor
+	// poll, which then reports bypass-unavailable.
+	quiet := func(label string) uint64 {
+		t.Helper()
+		var last uint64
+		var unchangedSince time.Time
+		waitEvery(label, observe, func() bool {
+			publication, ok := read()
+			if !ok {
+				unchangedSince = time.Time{}
+				return false
+			}
+			if publication != last || unchangedSince.IsZero() {
+				last, unchangedSince = publication, time.Now()
+				return false
+			}
+			// Initial controller/primary status work is independent of DNS
+			// readiness. Observe quiescence rather than replay a refused write.
+			return time.Since(unchangedSince) >= 500*time.Millisecond
+		})
+		return last
 	}
 	writePublished := func(method, path string, body any, want int) {
 		t.Helper()
-		read := func() (uint64, bool) {
-			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
-			defer cancel()
-			z, err := poller.good.Zones(ctx, cfg.Listeners.Internal.Address)
-			if err != nil || z.Resolver == nil {
-				return 0, false
-			}
-			return z.Resolver.Publication, true
-		}
-		// The internal listener admits internalapi.DefaultRateLimit requests
-		// per second per client address, and this observer shares 127.0.0.1
-		// with the supervisor's own 100 ms zone poll. Polling every 30 ms
-		// alone exceeded that budget, so roughly half of the reads were
-		// refused with 429, every refusal restarted the quiet window, and
-		// the wait could never observe 500 ms of quiescence (the refused
-		// supervisor polls also flipped its caches to bypass-unavailable).
-		// Observe at a pace that leaves the supervisor its budget instead;
-		// the deadline and the 500 ms quiet window are unchanged.
-		const observe = 150 * time.Millisecond
-		quiet := func(label string) uint64 {
-			t.Helper()
-			var last uint64
-			var unchangedSince time.Time
-			waitEvery(label, observe, func() bool {
-				publication, ok := read()
-				if !ok {
-					unchangedSince = time.Time{}
-					return false
-				}
-				if publication != last || unchangedSince.IsZero() {
-					last, unchangedSince = publication, time.Now()
-					return false
-				}
-				// Initial controller/primary status work is independent of DNS
-				// readiness. Observe quiescence rather than replay a refused write.
-				return time.Since(unchangedSince) >= 500*time.Millisecond
-			})
-			return last
-		}
 		before := quiet("quiet original publication before one-shot mutation")
 		controlMountedRequest(t, client, base, method, path, login.CSRF, body, want, nil)
 		// One API write, no mutation replay. A successful original complete
@@ -670,6 +691,21 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 			viewed("probe.private.example.", "10.9.0.3", "kids"),
 			viewed("nas.private.example.", "10.0.0.20", "lan"))
 		writePublished(http.MethodPut, "/objects/dnsrecordsets/default/cache-primary", records, http.StatusOK)
+		// writePublished's settle can pass before the primary head with the
+		// views commits: the record set and its status are in, and the old
+		// head's receipts are all settled. The head's status projection,
+		// lifecycle realignment and NOTIFY acknowledgment then commit over
+		// the next seconds, and while each one awaits its publication every
+		// edge poll is refused and the edge reports bypass-unavailable. The
+		// edge observations below are single samples around one-shot
+		// queries, so first see the views head served, then let all of its
+		// commits land and be published.
+		wait("views head served", func() bool {
+			m, err := from("127.0.0.2", "probe.private.example.")
+			return err == nil && m != nil && m.Authoritative && len(m.Answer) == 1 && m.Answer[0].(*dns.A).A.String() == "10.0.0.2"
+		})
+		sourceSettled("views head status, lifecycle and NOTIFY settled", 1)
+		quiet("quiet publication after the views head settled")
 		isolated := func(mode string) bool { return mode == "bypass-client-scope" || mode == "bypass-zone-client-view" }
 		var observed string
 		defer func() {

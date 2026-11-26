@@ -172,7 +172,12 @@ describe('QueryLogPage live tail', () => {
     const original = mockDB().queries[0]!;
     let history = [{ ...original, node: 'node-a', domain: 'central-history.test' }];
     const seen = spyQueries();
-    server.use(http.get(`${API}/queries`, () => HttpResponse.json({ source: 'central', scope: 'cluster', nodes: [{ name: 'old-pod', ok: false }], partial: true, queries: history, cursor_next: 'central-cursor', records_total: history.length, records_filtered: history.length })));
+    // A central page with a cursor, and the empty last page behind it (the
+    // table loads the next page while its end is in view).
+    server.use(http.get(`${API}/queries`, ({ request }) => {
+      const last = new URL(request.url).searchParams.get('cursor') === 'central-cursor';
+      return HttpResponse.json({ source: 'central', scope: 'cluster', nodes: [{ name: 'old-pod', ok: false }], partial: true, queries: last ? [] : history, ...(last ? {} : { cursor_next: 'central-cursor' }), records_total: history.length, records_filtered: history.length });
+    }));
     renderWithApp(<QueryLogPage />, { route: '/queries?domain=*.test' });
     await logRow('central-history.test');
     expect(screen.getByText('Partial results: 1 node delayed or unavailable')).toBeInTheDocument();

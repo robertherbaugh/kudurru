@@ -40,8 +40,8 @@ again, so the request lets the node publish before its next document: at
 once when another caller's read waits for a publication, and after two
 seconds of work in any case. It waits (for a bounded time, two to ten
 seconds) until the node has published the documents so far and then commits
-nothing for 200 milliseconds. The pauses make a request at most about twice
-as slow. When a command of anyone else changes the node's data while
+nothing for 200 milliseconds, or until the reads that waited have been
+served. The pauses make a request at most about twice as slow. When a command of anyone else changes the node's data while
 the request runs (another request admitted in such a pause, a sign-in, a
 write that a follower passes on, a migration step), every later document
 carries `errorKey` `unavailable` with the error "another change was
