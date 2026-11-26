@@ -17,6 +17,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   delayed publication and commands; it now admits again only after a change
   or at the host deadline, and keeps retrying a failed admission.
 
+- Publishing a large security section (long revocation history) takes about
+  half as long. Security rows are checked for their bound and exact field
+  names in one pass, and a row already accepted, or a revocation floor
+  already decoded, is not validated again for each reader of the same
+  generation. Every check still runs on new bytes.
+
 ## [0.2.0] - unreleased
 
 ### Added

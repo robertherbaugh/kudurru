@@ -279,14 +279,21 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 	s := EmptySecurity(root.Epoch)
 	s.RevocationCheckpoint = root.RevocationCheckpoint
 	seen := map[string]bool{RootKey: true}
-	read := func(key string, dst any) error {
+	lookup := func(key string) ([]byte, error) {
 		if seen[key] {
-			return ErrInvalid
+			return nil, ErrInvalid
 		}
 		seen[key] = true
 		raw, ok := own[key]
 		if !ok {
-			return ErrManifest
+			return nil, ErrManifest
+		}
+		return raw, nil
+	}
+	read := func(key string, dst any) error {
+		raw, err := lookup(key)
+		if err != nil {
+			return err
 		}
 		if !strictOwner(raw, dst, MaxRowBytes) {
 			return ErrInvalid
@@ -294,41 +301,68 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 		return nil
 	}
 	for _, key := range root.GrantFloors {
-		var row GrantFloor
-		if err := read(key, &row); err != nil {
+		raw, err := lookup(key)
+		if err != nil {
 			return Security{}, err
 		}
-		if row.FormatVersion != FormatVersion {
-			return Security{}, ErrVersion
-		}
-		if !validGrantFloor(row) || key != grantKey(row.Grant) {
-			return Security{}, ErrInvalid
+		row, err := decodeFloor("grant", version, key, raw, func(row *GrantFloor) error {
+			if !strictOwner(raw, row, MaxRowBytes) {
+				return ErrInvalid
+			}
+			if row.FormatVersion != FormatVersion {
+				return ErrVersion
+			}
+			if !validGrantFloor(*row) || key != grantKey(row.Grant) {
+				return ErrInvalid
+			}
+			return nil
+		})
+		if err != nil {
+			return Security{}, err
 		}
 		s.GrantFloors = append(s.GrantFloors, row)
 	}
 	for _, key := range root.AccountFloors {
-		var row AccountFloor
-		if err := read(key, &row); err != nil {
+		raw, err := lookup(key)
+		if err != nil {
 			return Security{}, err
 		}
-		if row.FormatVersion != FormatVersion {
-			return Security{}, ErrVersion
-		}
-		if !validAccountFloor(row) || version < 3 && !validLegacyAccount(row.Account) || key != accountKey(row.Account) {
-			return Security{}, ErrInvalid
+		row, err := decodeFloor("account", version, key, raw, func(row *AccountFloor) error {
+			if !strictOwner(raw, row, MaxRowBytes) {
+				return ErrInvalid
+			}
+			if row.FormatVersion != FormatVersion {
+				return ErrVersion
+			}
+			if !validAccountFloor(*row) || version < 3 && !validLegacyAccount(row.Account) || key != accountKey(row.Account) {
+				return ErrInvalid
+			}
+			return nil
+		})
+		if err != nil {
+			return Security{}, err
 		}
 		s.AccountFloors = append(s.AccountFloors, row)
 	}
 	for _, key := range root.ProviderFloors {
-		var row ProviderFloor
-		if err := read(key, &row); err != nil {
+		raw, err := lookup(key)
+		if err != nil {
 			return Security{}, err
 		}
-		if row.FormatVersion != FormatVersion {
-			return Security{}, ErrVersion
-		}
-		if !validProviderFloor(row) || key != providerKey(row.Provider, row.UID) {
-			return Security{}, ErrInvalid
+		row, err := decodeFloor("provider", version, key, raw, func(row *ProviderFloor) error {
+			if !strictOwner(raw, row, MaxRowBytes) {
+				return ErrInvalid
+			}
+			if row.FormatVersion != FormatVersion {
+				return ErrVersion
+			}
+			if !validProviderFloor(*row) || key != providerKey(row.Provider, row.UID) {
+				return ErrInvalid
+			}
+			return nil
+		})
+		if err != nil {
+			return Security{}, err
 		}
 		s.ProviderFloors = append(s.ProviderFloors, row)
 	}
@@ -397,12 +431,42 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 	return s, nil
 }
 
+// decodeFloor returns the revocation floor decode accepts for raw at key, as
+// a value. Floors hold only strings and times, so a remembered value is the
+// complete decode result (validRows, floorRows).
+func decodeFloor[T GrantFloor | AccountFloor | ProviderFloor](kind string, version int, key string, raw []byte, decode func(*T) error) (T, error) {
+	k := rowKey(kind, version, key, raw)
+	if v, ok := floorRows.get(k); ok {
+		return v.(T), nil
+	}
+	var row T
+	if err := decode(&row); err != nil {
+		return row, err
+	}
+	floorRows.put(k, row)
+	return row, nil
+}
+
 // ValidateEntry is the owner-level per-row validator for store/replica wiring.
-// Cross-row completeness is enforced by DecodeSecurity/CaptureImage.
+// Cross-row completeness is enforced by DecodeSecurity/CaptureImage. It is a
+// pure function of the row, so an accepted row is remembered (validRows).
 func ValidateEntry(section string, row replication.Entry) error {
 	if section != "security" || !strings.HasPrefix(row.Key, ownerPrefix) {
 		return nil
 	}
+	k := rowKey("entry", 0, row.Key, row.Data)
+	if _, ok := validRows.get(k); ok {
+		return nil
+	}
+	err := validateEntry(row)
+	if err == nil {
+		validRows.put(k, struct{}{})
+	}
+	return err
+}
+
+func validateEntry(row replication.Entry) error {
+	section := "security"
 	if len(row.Key) > 512 {
 		return ErrBounds
 	}
