@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,10 +49,38 @@ func TestSecurityRowMemoRemembersOnlyAcceptedRows(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(second, again) {
 		t.Fatal("a caller's change reached a remembered floor", err)
 	}
+	// The decode remembered every floor it accepted, under the key it reads.
+	for _, row := range rows {
+		kind := ""
+		switch {
+		case strings.HasPrefix(row.Key, "auth/v1/grant/"):
+			kind = "grant"
+		case strings.HasPrefix(row.Key, "auth/v1/account/"):
+			kind = "account"
+		case strings.HasPrefix(row.Key, "auth/v1/provider/"):
+			kind = "provider"
+		default:
+			continue
+		}
+		if _, ok := floorRows.get(rowKey(kind, RootFormatVersion, row.Key, row.Data)); !ok {
+			t.Fatalf("%s: an accepted floor was not remembered", row.Key)
+		}
+	}
 	for _, row := range rows {
 		if err := ValidateEntry("security", row); err != nil {
 			t.Fatal(row.Key, err)
 		}
+		if _, ok := validRows.get(rowKey("entry", 0, row.Key, row.Data)); !ok {
+			t.Fatalf("%s: an accepted row was not remembered", row.Key)
+		}
+	}
+	// A row over every cap is refused with its own error and not remembered.
+	huge := replication.Entry{Key: "auth/v1/grant/huge", Data: []byte(`{"grant":"` + strings.Repeat("g", MaxRootBytes) + `"}`)}
+	if err := ValidateEntry("security", huge); !errors.Is(err, ErrBounds) {
+		t.Fatal("an oversized row was not refused by its bound", err)
+	}
+	if _, ok := validRows.get(rowKey("entry", 0, huge.Key, huge.Data)); ok {
+		t.Fatal("an oversized row was remembered")
 	}
 	for i, row := range rows {
 		if row.Key == RootKey {

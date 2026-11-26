@@ -84,11 +84,12 @@ func ownerFields(raw []byte, typ reflect.Type) bool {
 	return true
 }
 
+// ownerNamesByType caches ownerNames per owner type.
+var ownerNamesByType sync.Map // reflect.Type -> map[string]reflect.Type
+
 // ownerNames maps each JSON member name of an owner type to what ownerFields
 // finds for it: the first field with that name, and for an AccountRef or
 // ProviderRef field the type whose names its value must use (nil otherwise).
-var ownerNamesByType sync.Map // reflect.Type -> map[string]reflect.Type
-
 func ownerNames(typ reflect.Type) map[string]reflect.Type {
 	if names, ok := ownerNamesByType.Load(typ); ok {
 		return names.(map[string]reflect.Type)

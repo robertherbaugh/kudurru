@@ -454,6 +454,11 @@ func ValidateEntry(section string, row replication.Entry) error {
 	if section != "security" || !strings.HasPrefix(row.Key, ownerPrefix) {
 		return nil
 	}
+	// Caps come before any work: a row over every row cap is refused by
+	// validateEntry, with its own error, without being hashed.
+	if len(row.Key) > 512 || len(row.Data) > MaxRootBytes {
+		return validateEntry(row)
+	}
 	k := rowKey("entry", 0, row.Key, row.Data)
 	if _, ok := validRows.get(k); ok {
 		return nil
