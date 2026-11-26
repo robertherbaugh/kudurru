@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { ApiProvider, qk, useCan, useStaticMode } from './context';
+import { trackQueryClient } from '../test/queryClients';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import { AccountMenu } from '../components/AccountMenu';
@@ -12,7 +13,7 @@ import { AuthenticatorPanel } from '../components/access/Authenticators';
 describe('static host capabilities', () => {
   it('keeps read and runtime controls while refusing desired-object actions', async () => {
     server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ readOnly: true })));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
     function Wrapper({ children }: { children: ReactNode }) {
       return <QueryClientProvider client={queryClient}><ApiProvider baseUrl={API}>{children}</ApiProvider></QueryClientProvider>;
