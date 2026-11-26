@@ -2123,7 +2123,16 @@ arrives after a change was published gets older data. Transfers, UPDATE
 acknowledgments, API
 dig, cache insertions and native resolver mutations keep full data currency
 (a superseded cache or native resolver write is skipped, and the query still
-answers; D332, D377).
+answers; D332, D377). For transfers alone, the commits that change nothing a
+transfer is computed from do not count (D419): the store notes, under the
+writer lock and before it publishes each commit's authority, whether every
+mutation of that commit was a NOTIFY acknowledgment (a `ZoneState` head that
+changed only its notification intent and commit sequence), a status write of
+a primary `DNSZone` that keeps its name server addresses, or the realignment
+of a primary `ZoneLifecycle` that changed only its source resourceVersion and
+sequence. `Store.TransferNeutral` reports whether the authority only moved
+past a publication's token through such commits; any other commit, section
+row, replica install or authority transition ends the run.
 
 Before a later item the request lets the node publish for other callers: it
 waits, inside its lifetime and writer episode, until the publisher is current
