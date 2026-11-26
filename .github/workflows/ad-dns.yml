@@ -59,8 +59,8 @@ jobs:
           retention-days: 7
       - name: Lint the isolated module
         working-directory: dev-docs/spikes/ad-dns
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --config ../../../.golangci.yml ./...
+        run: ../../../hack/go-modules.sh run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --config ../../../.golangci.yml ./...
       - name: Dependency licenses
         working-directory: dev-docs/spikes/ad-dns
         # The probe's own source has the repository's Community License.
-        run: go run github.com/google/go-licenses@v1.6.0 check ./... --disallowed_types=forbidden,restricted --ignore github.com/robertherbaugh/kudurru/dev-docs/spikes/ad-dns
+        run: ../../../hack/go-modules.sh run github.com/google/go-licenses@v1.6.0 check ./... --disallowed_types=forbidden,restricted --ignore github.com/robertherbaugh/kudurru/dev-docs/spikes/ad-dns

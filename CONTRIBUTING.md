@@ -82,8 +82,8 @@ not part of the required `ci-ok` check.
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
 Module downloads go through `hack/go-modules.sh`, which retries a transient
-network or proxy error (an HTTP/2 stream reset, a 5xx from proxy.golang.org)
-(three attempts in all) and fails a checksum mismatch, an unknown revision or a
+network or proxy error (an HTTP/2 stream reset, a 5xx from proxy.golang.org),
+with three attempts in all, and fails a checksum mismatch, an unknown revision or a
 missing module on the first. Every CI job that compiles Go runs
 `hack/go-modules.sh download` once after setup-go; the Dockerfile and the
 goreleaser before hook do the same and then build with `GOPROXY=off`, so a
