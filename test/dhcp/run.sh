@@ -45,6 +45,13 @@ export KUDURRU_DHCP_PRIVATE_LAB=1
 export KUDURRU_DHCP_HOST_NETNS="$host_ns"
 pids=()
 declare -A capture_pid=()
+# fail_with_log <message> <log file> [tail lines]: report a failure with the
+# log that explains it (all of it, or its last lines), then stop.
+fail_with_log() {
+  echo "$1" >&2
+  if [[ -n ${3:-} ]]; then tail -n "$3" "$2" >&2; else cat "$2" >&2; fi
+  exit 1
+}
 cleanup() {
   trap - EXIT INT TERM
   for pid in "${pids[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
@@ -140,9 +147,9 @@ start_server() {
 }
 stop_server() {
   local status=0
-  kill -TERM "$server_pid" || { echo "Server $server_pid had already exited before SIGTERM:" >&2; tail -n 20 "$output/server.log" >&2; exit 1; }
+  kill -TERM "$server_pid" || fail_with_log "Server $server_pid had already exited before SIGTERM:" "$output/server.log" 20
   wait "$server_pid" || status=$?
-  ((status == 0)) || { echo "Server exited with status $status after SIGTERM:" >&2; tail -n 20 "$output/server.log" >&2; exit 1; }
+  ((status == 0)) || fail_with_log "Server exited with status $status after SIGTERM:" "$output/server.log" 20
 }
 # The wire evidence needs the very first exchange (the server's ARP probe of
 # 192.0.2.9), so nothing may transmit until both captures are live. tcpdump
@@ -159,11 +166,12 @@ start_capture() {
   pids+=("$pid")
   capture_pid[$ns]=$pid
   for ((i=0;i<100;i++)); do
-    grep -q '^tcpdump: listening on ' "$output/$ns-capture.log" && return 0
-    kill -0 "$pid" 2>/dev/null || { echo "Packet capture in $ns exited before listening:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+    # -s: the child creates the log, so it can be missing on the first pass.
+    grep -qs '^tcpdump: listening on ' "$output/$ns-capture.log" && return 0
+    kill -0 "$pid" 2>/dev/null || fail_with_log "Packet capture in $ns exited before listening:" "$output/$ns-capture.log"
     sleep .1
   done
-  echo "Packet capture in $ns was not listening after 10 s:" >&2; cat "$output/$ns-capture.log" >&2; exit 1
+  fail_with_log "Packet capture in $ns was not listening after 10 s:" "$output/$ns-capture.log"
 }
 start_capture srv
 start_capture relay
@@ -213,13 +221,13 @@ wait_address() {
     [[ $(address "$ns") != "$expected" ]] || return 0
     sleep .1
   done
-  echo "Client $ns failed to acquire $expected" >&2; cat "$output/$ns.log" >&2; exit 1
+  fail_with_log "Client $ns failed to acquire $expected" "$output/$ns.log"
 }
 lease_count() { jq -r --arg scope "$1" '[.[$scope][]? | select(.State=="bound")] | length' "$output/server/leases.json"; }
 wait_lease_count() {
   local scope=$1 expected=$2
   for ((i=0;i<100;i++)); do [[ $(lease_count "$scope") != "$expected" ]] || return 0; sleep .1; done
-  echo "Wrong lease count for $scope" >&2; cat "$output/server/leases.json" >&2; exit 1
+  fail_with_log "Wrong lease count for $scope" "$output/server/leases.json"
 }
 start_client a; wait_address a 192.0.2.10
 start_client a2; wait_address a2 192.0.2.11
@@ -290,11 +298,11 @@ printf 'PASS expiration and reacquisition\n'
 stop_server
 for ns in srv relay; do
   pid=${capture_pid[$ns]} status=0
-  kill -TERM "$pid" || { echo "Packet capture in $ns had already exited before SIGTERM:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+  kill -TERM "$pid" || fail_with_log "Packet capture in $ns had already exited before SIGTERM:" "$output/$ns-capture.log"
   wait "$pid" || status=$?
-  ((status == 0)) || { echo "Packet capture in $ns exited with status $status after SIGTERM:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+  ((status == 0)) || fail_with_log "Packet capture in $ns exited with status $status after SIGTERM:" "$output/$ns-capture.log"
   tcpdump -nn -vv -r "$output/$ns.pcap" > "$output/$ns-packets.txt" 2> "$output/$ns-read.log" ||
-    { echo "Could not decode $output/$ns.pcap:" >&2; cat "$output/$ns-read.log" >&2; exit 1; }
+    fail_with_log "Could not decode $output/$ns.pcap:" "$output/$ns-read.log"
 done
 # Every check runs; each miss names its pattern and shows what was captured.
 missing=0
