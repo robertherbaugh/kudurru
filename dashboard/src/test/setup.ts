@@ -4,6 +4,7 @@ import { cleanup, configure } from '@testing-library/react';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'vitest';
 import { handlers, resetDB } from '../mocks/handlers';
+import { clearQueryClients, expectNoQueuedBatches, settleQueryClients } from './queryClients';
 import { installTestTransport } from './transport';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
@@ -109,7 +110,18 @@ if (typeof dialogProto.showModal !== 'function') {
   };
 }
 
-afterEach(() => {
-  cleanup();
-  server.resetHandlers();
+// Settle first, with the UI mounted and the MSW handlers of the test in place:
+// nothing of the test may still be in flight once jsdom goes away
+// (queryClients.ts). The teardown runs even when settling fails, so only the
+// leaking test fails, and with the error of settling: the check that the
+// unmount queued nothing only runs after a test that settled.
+afterEach(async () => {
+  try {
+    await settleQueryClients();
+  } finally {
+    cleanup();
+    server.resetHandlers();
+    clearQueryClients();
+  }
+  expectNoQueuedBatches();
 });

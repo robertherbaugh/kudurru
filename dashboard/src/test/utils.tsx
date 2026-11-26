@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 import type { SettingKey } from '../api/types';
 import { AppProviders } from '../App';
 import { mockDB, signIn } from '../mocks/handlers';
+import { trackQueryClient } from './queryClients';
 
 /** The values of the structured entries of a mock list (the ui-allow / ui-deny lists). */
 export function uiEntryValues(listName: string, namespace = 'default'): string[] {
@@ -16,10 +17,13 @@ export function uiEntryValues(listName: string, namespace = 'default'): string[]
 /** The absolute API base the tests use (Node's fetch needs absolute URLs). */
 export const API = `${window.location.origin}/api/v1`;
 
+/** A fresh client per test, settled and cleared after it (src/test/setup.ts). */
 export function testQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchInterval: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
-  });
+  return trackQueryClient(
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchInterval: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
+    }),
+  );
 }
 
 export interface RenderOptions {
@@ -34,7 +38,7 @@ export interface RenderOptions {
 export function renderWithApp(ui: ReactElement, opts: RenderOptions = {}): RenderResult & { client: QueryClient } {
   window.history.replaceState(null, '', opts.route ?? '/');
   if (opts.user !== null) signIn(opts.user ?? 'admin');
-  const client = opts.client ?? testQueryClient();
+  const client = trackQueryClient(opts.client ?? testQueryClient());
   const result = render(
     <AppProviders basePath="/" client={client} apiBase={API}>
       {ui}

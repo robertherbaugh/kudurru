@@ -20,6 +20,7 @@ import { MigrationImport } from '../components/wizards/MigrationWizard';
 import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, pick } from '../test/controls';
+import { trackQueryClient } from '../test/queryClients';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AllowlistPage from '../pages/AllowlistPage';
@@ -123,7 +124,7 @@ afterEach(() => {
 describe('enrolled follower capabilities', () => {
   it('refuses primary-only permissions and operations with the primary named, and keeps forwarded and local ones', async () => {
     asFollower();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
     const hook = renderHook(() => ({ role: useClusterRole(), can: useCan(), cannot: useCannotReason(), primaryOnly: usePrimaryOnly() }), { wrapper: wrapper(queryClient) });
     await waitFor(() => expect(hook.result.current.role.follower).toBe(true));
@@ -149,7 +150,7 @@ describe('enrolled follower capabilities', () => {
 
   it('gates nothing on a primary', async () => {
     server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ ...followerInfo(), node: 'kudurru-0', role: 'primary', primaryRequired: false, forwardedOperations: undefined, localOperations: undefined })));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
     const hook = renderHook(() => ({ role: useClusterRole(), can: useCan(), primaryOnly: usePrimaryOnly() }), { wrapper: wrapper(queryClient) });
     await waitFor(() => expect(hook.result.current.role.role).toBe('primary'));
@@ -233,7 +234,7 @@ describe('follower refusals', () => {
   });
 
   it('keeps an unconfirmed sign-out on the login page and clears it after the next sign-in', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'original' } });
     server.use(http.post(`${API}/auth/logout/browser`, () => HttpResponse.json({ error: {
       key: 'completion_unknown',
@@ -258,7 +259,7 @@ describe('follower refusals', () => {
   });
 
   it('adds the session warning to a refusal that does not mention it', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'original' } });
     server.use(http.post(`${API}/auth/logout/browser`, () => HttpResponse.json({ error: { key: 'unavailable', message: 'Unavailable' } }, { status: 503 })));
     const hook = renderHook(() => useSignOut(), { wrapper: wrapper(queryClient) });
@@ -268,7 +269,7 @@ describe('follower refusals', () => {
   });
 
   it('keeps the session when the sign-out never reached the server, and rejects', async () => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     const me = { principal: { name: 'original' } };
     queryClient.setQueryData(qk.me, me);
     server.use(http.post(`${API}/auth/logout/browser`, () => HttpResponse.error()));
@@ -301,7 +302,7 @@ describe('read after a forwarded change', () => {
   it('refetches once more after the follower’s next pull for a forwarded change the client sends, and never on a primary', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     server.use(http.put(`${API}/objects/policies/default/probe`, () => new HttpResponse(null, { status: 204 })));
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } }));
     const reads = vi.fn(() => Promise.resolve('value'));
     // The first answer is a primary: a write schedules nothing.
     server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ ...followerInfo(), role: 'primary', primaryRequired: false, forwardedOperations: undefined, localOperations: undefined })));
@@ -330,7 +331,7 @@ describe('read after a forwarded change', () => {
       http.post(`${API}/dns/query`, () => HttpResponse.json({ answers: [] })),
       http.post(`${API}/cache/flush`, () => new HttpResponse(null, { status: 204 })),
     );
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } }));
     const reads = vi.fn(() => Promise.resolve('value'));
     asFollower();
     const hook = harness(queryClient, reads);
@@ -382,7 +383,7 @@ describe('a session without cluster.read on a follower', () => {
 
   it('gates the same permissions as GET /cluster would', async () => {
     asOperatorOnFollower();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: OPERATOR_PERMISSIONS });
     const hook = renderHook(() => ({ role: useClusterRole(), can: useCan(), primaryOnly: usePrimaryOnly() }), { wrapper: wrapper(queryClient) });
     await waitFor(() => expect(hook.result.current.role.follower).toBe(true));
@@ -399,7 +400,7 @@ describe('a session without cluster.read on a follower', () => {
   it('never asks GET /cluster, which would be audited as a denial, and follows the role through /auth/status', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     const { clusterReads, statusReads } = asOperatorOnFollower();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: OPERATOR_PERMISSIONS });
     const hook = renderHook(() => ({ role: useClusterRole(), can: useCan() }), { wrapper: wrapper(queryClient) });
     await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(true));
@@ -415,7 +416,7 @@ describe('a session without cluster.read on a follower', () => {
   it('stops polling GET /cluster after a 403', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
     const { clusterReads } = asOperatorOnFollower();
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     // The session claims cluster.read (a grant withdrawn since /auth/me was read).
     queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: { ...OPERATOR_PERMISSIONS, cluster: ['read'] } });
     const hook = renderHook(() => ({ role: useClusterRole() }), { wrapper: wrapper(queryClient) });
@@ -430,7 +431,7 @@ describe('a session without cluster.read on a follower', () => {
   it('sends no further GET /cluster after a 403 when another view mounts or the window regains focus', async () => {
     const { clusterReads } = asOperatorOnFollower();
     // The window focus default App.tsx sets, so a refocus is observable here.
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: { ...OPERATOR_PERMISSIONS, cluster: ['read'], nodes: ['read'] } });
     const first = renderHook(() => ({ role: useClusterRole() }), { wrapper: wrapper(queryClient) });
     await waitFor(() => expect(first.result.current.role.follower).toBe(true));
@@ -480,7 +481,7 @@ describe('the role after a failover', () => {
       http.get(`${API}/cluster`, () => HttpResponse.json(primary ? { ...followerInfo(), node: 'kudurru-1', role: 'primary', primaryRequired: false, forwardedOperations: undefined, localOperations: undefined } : followerInfo())),
       http.post(`${API}/probe-write`, () => HttpResponse.json(PRIMARY_REQUIRED, { status: 503 })),
     );
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
     const hook = renderHook(() => ({ ctx: useApiContext(), role: useClusterRole() }), { wrapper: wrapper(queryClient) });
     await vi.waitFor(() => expect(hook.result.current.role.role).toBe('primary'));

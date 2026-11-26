@@ -4,12 +4,13 @@ import { http, HttpResponse } from 'msw';
 import type { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { ApiProvider, qk, useApiContext, useSignOut } from './context';
+import { trackQueryClient } from '../test/queryClients';
 import { server } from '../test/setup';
 import { API } from '../test/utils';
 
 describe('browser sign-out hook', () => {
   it.each(['local', 'provider-unavailable', 'untrusted-redirect'])('clears cached identity and CSRF after %s', async (mode) => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryClient = trackQueryClient(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
     queryClient.setQueryData(qk.me, { principal: { name: 'original' } });
     queryClient.setQueryData(['private', 'answers'], ['sensitive']);
     let calls = 0;
