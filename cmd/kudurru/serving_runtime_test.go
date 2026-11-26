@@ -184,15 +184,24 @@ func awaitServingRuntime(t *testing.T, s *servingRuntime, predicate func() bool)
 // publication: a Wake that arrived after the served publication's preparation
 // read its candidate (the primary driver's restore Wake, which precedes its
 // Ready status) is answered by one more preparation, which publishes the same
-// cut again (D405). A test that compares publication identities across its
-// own commands waits for that one first; a later Wake is not waited for.
+// cut again (D405). Published during a test, it moves a publication identity
+// the test captured and supersedes a command admitted on the earlier
+// publication, so the command fixture waits for it before it returns; a later
+// Wake is not waited for.
 func awaitServingWakesPublished(t *testing.T, s *servingRuntime) {
 	t.Helper()
-	wakes := s.publisher.Status().Wakes
-	awaitServingRuntime(t, s, func() bool {
-		st := s.publisher.Status()
+	awaitServingRuntime(t, s, servingWakesPublished(s.publisher))
+}
+
+// servingWakesPublished counts the Wakes issued so far and reports whether
+// the served publication includes them, for a fixture with a publisher of its
+// own (awaitServingWakesPublished).
+func servingWakesPublished(p *serving.Publisher) func() bool {
+	wakes := p.Status().Wakes
+	return func() bool {
+		st := p.Status()
 		return st.ProtectedReady && st.ServedWakes >= wakes
-	})
+	}
 }
 
 func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) {

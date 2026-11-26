@@ -253,6 +253,10 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		owner := value.(*servingbuild.RuntimeOwner)
 		return ready && f.runtime.driver.Status().Ready && owner.Primary().Admitted("example.", time.Now())
 	})
+	// The driver Wakes the publisher before it reports Ready. A publication
+	// still owed to that Wake (D405) would satisfy a test's wait for a newer
+	// publication than the one it captured before its own change.
+	f.wait(t, servingWakesPublished(f.publisher))
 	return f
 }
 
