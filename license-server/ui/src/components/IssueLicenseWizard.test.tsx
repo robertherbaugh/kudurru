@@ -2,7 +2,8 @@
 // put with the message and the request never carries features: []), all
 // seven ticked shows the fixed-list note, the review states every claim
 // with Expires (UTC) and Keeps working until (UTC), and signing posts the
-// claims and opens the new license.
+// claims and opens the new license. Each signing test ends on the loaded
+// license page, so no request of it is still in flight when it ends.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { IssueLicenseBody } from '@shared/api';
 import { FEATURES } from '@shared/catalog';
@@ -36,6 +37,14 @@ function open() {
       auditList: () => ({ items: [] }),
     },
   });
+}
+
+/** Signing reports the new key and opens its license page, loaded. */
+async function issuedAndOpened() {
+  expect(await screen.findByText('Issued lic_new123 to Example GmbH')).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe('/licenses/lic_new123'));
+  expect(await screen.findByRole('heading', { name: 'Example GmbH' })).toBeInTheDocument();
+  expect(screen.queryByRole('form', { name: 'Issue license' })).not.toBeInTheDocument();
 }
 
 async function newCustomerStep() {
@@ -90,7 +99,7 @@ test('the review shows every claim with UTC dates, and signing posts them', asyn
   expect(body).toMatchObject({ licensee: 'Example GmbH', plan: 'business', nodes: 1, features: ['oidc'], expiresOn: '2028-10-11', newCustomer: { name: 'Example GmbH', kind: 'organization', contactEmail: null } });
   expect(body.customerId).toBeUndefined();
   expect(api.callsTo('licenseIssue')[0]?.headers.get('X-Kudurru-CSRF')).toBe('csrf-token-1');
-  await waitFor(() => expect(window.location.pathname).toBe('/licenses/lic_new123'));
+  await issuedAndOpened();
 });
 
 test('a personal key keeps every feature and 3 nodes; all features sends null', async () => {
@@ -107,4 +116,5 @@ test('a personal key keeps every feature and 3 nodes; all features sends null', 
   fireEvent.click(within(wizard()).getByRole('button', { name: 'Sign and issue' }));
   await waitFor(() => expect(api.callsTo('licenseIssue')).toHaveLength(1));
   expect(api.callsTo('licenseIssue')[0]?.body).toMatchObject({ plan: 'personal', nodes: 3, features: null, expiresOn: '2027-10-12' });
+  await issuedAndOpened();
 });

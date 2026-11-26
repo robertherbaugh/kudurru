@@ -13,9 +13,13 @@ GOFLAGS     := -trimpath
 CGO_ENABLED := 0
 export CGO_ENABLED
 
-CONTROLLER_GEN ?= go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
-GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
+# `go run PKG@VERSION` for the Go tools below, with a bounded retry on
+# transient proxy errors while the tool downloads and builds; a pinned
+# tool is kept in bin/go-tools (hack/go-modules.sh).
+GO_RUN         := $(CURDIR)/hack/go-modules.sh run
+CONTROLLER_GEN ?= $(GO_RUN) sigs.k8s.io/controller-tools/cmd/controller-gen@v0.22.0
+GOLANGCI_LINT  ?= $(GO_RUN) github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+SETUP_ENVTEST  ?= $(GO_RUN) sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
 .PHONY: test-postgres test-sinks all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
@@ -163,7 +167,7 @@ openapi:
 
 ## client-go: generate the Go API client internal/apiclient/openapi from
 ## api/openapi-3.0.json with oapi-codegen (Apache-2.0)
-OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
+OAPI_CODEGEN ?= $(GO_RUN) github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
 client-go: openapi
 	$(OAPI_CODEGEN) -config internal/apiclient/openapi/oapi-codegen.yaml api/openapi-3.0.json
 	gofmt -s -w internal/apiclient/openapi
@@ -232,7 +236,7 @@ $(DEX_BIN):
 	curl -fsSL -o bin/.dex-src/dex.tar.gz https://github.com/dexidp/dex/archive/refs/tags/$(DEX_VERSION).tar.gz
 	echo "$(DEX_SHA256)  bin/.dex-src/dex.tar.gz" | sha256sum -c -
 	tar -xzf bin/.dex-src/dex.tar.gz -C bin/.dex-src --strip-components=1
-	cd bin/.dex-src && go build -trimpath -ldflags '-X main.version=$(DEX_VERSION)' -o $(abspath $(DEX_BIN)) ./cmd/dex
+	cd bin/.dex-src && $(CURDIR)/hack/go-modules.sh download && GOPROXY=off go build -trimpath -ldflags '-X main.version=$(DEX_VERSION)' -o $(abspath $(DEX_BIN)) ./cmd/dex
 	rm -rf bin/.dex-src
 
 ## test-auth-e2e: OIDC BFF login end to end against a real dex (and the mock
@@ -433,7 +437,7 @@ docs-serve: docs-assets $(HUGO)
 ## docs-check-links: build the site for the root of its own domain
 ## (docs.kudurru.io) and check every internal link, asset and fragment of the
 ## HTML with htmltest (MIT, docs-site/.htmltest.yml)
-HTMLTEST ?= go run github.com/wjdp/htmltest@v0.17.0
+HTMLTEST ?= $(GO_RUN) github.com/wjdp/htmltest@v0.17.0
 docs-check-links: docs-assets $(HUGO)
 	rm -rf bin/docs-links bin/docs-links-log
 	cd docs-site && $(HUGO) $(HUGO_FLAGS) --baseURL http://localhost/ --destination ../bin/docs-links
@@ -460,10 +464,10 @@ DEPLOY_BIN          := $(CURDIR)/bin/deploy-tools
 deploy-tools: $(DEPLOY_BIN)/kubeconform $(DEPLOY_BIN)/kustomize
 
 $(DEPLOY_BIN)/kubeconform:
-	GOBIN=$(DEPLOY_BIN) go install github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION)
+	GOBIN=$(DEPLOY_BIN) hack/go-modules.sh install github.com/yannh/kubeconform/cmd/kubeconform@$(KUBECONFORM_VERSION)
 
 $(DEPLOY_BIN)/kustomize:
-	GOBIN=$(DEPLOY_BIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
+	GOBIN=$(DEPLOY_BIN) hack/go-modules.sh install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 
 helm-lint:
 	helm lint --strict deploy/helm/kudurru deploy/helm/kudurru-crds
@@ -730,7 +734,7 @@ SEMGREP_EXCLUDE := \
 	go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure \
 	trailofbits.go.string-to-int-signedness-cast.string-to-int-signedness-cast \
 	yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
-GOVULNCHECK ?= go run golang.org/x/vuln/cmd/govulncheck@v1.9.0
+GOVULNCHECK ?= $(GO_RUN) golang.org/x/vuln/cmd/govulncheck@v1.9.0
 TRIVY_VERSION              ?= 0.76.0
 TRIVY_ASSET_linux_amd64    := Linux-64bit
 TRIVY_ASSET_linux_arm64    := Linux-ARM64

@@ -100,6 +100,12 @@ func newServingCommandFixtureOn(t *testing.T, s *servingRuntime, beforeStart ...
 	}
 	t.Cleanup(f.stop)
 	awaitServingRuntime(t, f.s, func() bool { return f.s.primary.driver.Status().Ready && f.s.publisher.Status().ProtectedReady })
+	// A converged runtime can still owe the publication that answers a
+	// startup Wake (D405). Published during the test, it moves the served
+	// identity a test captured and supersedes a command admitted on the
+	// earlier publication, so every caller starts on the publication that
+	// answers every Wake issued so far.
+	awaitServingWakesPublished(t, f.s)
 	f.http, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.currentClock()})
 	if err != nil {
 		t.Fatal(err)

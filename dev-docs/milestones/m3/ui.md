@@ -29,7 +29,7 @@ Branch `worktree-wf_287eb68b-e67-3`, on top of 3e52e5a. Everything lives in
 
 ### `dashboard/` (the SPA, D69 stack)
 
-Bun 1.4.4 + Vite 8 (rolldown) + React 19.3 + TypeScript 6 strict
+Bun 1.4.5 + Vite 8 (rolldown) + React 19.3 + TypeScript 6 strict
 (`noUncheckedIndexedAccess`, `verbatimModuleSyntax`) + Astryx 0.6.8
 (`@astryxdesign/core`; the Kudurru brand theme and neutral, stone and the
 fun y2k as local themes in `dashboard/src/themes`, built with `astryx theme build`

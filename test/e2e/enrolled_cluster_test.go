@@ -812,8 +812,10 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
 			map[string]any{"dnsName": "later.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.43"}}}}}
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", newRecord, http.StatusCreated, nil)
-	// The deletion of hosts below is a single command on the primary: it
-	// starts after the zone's status write for this record has published.
+	// The deletion of hosts below is a single command on the primary. It
+	// starts after the zone's status write for this record has published,
+	// which makes a refusal rare; the primary's other own commits can still
+	// refuse it (enrolledPrimaryDelete).
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "later", "192.0.2.43")
 	// A batch deletion through the partitioned follower reports its item as
 	// an error. The later assertions on this record prove that it was neither
@@ -823,7 +825,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	if len(retained.Processed.Success) != 0 || len(retained.Processed.Errors) != 1 || retained.Processed.Errors[0].Error == "" {
 		t.Fatalf("partitioned batch deletion did not report its item as an explicit failure: %+v", retained.Processed)
 	}
-	apiA.request(t, http.MethodDelete, "/objects/dnsrecordsets/default/hosts", nil, http.StatusNoContent, nil)
+	enrolledPrimaryDelete(t, apiA, "/objects/dnsrecordsets/default/hosts")
 	awaitDNS(primary, "seed", "", dns.RcodeNameError)
 	awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) || !checkDNS(follower, "later", "", dns.RcodeNameError) {

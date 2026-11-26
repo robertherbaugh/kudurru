@@ -41,10 +41,10 @@ type servingNodeFixture struct {
 
 func newServingNodeFixture(t *testing.T) *servingNodeFixture {
 	t.Helper()
+	// The node tests prove that a local command publishes nothing. The
+	// command fixture starts them on the publication that answers every
+	// startup Wake.
 	n := &servingNodeFixture{f: newServingCommandFixture(t), level: new(slog.LevelVar)}
-	// The node tests prove that a local command publishes nothing, so they
-	// start on the publication that answers every startup Wake.
-	awaitServingWakesPublished(t, n.f.s)
 	cfg, err := cloneServingNodeConfig(n.f.s.opts.Config)
 	if err != nil {
 		t.Fatal(err)

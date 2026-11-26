@@ -73,7 +73,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       # bun run starts node-shebang tools (vitest, eslint, the Astryx CLI)
       # with the runner's Node; vitest 5, jsdom 30 and the Astryx CLI need
       # Node 22 or later. The same pin as ci.yml's dashboard jobs.
@@ -85,6 +85,10 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Typecheck, lint, test and build
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
@@ -116,7 +120,7 @@ jobs:
       # throwaway development key, as compose does.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - name: Build the image (linux/amd64)
         run: make license-server-image
       - name: Run it against Postgres
@@ -190,7 +194,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       # Playwright runs on Node, as in ci.yml's dashboard-e2e job.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -199,6 +203,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Install (frozen lockfile)
         run: make license-server-install
       # Keyed on bun.lock, which pins the Playwright version.
@@ -245,7 +251,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - name: Install the deployment tools
         working-directory: license-server/cloudflare
         run: bun install --frozen-lockfile

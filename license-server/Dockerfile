@@ -24,12 +24,12 @@
 # (the ENTRYPOINT takes them as arguments).
 #
 # Both stages are pinned by their multi-arch index digest; bump them
-# together, and with bun-version in the workflows (1.4.4). The build stage
+# together, and with bun-version in the workflows (1.4.5). The build stage
 # runs on the build platform and produces only architecture-independent
 # JavaScript (no native npm modules), so arm64 needs no QEMU; the runtime
 # stage only copies files.
 
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS build
 WORKDIR /src/license-server
 # The manifest and the lockfile first, so the dependency layer is reused
 # until they change. Lifecycle scripts of dependencies stay blocked (no
@@ -47,7 +47,7 @@ RUN bun run build
 # single layer: the server and health-check bundles, the UI, the trusted
 # public keys and the image's notices. Root-owned and not writable by the
 # runtime user.
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS out
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS out
 COPY --from=build /src/license-server/dist/server.js /src/license-server/dist/healthcheck.js /out/
 COPY --from=build /src/license-server/dist/ui/ /out/ui/
 COPY --from=build /src/internal/license/keys/ /out/trusted-keys/
@@ -61,7 +61,7 @@ RUN set -eu; \
     chown -R 0:0 /out; \
     chmod -R a+rX,go-w /out
 
-FROM oven/bun:1.4.4-distroless@sha256:153a951ae40106e125898103e6e990ee0f38e6aee7f561029e26cf9fbed23470
+FROM oven/bun:1.4.5-distroless@sha256:3a210956422ad81cf7532e1fc1f2eb9275d6ef4c2337a9d25d530f798e80726a
 # Empty unless the build passes them (make license-server-image and the
 # publish job do); config.ts then reports commit and version "dev".
 ARG VERSION=
