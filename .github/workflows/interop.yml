@@ -40,6 +40,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Run digest-pinned live suites on a private Docker daemon
         env:
           CGO_ENABLED: '1'

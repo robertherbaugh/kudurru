@@ -81,6 +81,18 @@ not part of the required `ci-ok` check.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
+Module downloads go through `hack/go-modules.sh`, which retries a transient
+network or proxy error (an HTTP/2 stream reset, a 5xx from proxy.golang.org)
+(three attempts in all) and fails a checksum mismatch, an unknown revision or a
+missing module on the first. Every CI job that compiles Go runs
+`hack/go-modules.sh download` once after setup-go; the Dockerfile and the
+goreleaser before hook do the same and then build with `GOPROXY=off`, so a
+build never fetches a module outside the retry. The Makefile's Go tools
+(controller-gen, setup-envtest, oapi-codegen, htmltest, govulncheck,
+golangci-lint, kubeconform, kustomize) install through it too, and a tool
+pinned to a version is kept in `bin/go-tools/`. Add new module downloads
+(a `go install`, a `go run pkg@version`, a Dockerfile build stage) the same way.
+
 ### Pinned DNS interoperability
 
 The separate `pinned-interop` workflow is informational, not part of `ci-ok`.

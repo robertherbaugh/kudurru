@@ -34,6 +34,11 @@ jobs:
         with:
           go-version-file: dev-docs/spikes/ad-dns/go.mod
           cache-dependency-path: dev-docs/spikes/ad-dns/go.sum
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        working-directory: dev-docs/spikes/ad-dns
+        run: ../../../hack/go-modules.sh download
       - name: Install independent Kerberos and DNS tools
         run: |
           sudo apt-get update -qq

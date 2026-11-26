@@ -22,6 +22,10 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       # The pinned Hugo release (HUGO_VERSION and its SHA-256 in the Makefile).
       - name: Cache Hugo
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

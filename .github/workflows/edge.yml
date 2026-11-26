@@ -43,6 +43,10 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Validate golden configurations in the pinned dnsdist and keepalived images
         run: make edge-check
       - name: The -hostnetwork image binds :53 with NET_BIND_SERVICE only

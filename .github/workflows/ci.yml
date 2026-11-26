@@ -100,6 +100,10 @@ jobs:
             go-test-${{ matrix.cache }}-${{ runner.os }}-${{ runner.arch }}-
             go-test-1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
             go-test-2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+      # Every module of the build list once, retrying only transient proxy
+      # errors (hack/go-modules.sh); later steps build from the module cache.
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       # kube-apiserver and etcd for the kube driver tests: keyed on the
       # Makefile, which pins ENVTEST_K8S_VERSION and the setup-envtest version.
       - name: Cache envtest control-plane binaries
@@ -122,6 +126,7 @@ jobs:
           python3 -B -m unittest discover -s hack -p test_snapshot_images.py
           python3 -B -m unittest discover -s hack -p test_release_protection_check.py
           python3 -B -m unittest discover -s hack -p test_probe_pins.py
+          python3 -B -m unittest discover -s hack -p test_go_modules.py
           make test TEST_SUITE="$GO_TEST_SUITE" TEST_COMMAND_SHARD="$GO_COMMAND_SHARD"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.
@@ -160,6 +165,8 @@ jobs:
           restore-keys: |
             go-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
             go-build-${{ runner.os }}-${{ runner.arch }}-
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Verify generated files are current
         run: make check-generated-code
       - name: Build
@@ -209,6 +216,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Central-database tests
         run: |
           go test -count=1 ./internal/central/...
@@ -239,6 +248,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Wait for both sink servers and report versions
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -295,6 +306,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Embed the built bundle
         working-directory: .
         run: go test -count=1 ./dashboard/...
@@ -323,6 +336,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Install (frozen lockfile)
         working-directory: dashboard
         run: bun install --frozen-lockfile
@@ -389,6 +404,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       # The upgrade tests build the previous release from its tag
       # (kudurrutest.Previous); the checkout above has no tags.
       - name: Fetch the v0.1.0 tag for the upgrade tests
@@ -451,6 +468,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Install stock DHCP client and namespace tools
         run: |
           sudo apt-get update
@@ -490,6 +509,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Fuzz each target for 60 s
         env:
           FUZZTIME: 60s
@@ -516,6 +537,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Vet
         run: make vet
   lint:
@@ -527,6 +550,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: latest
@@ -543,6 +568,8 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           version: v4.3.0
@@ -586,9 +613,11 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      - name: Download Go modules
+        run: hack/go-modules.sh download
       - name: Deny copyleft modules
         run: |
-          go install github.com/google/go-licenses@latest
+          hack/go-modules.sh install github.com/google/go-licenses@latest
           go-licenses check ./... --disallowed_types=forbidden,restricted
   # The one required check: it passes when every job in needs
   # passed or was skipped (docs-only changes) and fails otherwise. It runs
