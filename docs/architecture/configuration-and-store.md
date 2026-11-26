@@ -2136,22 +2136,31 @@ row, replica install or authority transition ends the run.
 
 Before a later item the request lets the node publish for other callers: it
 waits, inside its lifetime and writer episode, until the publisher is current
-again (`Publisher.WaitTerm`), and then commits nothing for 200 milliseconds.
-It does so once its items have run for two seconds since the node last had a
-current publication for it, and at once when another caller's read (`GET` or
-`HEAD`) waits for a publication in the HTTP listener's two-second capture wait
-(`Publisher.AwaitHTTP`), as long as the request has not spent longer in its
-waits than in its own work. A waiting write is not counted: it would usually
+again (`Publisher.WaitTerm`), and then rests on that publication: it commits
+nothing for 200 milliseconds, or until every read that waited for a
+publication has been served from it (`Publisher.HoldTerm`, D420). The rest is
+a window in which the publication stays current: when a commit of anyone,
+usually the node's own follow-up writes to the item (the record's status, the
+zone's serial and lifecycle head, primary admission), makes it stale while a
+read still waits, the request waits for the next publication within the same
+bound and rests again. It does so once its items have run for two seconds
+since the node last had a current publication for it, and at once when
+another caller's read (`GET` or `HEAD`) waits for a publication in the HTTP
+listener's two-second capture wait (`Publisher.AwaitHTTP`), as long as the
+request has not spent longer in its waits than in its own work. A waiting write is not counted: it would usually
 commit in the pause and stop the rest of the request. The wait is bounded: it
 starts at two seconds, doubles after a wait that ended without a publication,
 is twice the last publication's time after one that came, and never exceeds
 ten seconds; the work between two timed waits is at least as long as the next
 bound. A wait that reaches its bound goes on without the publication and
 without the rest, so the pace makes a request at most about twice as slow. A
-read is served within its capture wait whenever the node publishes within it;
-a node that needs longer (a large data set, or the race detector on a loaded
-machine, where one publication of 120 record sets reached ten seconds) still
-refuses it with `503 generation_pending`. The pace captures no new lease: the
+read is served within its capture wait whenever the node publishes the
+request's items and its own follow-up writes within it, and the request still
+has credit; a caller that reads again as soon as it is answered uses the
+credit up, and then waits for it to be earned back and for one more
+publication. A node that needs longer (a large data set, one loaded CPU, or
+the race detector on a loaded machine, where one publication of 120 record
+sets reached ten seconds) still refuses it with `503 generation_pending`. The pace captures no new lease: the
 chain's compare still decides, so a command that another caller commits in
 the pause stops every later item.
 
@@ -2179,8 +2188,11 @@ flowchart TD
     First -->|completed| Anchor["Chain anchored: own commit receipt, or the current mark for a no-op"]
     Anchor --> Pace{"Items ran for their budget, or a read waits?"}
     Pace -->|no| Next["Next item under the publication gate"]
-    Pace -->|yes| Wait["Wait (bounded, 2 to 10 s) for a current publication; if it came, rest 200 ms"]
-    Wait --> Next
+    Pace -->|yes| Wait["Wait (bounded, 2 to 10 s) for a current publication"]
+    Wait -->|it came| Rest["Rest on it: 200 ms, or until the waiting reads are served"]
+    Rest -->|stale while a read waits| Wait
+    Rest --> Next
+    Wait -->|bound reached| Next
     Next -->|coordinator mark is the anchor| Run["Reauthorize in transaction, apply, move anchor to own receipt"]
     Run --> Pace
     Next -->|another command changed state| Stop["unavailable for this and every later item"]

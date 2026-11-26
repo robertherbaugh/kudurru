@@ -255,18 +255,23 @@ once in the dashboard works the same way, with a result for each name.
   they answer `503 generation_pending` (retry after one second). The request
   therefore pauses: when another caller's read (`GET` or `HEAD`) waits, and
   in any case after two seconds of work, it waits until the node has published the documents
-  applied so far, then commits nothing for 200 milliseconds, and goes on.
+  applied so far, then commits nothing for 200 milliseconds, or until the
+  waiting reads have been served, and goes on. When the node's own
+  follow-up writes replace that publication before a waiting read got it,
+  the request waits for the next one.
   A read counts before the node checks its credential, so any client that
   can reach the API, signed in or not, can make the request pause at every
   document. The pauses are bounded either way: a request spends at most
   about as long in them as in its own work, so they make it at most about
   twice as slow. A waiting read is served whenever the node publishes within its two
-  seconds. Measured on a shared test machine: 120 new record sets took 6
-  seconds with a second caller reading all the time; DNS answered the whole
-  time (the longest gap between two answers was typically under 0.1
-  seconds, with an occasional single dropped query of about 0.3 seconds and,
-  once in about 100 runs, an unexplained gap of 1.4 seconds; the zone never
-  answered SERVFAIL) and every read succeeded. Under heavy
+  seconds; a client that reads again as soon as it is answered uses up
+  that allowance and can be refused on a loaded node. Measured on a shared,
+  oversubscribed test machine: 120 new record sets took 3 to 19 seconds
+  (20 to 45 seconds on one CPU) with a second caller reading every two
+  seconds; every DNS query got its answer (the slowest within 0.1 seconds,
+  0.5 seconds on one CPU; longer gaps seen earlier were times in which the
+  whole test process was not scheduled; the zone never answered SERVFAIL)
+  and every read but one in 82 succeeded. Under heavy
   load (race detector) the same request took about 2 minutes, DNS still
   answered throughout (no gap above 0.14 seconds), but one publication took
   several seconds, and most reads were refused. Split very large files

@@ -255,8 +255,8 @@ generation_pending` after two seconds until the node has published again, so
 the request lets the node publish before its next item, inside its lifetime:
 at once when another caller's read is waiting, and after two seconds of work
 in any case. It waits until the node has published the items so far (for a
-bounded time), then commits nothing for 200 milliseconds. Other requests are
-served in that pause; a change committed by another request in the pause
+bounded time), then commits nothing for 200 milliseconds, or until the
+reads that waited have been served. Other requests are served in that pause; a change committed by another request in the pause
 stops the rest of the request as described
 above. [sqlite-cluster.md](sqlite-cluster.md#4-changes-through-a-follower)
 gives the sizes and the answers of a request that is refused as a whole.

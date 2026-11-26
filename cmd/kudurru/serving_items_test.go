@@ -620,6 +620,135 @@ func TestServingItemsYieldToAWaitingCaller(t *testing.T) {
 	}
 }
 
+// The rest after a yield ends once the callers it was for have been served
+// (D378): a yield to a waiting read costs the request about the node's time
+// to publish, not that plus the whole rest. Before, the request committed
+// nothing for the whole rest after every yield, which under the credit made a
+// read that arrived after one yield wait out two of them. Every item is still
+// applied once, the later one after a publication of the earlier one.
+func TestServingItemsRestEndsOnceWaitingCallersAreServed(t *testing.T) {
+	f := newItemsFixture(t, nil)
+	f.s.itemPace = &itemPace{work: time.Hour, rest: time.Minute, wait: 10 * time.Second}
+	f.between = func(n int, _ context.Context) {
+		if n == 0 {
+			return
+		}
+		// The node's follow-up write makes the caller wait for the next
+		// publication, as a read during a request does.
+		f.followUp(t, fmt.Sprintf("served-%d", n))
+		done := f.s.publisher.AwaitHTTP()
+		go func() {
+			defer done()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			for {
+				changed := f.s.publisher.Subscribe()
+				if lease, err := f.s.publisher.CaptureHTTP(ctx); err == nil {
+					lease.Release()
+					return
+				}
+				select {
+				case <-changed:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+	var current []bool
+	f.inside = func(_ int) {
+		current = append(current, f.s.publisher.Status().ProtectedReady)
+	}
+	started := time.Now()
+	results := f.apply(t, f.server, "served-a", "served-b")
+	if elapsed := time.Since(started); elapsed > 30*time.Second {
+		t.Fatal("the request rested for its whole rest after its waiting callers were served", elapsed)
+	}
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a request that yielded to waiting callers did not create every document: %s", itemsResults(results))
+		}
+	}
+	if f.commands != 2 || len(current) != 2 {
+		t.Fatal("an item ran more than once", f.commands, len(current))
+	}
+	if !current[1] {
+		t.Fatal("the later item began without a publication of the earlier one")
+	}
+}
+
+// A publication that the node's own follow-up write replaces during the rest
+// does not end the pace while a caller still waits (D378): the request waits
+// for the next publication and rests a whole rest on it. Each item's commit is
+// followed by such writes (the record's status, the zone's serial and
+// lifecycle head, primary admission), some reacting to the item's first
+// publication. Before, the rest counted from that first publication, so a
+// waiting read that was not scheduled before the follow-up write found no
+// current publication again, the request committed on, and the read was
+// refused with generation_pending at the end of its capture wait.
+func TestServingItemsRestOutlastsAFollowUpWriteForAWaitingCaller(t *testing.T) {
+	f := newItemsFixture(t, nil)
+	const rest = 2 * time.Second
+	f.s.itemPace = &itemPace{work: time.Hour, rest: rest, wait: 20 * time.Second}
+	waiting := f.s.publisher.AwaitHTTP() // a caller that is never scheduled to capture
+	defer waiting()
+	var followed time.Time
+	wrote := make(chan error, 1)
+	f.between = func(n int, _ context.Context) {
+		if n != 1 {
+			return
+		}
+		f.followUp(t, "outlast-before")
+		go func() {
+			// During the rest on the first publication of the earlier item,
+			// the node writes again.
+			deadline := time.Now().Add(20 * time.Second)
+			for !f.s.publisher.Status().ProtectedReady {
+				if time.Now().After(deadline) {
+					wrote <- errors.New("the node never published the earlier item")
+					return
+				}
+				time.Sleep(time.Millisecond)
+			}
+			time.Sleep(200 * time.Millisecond)
+			followed = time.Now()
+			token, err := f.s.opts.Store.WriterToken()
+			if err == nil {
+				ctx := sqlite.WithWriterToken(context.Background(), token)
+				err = f.s.opts.Store.Command(ctx, token.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+					return tx.PutSection(ctx, "dedup", replication.Entry{Key: "outlast-during", Data: []byte(`{}`)})
+				})
+			}
+			wrote <- err
+		}()
+	}
+	var began time.Time
+	var current bool
+	f.inside = func(n int) {
+		if n == 1 {
+			began, current = time.Now(), f.s.publisher.Status().ProtectedReady
+		}
+	}
+	results := f.apply(t, f.server, "outlast-a", "outlast-b")
+	if err := <-wrote; err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a request whose rest a follow-up write cut did not create every document: %s", itemsResults(results))
+		}
+	}
+	if f.commands != 2 {
+		t.Fatal("an item ran more than once", f.commands)
+	}
+	if !current {
+		t.Fatal("the later item began without a current publication")
+	}
+	if since := began.Sub(followed); since < rest {
+		t.Fatalf("the later item began %s after the follow-up write that cut the rest, less than a whole rest of %s on the next publication", since, rest)
+	}
+}
+
 // The pace's arithmetic (D378): the work budget, the adaptive wait bound, and
 // the credit that lets a request yield to waiting callers only while it has
 // not spent more time waiting than working.
@@ -646,11 +775,11 @@ func TestServingItemsPaceArithmetic(t *testing.T) {
 	if i.waitBound() != pace.maxWait {
 		t.Fatal("the bound grew past maxWait", i.waitBound())
 	}
-	i.published(1500 * time.Millisecond)
+	i.published(1500*time.Millisecond, pace.rest)
 	if i.waitBound() != 3*time.Second {
 		t.Fatal("a publication did not set the bound to twice its time", i.waitBound())
 	}
-	i.published(100 * time.Millisecond)
+	i.published(100*time.Millisecond, pace.rest)
 	if i.waitBound() != pace.wait {
 		t.Fatal("a fast publication set the bound below the pace's wait", i.waitBound())
 	}

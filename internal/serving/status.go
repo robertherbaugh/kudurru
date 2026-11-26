@@ -3,6 +3,7 @@ package serving
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
@@ -196,4 +197,60 @@ func (p *Publisher) WaitTerm(ctx context.Context, target TermActivation) error {
 		case <-authority:
 		}
 	}
+}
+
+// HoldTerm keeps the complete publication that is current in this writable
+// incarnation for other callers while a request of several items commits
+// nothing (D378). It reports true when that publication stayed current for
+// hold, or earlier, once no caller waits for a publication (AwaitHTTP) any
+// more while it is still current, when callers waited for one: awaited
+// reports that they did when the hold was asked for, and a caller that
+// begins to wait during the hold counts too. They were served from it, or
+// gave up. It reports false at once when no publication is current, and as
+// soon as anything makes it stale, whoever committed: the node's own
+// follow-up writes after each item (the record's status, the zone's serial
+// and lifecycle head, primary admission) replace a publication within
+// milliseconds, before a waiting caller may have been scheduled to capture
+// it. It waits for nothing else and mints no authority.
+func (p *Publisher) HoldTerm(ctx context.Context, target TermActivation, hold time.Duration, awaited bool) (bool, error) {
+	timer := time.NewTimer(hold)
+	defer timer.Stop()
+	for {
+		generation := p.opts.Source.GenerationChanges()
+		authority := p.opts.Source.AuthorityChanges()
+		var dependencies <-chan struct{}
+		if p.opts.DependencyChanges != nil {
+			dependencies = p.opts.DependencyChanges()
+		}
+		released := p.awaitChanges()
+		// Subscribed before these checks, so a change after them is never
+		// missed.
+		if !p.currentIn(target) {
+			return false, nil
+		}
+		if p.AwaitingHTTP() {
+			awaited = true
+		} else if awaited {
+			return true, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-p.stop:
+			return false, ErrClosed
+		case <-generation:
+		case <-authority:
+		case <-dependencies:
+		case <-released:
+		case <-timer.C:
+			return p.currentIn(target), nil
+		}
+	}
+}
+
+// currentIn reports a current complete publication in this writable
+// incarnation, as WaitTerm requires.
+func (p *Publisher) currentIn(target TermActivation) bool {
+	s := p.Status()
+	return !p.closed.Load() && s.Authority.Term.Same(target.Term) && s.Authority.Incarnation == target.Incarnation && s.ProtectedReady && s.Authority.Writable()
 }
