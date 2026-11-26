@@ -32,6 +32,7 @@ import (
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
+	"github.com/robertherbaugh/kudurru/ee/integration/inbound"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
@@ -567,20 +568,63 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	if first == "sources-a" {
 		other = "sources-b"
 	}
+	// The admin client sees a head as soon as its write commits, but the
+	// holder installs it only after the write's answer, the retired chunks'
+	// deletes and a relist: a partition in between leaves the holder
+	// serving the previous head, which expires earlier. The holder marks a
+	// run Ready, which stamps status.lastSyncTime (whole seconds), only once
+	// it installed the run's head; the previous run ended a poll before this
+	// head was accepted. So wait for that status too.
 	lastBeforeCut := sequence()
-	kubeAwait(t, 20*time.Second, "a fresh completed poll before the partition", func() bool { return sequence() > lastBeforeCut })
+	var fresh kinds.IntegrationSourceHead
+	kubeAwait(t, 30*time.Second, "a fresh completed poll the holder installed before the partition", func() bool {
+		h := heads()
+		if len(h) != 1 || h[0].Spec.Sequence <= lastBeforeCut {
+			return false
+		}
+		var integration public.Integration
+		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &integration); err != nil || integration.Status.LastSyncTime == nil {
+			return false
+		}
+		fresh = h[0]
+		return !integration.Status.LastSyncTime.Time.Before(fresh.Spec.AcceptedAt.Truncate(time.Second))
+	})
 	pollsBefore := calls.Load()
 	gates[first].partition(true)
 	partitionedAt := time.Now()
-	// The last head's observation expires three polls (fifteen seconds,
+	// The installed head's observation expires three polls (fifteen seconds,
 	// truncated to the second) after it was made, and the head's AcceptedAt
-	// is stamped right after the observation. Until twelve seconds after
-	// AcceptedAt the partitioned replica must answer without a gap.
-	last := heads()
-	if len(last) != 1 {
+	// is stamped soon after the observation. Until twelve seconds after
+	// AcceptedAt the partitioned replica must answer without a gap. A later
+	// head whose write answer the partition cut is not the holder's.
+	if last := heads(); len(last) != 1 {
 		t.Fatal("heads at the partition", len(last))
 	}
-	until := last[0].Spec.AcceptedAt.Add(12 * time.Second)
+	until := fresh.Spec.AcceptedAt.Add(12 * time.Second)
+	// The provider reads and the commit's own API reads run between the
+	// observation and AcceptedAt. On a slow machine that gap can exceed the
+	// margin above, so the window also ends two seconds before the
+	// committed observation's own expiry. The partition keeps the holder
+	// from retiring the head's chunks.
+	var source []byte
+	for _, ref := range fresh.Spec.Chunks {
+		var sec corev1.Secret
+		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: kube.InternalSecretName(kinds.KindIntegrationSourceChunk, "", ref.Name)}, &sec); err != nil {
+			t.Fatal(err)
+		}
+		var chunk kinds.IntegrationSourceChunk
+		if err := json.Unmarshal(sec.Data[kube.InternalObjectKey], &chunk); err != nil {
+			t.Fatal(err)
+		}
+		source = append(source, chunk.Spec.Data...)
+	}
+	var document inbound.Document
+	if err := json.Unmarshal(source, &document); err != nil || len(document.Snapshot.Clients) != 1 {
+		t.Fatal("the installed head's observation", err, len(document.Snapshot.Clients))
+	}
+	if end := document.Snapshot.Clients[0].ExpiresAt.Add(-2 * time.Second); end.Before(until) {
+		until = end
+	}
 	t.Log("the partitioned replica must answer without a gap for", time.Until(until).Round(100*time.Millisecond))
 	for time.Now().Before(until) {
 		if !granted(byName[first]) {
