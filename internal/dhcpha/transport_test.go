@@ -191,7 +191,10 @@ func TestPartitionSeversEstablishedConnection(t *testing.T) {
 	if released.Load() != 1 {
 		t.Fatal("partitioned connection was not closed")
 	}
-	<-sent
+	// The reply reached the socket; only the partition check withheld it.
+	if err := <-sent; err != nil {
+		t.Fatalf("peer reply did not reach the socket: %v", err)
+	}
 }
 
 // gatedConn holds the first read inside the underlying socket until released.
