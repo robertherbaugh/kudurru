@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -210,20 +211,39 @@ func kubeAwait(t *testing.T, d time.Duration, what string, cond func() bool) {
 // kubeRewritten reports whether a query for name sent from source is
 // answered with the policy rewrite target.
 func kubeRewritten(ctx context.Context, cfg *config.Config, source, name, target string) bool {
+	granted, _, _ := kubeAnswer(ctx, cfg, source, name, target)
+	return granted
+}
+
+// kubeAnswer sends one query for name from source. granted reports the
+// policy rewrite to target. denied reports a positive unrewritten answer:
+// the resolver's own NXDOMAIN for a name in the RFC 6761 test. zone, which
+// it never forwards. A dial error, a timeout or any other answer is
+// neither, so a caller waiting for a denial treats it as "not yet"; err
+// describes what arrived instead.
+func kubeAnswer(ctx context.Context, cfg *config.Config, source, name, target string) (granted, denied bool, err error) {
 	dialer := &net.Dialer{Timeout: time.Second, LocalAddr: &net.UDPAddr{IP: net.ParseIP(source)}}
 	raw, err := dialer.DialContext(ctx, "udp", cfg.Listeners.DNS[0].Address)
 	if err != nil {
-		return false
+		return false, false, err
 	}
 	defer func() { _ = raw.Close() }()
 	q := new(dns.Msg)
 	q.SetQuestion(name, dns.TypeA)
 	a, _, err := (&dns.Client{Net: "udp", ReadTimeout: 6 * time.Second, WriteTimeout: time.Second}).ExchangeWithConnContext(ctx, q, &dns.Conn{Conn: raw})
-	if err != nil || a == nil || a.Rcode != dns.RcodeSuccess || len(a.Answer) != 1 {
-		return false
+	switch {
+	case err != nil:
+		return false, false, err
+	case a == nil:
+		return false, false, errors.New("no response")
+	case a.Rcode == dns.RcodeNameError && len(a.Answer) == 0:
+		return false, true, nil
+	case a.Rcode == dns.RcodeSuccess && len(a.Answer) == 1:
+		if rr, ok := a.Answer[0].(*dns.A); ok && rr.A.String() == target {
+			return true, false, nil
+		}
 	}
-	rr, ok := a.Answer[0].(*dns.A)
-	return ok && rr.A.String() == target
+	return false, false, fmt.Errorf("unexpected answer: rcode %s, %d answers", dns.RcodeToString[a.Rcode], len(a.Answer))
 }
 
 // TestRunServeKubeUniFiSourcesTwoReplicasAndPartition mounts two replicas
@@ -811,11 +831,49 @@ func TestRunServeKubeExpiredLicenseAndRecreatedIntegration(t *testing.T) {
 		status, body := env.api(t, cfg, http.MethodGet, "/integrations/default/inventory", nil)
 		return status == http.StatusOK && body["uid"] == string(definition.UID) && body["reason"] == "LicenseUnavailable"
 	})
-	if granted() || calls.Load() != before {
-		t.Fatal("the new UID inherited the old source or reached the provider")
+	// The administration API reads the object snapshot and the host's
+	// status directly, but DNS follows that snapshot one hop later: the
+	// source runtime re-evaluates the heads on its publish hook and installs
+	// the grants it derives through a second snapshot rebuild. The mount
+	// knowing the new UID therefore does not mean DNS has dropped the old
+	// incarnation's grants yet; it converges to denial once the runtime has
+	// evaluated the recreated object, and an inherited source would keep
+	// granting instead. Only a positive unrewritten answer counts as a
+	// denial: a lost or failed query is "not yet", never denied.
+	answer := func() (bool, bool, error) { return kubeAnswer(ctx, cfg, "127.0.0.7", "granted.test.", "192.0.2.99") }
+	for deadline := time.Now().Add(30 * time.Second); ; {
+		granted, denied, err := answer()
+		if denied {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("never converged: DNS denies the old incarnation's source to the new UID; last answer granted:", granted, "error:", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if calls.Load() != before {
+		t.Fatal("the new UID reached the provider")
 	}
 	var after corev1.Secret
 	if err := env.admin.Get(ctx, secretKey, &after); err != nil || after.ResourceVersion != retained.ResourceVersion {
 		t.Fatal("the old head did not remain unchanged across recreation", err)
+	}
+	// The denial still holds: the next answer that arrives is the
+	// unrewritten one, and a grant in between fails at once.
+	for deadline := time.Now().Add(30 * time.Second); ; {
+		granted, denied, err := answer()
+		if granted {
+			t.Fatal("the new UID inherited the old source")
+		}
+		if denied {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("DNS never answered the final denial check", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if calls.Load() != before {
+		t.Fatal("the new UID reached the provider")
 	}
 }
