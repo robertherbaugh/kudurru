@@ -256,10 +256,18 @@ func (h *Host) refresh(ctx context.Context) {
 		j := &job{key: key, mode: next.mode, refusal: h.refusalOf(i), frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1), captured: capture, framed: make(chan struct{}, 1)}
 		h.jobs[key] = j
 		phase := "Waiting"
+		var result Result
 		if next.mode != GuardNormal {
 			phase = PhaseTerminating
+			// A terminating job that replaces one of the same instance has
+			// counted nothing yet. It reports what the old job last counted
+			// until a run of its own counts (runTerminating), instead of
+			// claiming that nothing is left.
+			if old, ok := h.statuses[key]; ok && old.Owner == i.owner && old.Phase == PhaseTerminating {
+				result = valueResult(&old.Result)
+			}
 		}
-		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
+		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", Result: result, CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)
 	}
 }

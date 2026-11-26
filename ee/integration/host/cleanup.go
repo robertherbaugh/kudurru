@@ -231,6 +231,12 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 	j.active = true
 	j.guard = g
 	j.leaseCtx = ctx
+	// What the job reported so far, carried over from the job it replaced
+	// when it has counted nothing itself: an uncounted run keeps it.
+	var counted Result
+	if s, ok := h.statuses[j.key]; ok && s.Owner == j.frame.instance.owner && s.Phase == PhaseTerminating {
+		counted = valueResult(&s.Result)
+	}
 	h.mu.Unlock()
 	st := &terminatingLease{}
 	defer func() { h.mu.Lock(); j.active = false; j.provider = nil; h.mu.Unlock() }()
@@ -256,7 +262,6 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 	interval = max(interval, time.Second)
 	var failures, fenced uint32
 	last := ""
-	var counted Result
 	for {
 		select {
 		case h.slots <- struct{}{}:
