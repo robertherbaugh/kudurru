@@ -295,6 +295,73 @@ func TestTerminatingPausedReasonsMakeNoProviderCall(t *testing.T) {
 	})
 }
 
+// A cleanup that stopped without its credential ends its lease, and the
+// next capture of a changed bundle replaces the job. The new job has counted
+// nothing yet: until one of its runs counts, it reports what the job it
+// replaced counted, through its election and a run that root fenced before
+// counting, instead of claiming that nothing is left.
+func TestTerminatingReplacedJobKeepsTheCountedRemainder(t *testing.T) {
+	object := cleanupObject("sink", "Delete", true)
+	at := metav1.NewTime(time.Unix(1700000000, 0))
+	object.DeletionTimestamp = &at
+	object.Spec.Credentials = map[string]public.CredentialReference{"token": {Env: "MISSING"}}
+	f := newCleanupFixture(t, object, func(f *cleanupFixture) {
+		record := kinds.RecordIdentity{Owner: f.owner(), Destination: f.d, Key: kinds.RecordKey{Name: "a.example.com.", Type: "A"}}
+		if _, err := f.st.Apply(context.Background(), &kinds.IntegrationLedger{ObjectMeta: metav1.ObjectMeta{Name: kinds.LedgerName(record)}, Spec: kinds.IntegrationLedgerSpec{FormatVersion: kinds.FormatVersion, Record: record, Sequence: 1}}, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.awaitReason(PhaseTerminating, ReasonCredentials)
+	if _, _, result := f.status(); result.Remaining != 1 {
+		t.Fatalf("a cleanup without its credential reported %+v", result)
+	}
+	// The stopped job's lease ends after its status write. A change captured
+	// before that reaches the running job; one captured after replaces it.
+	f.await("the stopped lease to end", func() bool {
+		f.h.mu.RLock()
+		defer f.h.mu.RUnlock()
+		j := f.h.jobs[instanceKey(f.owner())]
+		return j != nil && !j.active
+	})
+	// Root refuses every guard, as it does while a replaced cut is not yet
+	// published, and a changed bundle replaces the stopped job.
+	f.refuse.Store(true)
+	f.wake()
+	fenced := func() bool {
+		reasons := f.terminatingReasons()
+		credentials := slices.Index(reasons, ReasonCredentials)
+		return credentials >= 0 && slices.Contains(reasons[credentials+1:], ReasonAuthorityChanged)
+	}
+	f.await("a fenced run of the replacing job", func() bool {
+		if phase, reason, result := f.status(); phase == PhaseTerminating && result.Remaining != 1 {
+			t.Fatalf("the replacing job reported %s %+v", reason, result)
+		}
+		return fenced()
+	})
+	if phase, reason, result := f.status(); phase != PhaseTerminating || reason != ReasonAuthorityChanged || result.Remaining != 1 {
+		t.Fatalf("a fenced run of the replacing job reported %s/%s %+v", phase, reason, result)
+	}
+	// Once root admits the guard again, the next run counts for itself.
+	f.refuse.Store(false)
+	f.wake()
+	f.await("the credentials reason again", func() bool {
+		_, reason, result := f.status()
+		return reason == ReasonCredentials && result.Remaining == 1
+	})
+	if requests, _, _, provisions := f.w.counts(); requests != 0 || provisions != 0 {
+		t.Fatalf("cleanup without its credential reached the provider: requests=%d provisions=%d", requests, provisions)
+	}
+	// A release that replaced this cleanup (an apply of Retain) never counts,
+	// so it carries none of the cleanup's count; another cleanup does.
+	f.h.mu.RLock()
+	release := f.h.carriedResult(instanceKey(f.owner()), f.owner(), GuardRelease)
+	cleanup := f.h.carriedResult(instanceKey(f.owner()), f.owner(), GuardCleanup)
+	f.h.mu.RUnlock()
+	if release != (Result{}) || cleanup.Remaining != 1 {
+		t.Fatalf("carried into a release %+v, into a cleanup %+v", release, cleanup)
+	}
+}
+
 // A lease lost between the provider's delete and its receipt leaves a pending
 // intent. The fenced lease cannot record anything; the next lease resolves
 // the intent from a complete reread and makes no second mutation.
