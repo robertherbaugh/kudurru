@@ -635,7 +635,10 @@ sequenceDiagram
    counts as `kudurru_tracing_traces_total{result="tail_limited"}`. A tail
    trace that the full export queue drops (`queue_full`) gives its own
    allowance back: its keep time leaves the window, even when a later tail
-   trace was allowed in between. Every query is recorded
+   trace was allowed in between. Trace timestamps stop at the answer:
+   overlapping detached work (such as cache prefetch) is clipped to that
+   time, including spans that started after the answer was captured but
+   before the trace was closed. Every query is recorded
    while tracing is on, so the tail rule needs no second pass. Spans and
    attributes are recorded into arrays inline in the `Trace` (16 spans, 32
    attributes: the root, every stage and a few upstream attempts), and the
