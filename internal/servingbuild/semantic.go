@@ -59,6 +59,9 @@ type semanticOwners struct {
 	// dnsDependenciesCurrent is dependenciesCurrent restricted to what DNS
 	// answers are computed from (Dependencies.DNSCurrent).
 	dnsDependenciesCurrent func() bool
+	// transferCurrent is current, except that the canonical image may have
+	// moved on through transfer-neutral commits only (D419).
+	transferCurrent func() bool
 
 	unblockRequests []*public.UnblockRequest
 }
@@ -226,6 +229,18 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 		return !blocked && candidate.Token.Matches(authority) && owners.dependenciesCurrent()
 	}
 	owners.current = current
+	// A zone transfer, and its refusal, is computed from nothing that a
+	// NOTIFY acknowledgment, a primary zone's status projection or the
+	// receipt realignment after it changes. Those commits leave this
+	// candidate's transfer answers current; every other commit, and every
+	// dependency of current, still retires them (D419).
+	owners.transferCurrent = func() bool {
+		authority, blocked := opts.Authority()
+		if blocked || !owners.dependenciesCurrent() {
+			return false
+		}
+		return candidate.Token.Matches(authority) || (opts.TransferNeutral != nil && opts.TransferNeutral(candidate.Token, authority))
+	}
 	owners.resolution, err = upstreamstage.NewView(owners.upstreams, validator, owners.config.DNSSEC.Enabled, current)
 	if err != nil {
 		return nil, err

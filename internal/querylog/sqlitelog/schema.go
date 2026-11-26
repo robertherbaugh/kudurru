@@ -249,6 +249,7 @@ const (
 	metaPrivacy       = "privacy_mode_at_write"
 	metaHourDone      = "rollup_1h_until"
 	metaDayDone       = "rollup_1d_until"
+	metaDirtyHour     = "rollup_dirty_hour:"
 	metaLastAnalyze   = "last_analyze"
 	metaLastRetention = "last_retention"
 )

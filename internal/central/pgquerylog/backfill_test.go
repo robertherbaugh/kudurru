@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -98,6 +99,122 @@ func TestStoppedSourceHourDayLateReturn(t *testing.T) {
 	sum, err := r.Summary(ctx, sqlitelog.SummaryQuery{Window: sqlitelog.Window{From: t0.Add(-24 * time.Hour), Until: nextDay}})
 	if err != nil || sum.Queries.Total != 241 {
 		t.Fatalf("reader lost completed backfill: %v", err)
+	}
+}
+
+// TestStoppedSourceHourBoundaryDirtyCursor covers the small gap after an hour
+// boundary: a source opened at 13:00:30 receives 12:58 events, flushes and
+// restarts, sends its minutes and facts, and then stops before local
+// maintenance can re-derive 12:00. The hour cursor must stop at 12:00 rather
+// than claiming that empty local hour as authoritative. The central
+// stopped-source backfill can then produce a summary for a rolling,
+// partial-hour window from the raw facts.
+func TestStoppedSourceHourBoundaryDirtyCursor(t *testing.T) {
+	db := centraltest.New(t)
+	ctx := t.Context()
+	boundary := t0.Add(time.Hour)
+	now := boundary.Add(30 * time.Second)
+	previousHour := boundary.Add(-time.Hour).Unix()
+	fc := testclock.NewFakeClock(now)
+	path := filepath.Join(t.TempDir(), sqlitelog.FileName)
+	open := func() *sqlitelog.Writer {
+		t.Helper()
+		w, err := sqlitelog.Open(ctx, sqlitelog.Options{
+			Path: path, Node: "stopped-boundary", Privacy: querylog.PrivacyFull,
+			RawRetention: 30 * 24 * time.Hour, Clock: fc, Logger: quiet(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	nextID = 0
+	w := open()
+	write(t, w,
+		ev("stopped-boundary", boundary.Add(-2*time.Minute), "192.0.2.1", "one.example", pipeline.StatusForwarded),
+		ev("stopped-boundary", boundary.Add(-time.Minute), "192.0.2.2", "two.example", pipeline.StatusBlockedList),
+		ev("stopped-boundary", boundary.Add(-30*time.Second), "192.0.2.1", "three.example", pipeline.StatusForwarded),
+	)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w = open()
+	t.Cleanup(func() { _ = w.Close() })
+	s := shipper(t, db, w, "stopped-boundary", fc)
+	shipAll(t, s)
+
+	// 12:00 is dirty, so the shipper has sent facts and minutes but not an
+	// authoritative hour. In particular, it cannot skip over this hour.
+	cur, err := central.Cursor(ctx, prunePool(t, db), s.source, streamHour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur != previousHour {
+		t.Fatalf("hour cursor=%s, want dirty hour %s", time.Unix(cur, 0).UTC(), time.Unix(previousHour, 0).UTC())
+	}
+	if got := scalar(t, db, `SELECT count(*) FROM query WHERE source=(SELECT id FROM source WHERE uuid=$1)`, s.source); got != 3 {
+		t.Fatalf("raw facts=%d, want 3", got)
+	}
+
+	// The node now stops. It becomes eligible precisely two hours after its
+	// last activity; backfill reads the raw facts because no official hour was
+	// shipped for the dirty interval.
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	pruneExec(t, db, `UPDATE source SET last_seen=$1 WHERE uuid=$2`, now, s.source)
+	fc.SetTime(now.Add(2 * time.Hour))
+	for range 4 {
+		backfillPass(t, db, fc.Now())
+	}
+	if got := scalar(t, db, `SELECT sum(total) FROM rollup_1h WHERE source=(SELECT id FROM source WHERE uuid=$1) AND ts=$2`, s.source, previousHour); got != 3 {
+		t.Fatalf("hour total=%d, want raw count 3", got)
+	}
+	if got := scalar(t, db, `SELECT sum(total) FROM rollup_client_1h WHERE source=(SELECT id FROM source WHERE uuid=$1) AND ts=$2`, s.source, previousHour); got != 3 {
+		t.Fatalf("client-hour total=%d, want raw count 3", got)
+	}
+	if got := scalar(t, db, `SELECT count(*) FROM rollup_client_1h WHERE source=(SELECT id FROM source WHERE uuid=$1) AND ts=$2`, s.source, previousHour); got != 2 {
+		t.Fatalf("client-hour rows=%d, want 2 active clients", got)
+	}
+
+	readers := map[string]*sqlitelog.Reader{
+		"cluster": centralReader(db, fc),
+		"node":    centralReader(db, fc).ForNode("stopped-boundary"),
+	}
+	for _, window := range []struct {
+		name        string
+		from, until time.Time
+		want        int64
+	}{
+		{"recovered hour", boundary.Add(-time.Hour), boundary, 3},
+		{"rolling hour", now.Add(-time.Hour), now, 3},
+		{"partial hour", boundary.Add(-time.Minute), now, 2},
+	} {
+		win := sqlitelog.Window{From: window.from, Until: window.until}
+		if got := scalar(t, db, `SELECT count(*) FROM query WHERE source=(SELECT id FROM source WHERE uuid=$1) AND ts >= $2 AND ts < $3`, s.source, win.From.UnixMicro(), win.Until.UnixMicro()); got != window.want {
+			t.Fatalf("%s raw facts=%d, want %d", window.name, got, window.want)
+		}
+		for scope, r := range readers {
+			shard, err := r.SummaryShard(ctx, sqlitelog.SummaryQuery{Window: win})
+			if err != nil {
+				t.Fatal(err)
+			}
+			summary, err := r.Summary(ctx, sqlitelog.SummaryQuery{Window: win})
+			if err != nil {
+				t.Fatal(err)
+			}
+			page, err := r.Queries(ctx, sqlitelog.QueryFilter{Since: win.From, Until: win.Until})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if summary.Queries.Total != window.want || summary.Clients.Active != 2 || summary.Queries.UniqueDomains != window.want ||
+				page.RecordsFiltered != window.want || int64(len(page.Queries)) != window.want || page.RecordsTotal != 3 ||
+				shard.Queries.Total != window.want || len(shard.ActiveClients.Values) != 2 || int64(len(shard.Domains.Values)) != window.want {
+				t.Fatalf("%s %s: rows/filtered/all=%d/%d/%d summary total/clients/domains=%d/%d/%d shard=%d/%d/%d; want total %d and 2 clients",
+					window.name, scope, len(page.Queries), page.RecordsFiltered, page.RecordsTotal, summary.Queries.Total, summary.Clients.Active, summary.Queries.UniqueDomains,
+					shard.Queries.Total, len(shard.ActiveClients.Values), len(shard.Domains.Values), window.want)
+			}
+		}
 	}
 }
 

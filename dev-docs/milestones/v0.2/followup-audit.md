@@ -15337,6 +15337,24 @@ Still open, stated plainly. Setup failures other than a lost budget CAS (a provi
 **Review and verification state at 17b7c87a.** The review accepted the package with four findings (one major: four bounded budget re-reservation attempts were not enough once more than two Cloudflare instances reserve at once; two minor: the two-replica budget test covers only the minimal case, and credential rotation is proven only by credential order at the peer; one nit) and two intended guard changes. The fixer resolved three (the re-reservation now runs until the request's deadline) and rebutted three (no retry of other refused setup work; the adapter-level legs of K3 stay partial; the guard notes); the verifier confirmed all three resolved and reported three new minor notes, open: budget exhaustion past the deadline is now also a local refusal on the event path, untested; the rotation leg's 60 s wait could be met by the request's own timeout; and the deadline leg's attempt bounds depend on scheduling. Merged and pushed at `85913663`. K3 and K7 stay partial (see the section).
 
 
+### K3/K7 mounted evidence (#156)
+
+This evidence supersedes the corresponding historical K3/K7 gaps above. It
+comes from `runServe` with local Kubernetes 1.37 envtest, local provider peers
+and synthetic credentials, not a hosted or live deployment.
+
+| Mounted test | What passed | What failed when the protection was removed with a local Go overlay |
+| --- | --- | --- |
+| `TestRunServeKubeCloudflareTwoReplicasShareBudget/self-elected` | Each replica acquired its own Lease through election; both published once and shared one durable budget, 20 reservations for 20 requests. The pre-placed concurrent contention cases remain separate. | Bypassing reservations for one Integration let 20 requests through with only 10 durable reservations. |
+| `TestRunServeKubeCloudflarePublicationAndRefusals` | A second elected holder recovered the first replica's pending Cloudflare intent from a fresh read without replaying the batch. | Disabling recovery left the intent pending and the successor never completed. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | A reviewed check could not reach the peer when the live Lease read failed. A network partition moved the Lease, the old source expired without renewal, and the healed former holder later re-acquired the Lease and committed a successor head. | Ignoring the failed live Lease check let the reviewed operation succeed and send two peer requests. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | Displacing the holder after its head delete left the unreferenced chunks and terminating finalizer intact. A fresh election finished the purge. | Ignoring the fence for the chunk delete let the old holder remove the chunks. |
+| `TestRunServeKubeCredentialRotationJoinsPreviousStop` | An instrumented provider blocked in `Stop`; the replacement provisioned the new credential only after `Stop` returned. | Calling `Stop` asynchronously let the replacement provision while `Stop` was blocked. |
+| `TestRunServeKubeExpiredLicenseAndRecreatedIntegration` | Advancing the license clock beyond grace blocked a reviewed sync without a peer request. Recreating the same name and spec did not inherit a still-valid old source: the old head remained unchanged and the new UID did not receive its grant. | Granting the feature to an expired key kept the new instance from entering `LicenseUnavailable`. Removing source eligibility's UID comparison exposed the old grant to the new UID. |
+
+These tests do not change the supported providers, Lease or budget bounds, or
+fencing rules. No shared cluster or live provider acceptance was attempted.
+
 ### OPS-1 CoreDNS Corefile offline importer — November 10, 2026 (D392)
 
 `kudurru import coredns --file Corefile` (or `--file -` for stdin) now converts a
@@ -15502,6 +15520,38 @@ fields or `RPZRulesIgnored`. The clock-step case, where the node still holds the
 copy, keeps its fields and now says why it is unusable. The no-copy message
 says "This node holds no copy" instead of "No copy has been transferred". The
 CLI fake API and `lists-rpz-all-wide.txt` carry the current pending message.
+
+#### SQLite restart and pending filters (#163)
+
+On November 20, 2026, local `TestRunServeSQLiteRPZRestartCompileWindow` mounted
+SQLite with `allowDegraded: true`, primed an unsigned RPZ feed and a 50,000-entry
+download, stopped the node, and restarted with both origins unavailable. The
+first sampled TCP DNS response arrived 150 ms after restart and the first RPZ
+NXDOMAIN 152 ms after that. Of 100 probes, 52 received answers (51 SERVFAIL and
+one NXDOMAIN, no NOERROR). The downloaded rule was also enforced again from its
+persisted body. A second run measured 173 ms to the first response and 303 ms
+from that response to NXDOMAIN (112 probes, 56 SERVFAIL, no NOERROR). This
+measures the observed serving window, including RPZ rebind/publication, not
+the compiler in isolation or a hosted latency bound.
+
+Removing the append of `Decision.PendingBlockLists()` in
+`internal/servingbuild/dns.go` and running this test with `-count=3` also
+passed each time. The mounted result therefore does not independently test
+SQLite's pending-list selector; the production selector stays in place.
+
+`TestPendingBlockListsReachTheDecision` reproduces download-only and
+disabled-source lists making an uncompiled decision filter on `ce3ab6e2`.
+Only a list with an enabled RPZ source now counts as pending coverage; downloaded
+lists still gate strict readiness. Blocking's `TestReady` also checks the
+per-group gauge projection for a pending download.
+
+`TestRPZCLIGoldenMessagesMatchProjection` matches the API's pending, expired,
+and serving-with-refresh-error messages to the wide CLI golden, and
+`TestConvenienceGolden/lists-rpz-all-wide` matches that golden to the fake API.
+The old pending-message allegation no longer reproduces. The existing local
+envtest `TestRunServeKubeRPZFeeds` still proves D390: an offline signed restart
+fails closed, while an unexpired unsigned copy is reused. No live acceptance
+is inferred from these tests.
 
 **CoreDNS importer (D392).** `cache.minTTL` is always emitted (the `success`
 MINTTL or the CoreDNS default 5 s) and lowered to `cache.maxTTL` when larger,
@@ -18211,6 +18261,40 @@ Commits: `21468b91` (host and planner seams), `960faeb9` (UniFi writes, wiring, 
 **Verification state at 7663c957.** Merged and pushed at `95c57113`, after the integrator's contract commit. The verifier resolved the blocker (an intent whose acknowledged effects are gone is abandoned only with exact proof), the major (a 409 fence on the frame a command captures) and three more, and left finding 5 (minor) partly unresolved: the act audit row named only a parameter digest; INT-OPEN2 made it name the client's MAC in lowercase. New, low, open: the recovery exit covers only acknowledged creates (a partial update or delete needs the operator to restore the baseline; untested and undocumented); a deleted source now yields 409 for every publisher and the background operation path, with no test pinning it; the parameter digest collapses duplicate keys and misses trailing brackets of malformed input; the host-level abandon path has no unit test. Locally `TestIntegrationUniFiPushMirrorPartialCreate` failed once under load (INT-OPEN2 left its 30 s stall open). No live UniFi controller was exercised.
 
 
+**Issue #125 synthetic follow-up (November 20, 2026).** The mounted UniFi TLS
+double exercises a definite second PUT/DELETE failure, lost replies with an
+unavailable immediate reread, exact-baseline restore, operator completion,
+restart, and lease loss while the final PUT is held. Recovery neither replays
+the write nor adopts a foreign policy, and the old digest is refused. The
+mounted deleted-source test pins the 409 and the host unit test covers all
+three acknowledged-create abandon cases. This does not qualify a live
+UniFi controller or a Cloudflare account; #153 remains pending.
+
+**Current-main timing evidence (`ce3ab6e2`, November 20, 2026).** In five
+local race runs of `TestIntegrationUniFiPushMirrorPartialCreate` and
+`TestIntegrationAdminActualUniFiTLSObservation` against loopback doubles,
+the historical 30-second stall did not reproduce (5/5 partial-create runs
+passed). The observation test returned HTTP 503 in 2/5 runs (test elapsed
+times: 2.64 s and 2.70 s). Hosted CI run `44684111744`, job `136114447349`,
+saw the same observation test return 503 (2.63 s) on `07881d30`. On `ce3ab6e2`, hosted
+run `44780132339`, job `136440648524`, passed both UniFi batches even
+though an unrelated signed-update test failed the workflow. These are
+distinct failure signatures; the 30-second bound is unchanged. Sanitized
+diagnostics reproduced the observation failure in 1/5 more runs: the response
+key was `unavailable`, with zero additional requests to the TLS double and no
+source outcome. That places this occurrence before provider dispatch. The
+exact admission check was not identified in a subsequent five-run trace
+sample that passed. No retry or production behavior change was added.
+
+The SQLite restart regression shows the same pending intent at shutdown and
+one confirmation by the restarted runtime's automatic poll. An experimental
+immediate post-restart HTTP re-review returned `503 unavailable` in 3/3 race
+runs after the poll settled; the relationship to the observe-only failure is
+not established. The regression pins the stale 409 before restarting while
+the intent is pending. The non-restart and writer-lease tests also pin it
+after settlement. No HTTP retry is used to mask the restart refusal.
+
+
 ### INT-EXTERNAL-ZONES Kubernetes external zones from Ingress, Gateway API routes and LoadBalancer Services — November 10, 2026 (D402)
 
 **What now happens.** A DNSZone of type `external` is served on the Kubernetes store. The zone model (`internal/zone`) builds it like a primary zone, but `ServedRecordSets` admits only record sets with the complete source-adapter identity (`zone.ExternalSourceOwned`: managedBy `kubernetes-source:<uid>`, the source UID and name annotations, the `kudurru.io/external-source` kind label and one matching owner reference). The zone controller reports every other record set naming the zone as `NotSelected`, so status, serial and the served zone agree, and the zone is `Ready` instead of `Unsupported`. The object API refuses a DNSRecordSet for an external zone with `409 conflict`; the zone-record and import endpoints and RFC 2136 on Kubernetes already refuse non-primary zones. External zones never transfer, are listed as served authoritative zones and take part in CNAME chasing. The complete SQLite image still refuses the type (`ServingErrors`, and `BuildNonprimary` now refuses it explicitly).
@@ -18240,6 +18324,8 @@ Review fixes (evidence `fix-*.log`):
 **Verification state at 7663c957.** Merged and pushed at `2e15060e`. The verifier resolved three findings, including the major, and left **two minor findings unresolved**: with the adapter on but its RBAC missing an external zone is still Ready and empty (only a log warning); the page size is 64 but there is no smaller-page fallback, the 4,096-object and 32 MiB caps and the unfiltered Service list remain, and a refused kind has no metric or zone condition. New: the runbook's `object too large` line is wrong for a truncated page (a decode error, not `store.ErrTooLarge`; open); `SourcesNotRead` replaced a more specific Degraded reason, and its message named a setting that a non-Kubernetes store refuses (both fixed by INT-OPEN2).
 
 **#123 local regression coverage.** `TestRunServeExternalZonesFromKubernetesSources` uses an isolated envtest API server with a restricted identity and revocable source-reader grant. It checks `SourcesIncomplete` and denied-list metrics for all six kinds, retained record sets and DNS answers on two replicas, recovery after restoring the grant, and watch-driven updates. `TestExternalSourceWatchDeniedWithHealthyList` distinguishes denied watches from failed lists. `TestExternalSourceObjectCapReportsObservedObjects` and `TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap` pin the two refusal classes, including the runbook distinction: an oversized page is truncated and fails to decode; it is not `store.ErrTooLarge`. Smaller-page retry and Service selector verification are tracked in #150.
+
+**#150 local regression coverage.** `TestExternalSourceLargePageRestartsWithSmallerPages` proves a 64-object page exceeding 4 MiB triggers a fresh, complete eight-object-page snapshot. `TestExternalSourceSmallPageRetryStillEnforcesByteCapAndKeepsLastGood` verifies the 32 MiB refusal does not authorize cleanup; the 4,096-object limit remains pinned by `TestExternalSourceObjectCapReportsObservedObjects`. `TestExternalSourceServiceSelectorEnvtest` exercises filtered list/watch on Kubernetes 1.37 and unfiltered fallback on Kubernetes 1.30. The fallback still does not publish ClusterIP Services, and a Service changing from LoadBalancer to ClusterIP withdraws its records even though its UID is unchanged.
 
 
 ### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
@@ -20507,6 +20593,17 @@ Still open, stated plainly. `TestIntegrationUniFiPushMirrorPartialCreate`'s 30 s
 **Verification state at 7663c957.** Merged and pushed at `bae1c9df`, with `6259b61c` for the dashboard, whose typecheck failed until its mocks and field-limit rules followed the new manifest contract. The verifier resolved seven of eight findings (all 97 tests of `cmd/kudurru/integration*_test.go` under race at the lane head, 1,356 s; the whole host package) and left finding 8 (minor) **unresolved**: the 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is not explained. New, open: every changing SQLite command and every host capture reads the whole stored image, so on a large store a capture over 10 s drops every integration job and a cleanup whose commands exceed 30 s never finishes (the test raises both bounds to the host's maximums; production cannot configure them; the real threshold is unknown); permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; `docs/deploy/integrations.md` does not name the four inert record-mirror fields on Kubernetes; two new mounted Kubernetes steps depend on timing (a fixed 5 s sleep, up to five resends).
 
 
+**Current Kubernetes CLI and refusal evidence (#154).** With local Kubernetes
+1.37 envtest and no skipped mounted tests,
+`TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup` reads an Integration
+through `integrations get` in table and JSON formats.
+`TestRunServeKubeStoredTSIGManagementHotRotation` runs CLI list, create,
+replace, reseal and revoke and checks the sign-in settings' restart metadata
+through `/settings/_schema`. `TestKubernetesIntegrationLimitsDocumented`
+and `TestKubernetesOperationRefusalsDocumented` pin the deploy guide to the
+manifest field paths and Kubernetes refusal keys. This supersedes the missing
+CLI get and record-mirror documentation findings, not the K3/K7 findings.
+
 ### DASH-INVENTORY Dashboard inventory view and client-group record views — November 13, 2026 (D397, D403)
 
 The dashboard now has an inventory view, and its record editor can set
@@ -21947,3 +22044,39 @@ Full hosted validation of the corrected source is pending. The passing
 performance recording remains attributed to its exact earlier source; updated
 source qualification must be recorded separately. GitHub review stays outside
 the owner's requested work, and other documented scope/deferrals remain.
+
+### Follower self-service refusal evidence (#137)
+
+On November 20, 2026, `TestRootMemberForwardPasswordTransportRefusalActualHTTP`
+reproduced a transport `401 unauthenticated` on `ce3ab6e2`. The mounted
+follower requested a password change with its valid bearer credential; the
+fixture fenced the primary while the follower held the original request at
+body read. The primary refused the member exchange before its command
+executor. The follower now answers `503 unavailable` and says the password
+was not changed. The same test checks that a wrong current password still
+gets the primary's retained `401 unauthenticated`. Neither refusal changed
+the password or left a durable mutation audit row.
+
+The HA-OPEN5 fixes (`7bae1238`, `532a5cd7`, `1737eb2e`) are integrated.
+`TestRootMemberForwardPasswordAndTokensActualHTTP` checks the durable
+attribution of successful commands and the absence of mutation audit rows
+for refused commands. `TestRootMemberForwardTokenCallerPasswordActualHTTP`
+pins the original principal for a committed password change, and
+`TestRootMemberForwardCookiePasswordUnservedActualHTTP` and
+`TestMemberSessionUnservedNamesTheCause` pin committed-but-unavailable output.
+The shared failure matrix in `TestMemberSelfError`, `TestMemberLogoutError`,
+and `TestObjectForwardError` distinguishes authority refusals, other definite
+refusals, authorization denials, and uncertain completion, including joined
+errors. No request bound, subject, deduplication check, or replay rule changed.
+
+Local checks used mounted loopback TLS and synthetic SQLite fixtures only.
+The baseline reproduction failed as expected in `.context/gh137-before.log`
+(1-minute load average 0.42). The focused `CGO_ENABLED=1 go test -p 4 -race
+-count=1 -run ... ./cmd/kudurru` suite passed in 138.398 seconds, including
+the refusal matrix, mounted password/token/sign-out and audit tests, the
+unforwarded mutation test, and the cut-apply regression
+(`.context/gh137-forward-refusal-race.log`, 1-minute load average 0.90 at start).
+`go vet -p 3 ./cmd/kudurru/...` passed (147.791 seconds wall time, load
+0.92), and `golangci-lint run --concurrency 3 ./cmd/kudurru/...` (v2.15.0)
+reported zero issues (76.095 seconds wall time, load 7.70). See
+`.context/gh137-vet-lint.log`. `make docs-site docs-check-links` also passed.
