@@ -38,7 +38,12 @@ func anchorOperationFixture(t *testing.T, endpoint string, seeds []string) (*ser
 // publishes its accepted managed owner once it holds a supervised role.
 func anchorOperationFixtureTopology(t *testing.T, endpoint string, seeds []string, topology string) (*servingRuntime, context.Context, serving.TermActivation, providercoordinator.HostCapture) {
 	t.Helper()
-	base := newServingRuntimeFixture(t)
+	return anchorOperationFixtureWithMetrics(t, endpoint, seeds, topology, nil)
+}
+
+func anchorOperationFixtureWithMetrics(t *testing.T, endpoint string, seeds []string, topology string, metrics *sqlite.Metrics) (*servingRuntime, context.Context, serving.TermActivation, providercoordinator.HostCapture) {
+	t.Helper()
+	base := newServingRuntimeFixtureProvidersWithMetrics(t, true, metrics)
 	cfg, err := config.FromFlat(config.Flatten(base.opts.Config))
 	if err != nil {
 		t.Fatal(err)
