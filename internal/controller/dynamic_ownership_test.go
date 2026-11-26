@@ -149,3 +149,63 @@ func TestDynamicOwnershipKeepsConflictsForAnUnchangedHeadAndZone(t *testing.T) {
 		return cond(e.rrset("a", "mixed").Status.Conditions, v1alpha1.ConditionDegraded) == "False/AsExpected"
 	})
 }
+
+// TestZoneViewIsOnePerVersionWhenBuildsRace proves that a zone and a record
+// set reconcile that both build the view of one zone version get the same
+// view, which dynamicStamp compares by identity: before, the later build
+// replaced the first, so the zone reconcile's stamp no longer matched and
+// an unchanged head and zone derived the dynamic conflicts again. A build
+// of an older version never replaces a newer view.
+func TestZoneViewIsOnePerVersionWhenBuildsRace(t *testing.T) {
+	c := newCache()
+	c.upsert(zoneObj("example", "example.com."))
+	rs := rrsetObj("apps", "a", "example", 0, ep("www.example.com.", "A", "192.0.2.1"))
+	rs.UID = "a"
+	c.upsert(rs)
+
+	// racing builds the view with a validator that holds the build until
+	// competing has run, and returns both views.
+	racing := func(competing func() *zoneView) (held, other *zoneView) {
+		entered, release := make(chan struct{}), make(chan struct{})
+		var once sync.Once
+		done := make(chan *zoneView)
+		go func() {
+			done <- c.view("example", func(v1alpha1.Endpoint) error {
+				once.Do(func() { close(entered); <-release })
+				return nil
+			})
+		}()
+		<-entered
+		other = competing()
+		close(release)
+		return <-done, other
+	}
+
+	held, other := racing(func() *zoneView { return c.view("example", nil) })
+	if held != other {
+		t.Fatal("two builds of one zone version returned different views")
+	}
+	if got := c.view("example", nil); got != other {
+		t.Fatal("the cached view is not the one both builds returned")
+	}
+
+	// A spec change makes the held build miss the cache; a second one makes
+	// a newer version while that build is held.
+	edit := func(endpoint v1alpha1.Endpoint) {
+		rs = rs.DeepCopy()
+		rs.Generation++
+		rs.Spec.Endpoints = append(rs.Spec.Endpoints, endpoint)
+		c.upsert(rs)
+	}
+	edit(ep("api.example.com.", "A", "192.0.2.2"))
+	older, newer := racing(func() *zoneView {
+		edit(ep("db.example.com.", "A", "192.0.2.3"))
+		return c.view("example", nil)
+	})
+	if older == newer || len(older.Verdicts[store.KeyOf(rs)].kept) != 2 || len(newer.Verdicts[store.KeyOf(rs)].kept) != 3 {
+		t.Fatal("the held build did not see the older version")
+	}
+	if got := c.view("example", nil); got != newer {
+		t.Fatal("a build of an older version replaced the newer view")
+	}
+}
