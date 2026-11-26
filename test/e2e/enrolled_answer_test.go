@@ -92,30 +92,47 @@ const commandRefusedMeanwhile = "current writable serving generation unavailable
 // refused because the node published meanwhile") tells a client, the test
 // then reads the current state and decides again: the object must still be
 // there at the resource version it had before the refused attempt, and only
-// then is the same delete sent once more. Any other answer, a refusal with
-// Retry-After, a changed or missing object, or ten seconds of refusals
-// fails the test.
+// then is the same delete sent once more, at the 50 ms cadence of the other
+// e2e polls. Any other answer, a refusal with Retry-After, a changed or
+// missing object, or ten seconds of refusals (the reads included) fails
+// the test.
 func enrolledPrimaryDelete(t *testing.T, c *staticProcessClient, path string) {
 	t.Helper()
-	version := func() string {
-		var rv string
-		// A 404 here is a refused delete that was applied: the read fails.
-		enrolledProcessRead(t, c, path, func(body []byte) bool {
+	deadline := time.Now().Add(10 * time.Second)
+	pause := func() {
+		select {
+		case <-t.Context().Done():
+			t.Fatal(t.Context().Err())
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	// version reads the object within the same bound. A read can meet the
+	// node's own publication as well (503); a 404 after a refused delete is
+	// a refusal that had an effect.
+	version := func(afterRefusal bool) string {
+		for {
+			answer := enrolledSend(t, c, http.MethodGet, path, nil)
+			if answer.status == http.StatusNotFound && afterRefusal {
+				t.Fatalf("primary DELETE %s answered the effect-free 503 %s %q, but the object is gone", path, api.KeyUnavailable, commandRefusedMeanwhile)
+			}
 			var object struct {
 				Metadata struct {
 					ResourceVersion string `json:"resourceVersion"`
 				} `json:"metadata"`
 			}
-			if json.Unmarshal(body, &object) != nil {
-				return false
+			if answer.status == http.StatusOK && json.Unmarshal(answer.raw, &object) == nil && object.Metadata.ResourceVersion != "" {
+				return object.Metadata.ResourceVersion
 			}
-			rv = object.Metadata.ResourceVersion
-			return rv != ""
-		})
-		return rv
+			if answer.status != http.StatusServiceUnavailable {
+				t.Fatalf("primary GET %s: status=%d key=%q message=%q", path, answer.status, answer.Error.Key, answer.Error.Message)
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("primary GET %s: still 503 %s %q after ten seconds", path, answer.Error.Key, answer.Error.Message)
+			}
+			pause()
+		}
 	}
-	before := version()
-	deadline := time.Now().Add(10 * time.Second)
+	before := version(false)
 	for refused := 1; ; refused++ {
 		answer := enrolledSend(t, c, http.MethodDelete, path, nil)
 		if answer.status == http.StatusNoContent {
@@ -125,7 +142,7 @@ func enrolledPrimaryDelete(t *testing.T, c *staticProcessClient, path string) {
 			t.Fatalf("primary DELETE %s: want 204, or 503 %s %q without Retry-After; got status=%d key=%q message=%q retry-after=%q",
 				path, api.KeyUnavailable, commandRefusedMeanwhile, answer.status, answer.Error.Key, answer.Error.Message, answer.retryAfter)
 		}
-		if after := version(); after != before {
+		if after := version(true); after != before {
 			t.Fatalf("primary DELETE %s answered the effect-free 503 %s, but the object moved from resource version %s to %s", path, api.KeyUnavailable, before, after)
 		}
 		if time.Now().After(deadline) {
@@ -133,5 +150,6 @@ func enrolledPrimaryDelete(t *testing.T, c *staticProcessClient, path string) {
 		}
 		t.Logf("primary DELETE %s: refused (503 %s %q, no Retry-After) while the primary published its own commit; the object is unchanged at resource version %s, so the delete is sent again (refusal %d)",
 			path, api.KeyUnavailable, commandRefusedMeanwhile, before, refused)
+		pause()
 	}
 }
