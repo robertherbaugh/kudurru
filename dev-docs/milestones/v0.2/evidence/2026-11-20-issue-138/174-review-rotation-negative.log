@@ -1,0 +1,33 @@
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+I1120 20:10:56.421792  123711 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 20:10:56.433435  123711 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 20:10:56.927898  123711 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:10:56.932742  123711 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:10:57.551387  123711 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:10:57.556382  123711 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:11:04.185591  123711 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:11:04.189538  123711 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:11:07.297651  123711 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:11:07.302358  123711 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:383: rotation did not cancel the held request: cause=context deadline exceeded (deadline remaining: -91.470267ms)
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 1066 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x67
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/log.go:60 +0xed
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).Enabled(0xc00033b400, 0x5)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/deleg.go:111 +0x30
+	>  github.com/go-logr/logr.Logger.Info({{0xa661858?, 0xc00033b400?}, 0x0?}, {0x66bdafb, 0x2f}, {0xc002c586a0, 0x2, 0x2})
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.4/logr.go:276 +0x75
+	>  k8s.io/apimachinery/pkg/watch.(*StreamWatcher).receive(0xc00093ad20)
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/apimachinery@v0.37.2/pkg/watch/streamwatcher.go:123 +0x5c7
+	>  created by k8s.io/apimachinery/pkg/watch.NewStreamWatcherWithLogger in goroutine 220
+	>  	/home/vercel-sandbox/go/pkg/mod/k8s.io/apimachinery@v0.37.2/pkg/watch/streamwatcher.go:85 +0x27f
+--- FAIL: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (51.75s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	51.894s
+FAIL
+
+test exit=1

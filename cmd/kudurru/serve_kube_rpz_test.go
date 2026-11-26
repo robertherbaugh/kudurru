@@ -469,7 +469,11 @@ func watchKubeRPZRestart(cfg *config.Config, name string) *kubeRPZWatch {
 			q := new(dns.Msg)
 			q.SetQuestion(name, dns.TypeA)
 			q.SetEdns0(1232, false)
-			if a, _, err := dnsClient.Exchange(q, cfg.Listeners.DNS[0].Address); err == nil && a != nil {
+			// While no process listens on the DNS port, the kernel can give
+			// this client that very port as its ephemeral source port: the
+			// socket is connected to itself and reads its own query back
+			// (QR unset, NOERROR, no answers). Only a response counts.
+			if a, _, err := dnsClient.Exchange(q, cfg.Listeners.DNS[0].Address); err == nil && a != nil && a.Response {
 				w.answers.Add(1)
 				if a.Rcode == dns.RcodeSuccess {
 					if w.noerror.Add(1) == 1 {

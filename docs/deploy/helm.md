@@ -500,6 +500,15 @@ store, dnsdist, VIP); every query uses a metric the binary registers today
 supervisors' metrics listeners (:8084, :8085), which the `<release>-edge`
 PodMonitor scrapes (a `node` label names the node of hostNetwork pods).
 
+On the Kubernetes store, `kubectl describe dnszone <name>` shows controller
+Events such as `SerialBumped`. Cluster-scoped DNSZone Events are stored in
+`default`; namespaced DNSRecordSet Events are stored in the object's
+namespace. The leader also logs the same transitions. If
+`kudurru_controller_events_dropped_total` increases, check its `reason` label:
+`queue_full` means the API writer could not keep up, `write_failed` means the
+API write failed (see the warning log), and `invalid_event` means the Event
+could not be built. Delivery is best effort and never waits in a reconcile.
+
 ## Network policy
 
 `networkPolicy.enabled` restricts ingress to the kudurru pods: :5353 only
@@ -622,8 +631,13 @@ configuration and add the two rules above to the kudurru ClusterRole.
 
 Operational limits: each source kind is read as one complete list of at most
 4,096 objects and 32 MiB (pages of 64 objects, each response at most 4 MiB).
-Every Service in the cluster counts toward the Service bound, whatever its
-type. One source can own record sets in at most eight zones, with at most
+If a page exceeds 4 MiB, the adapter restarts the list once with pages of
+eight; it never uses the partial snapshot. Services are listed and watched
+with `spec.type=LoadBalancer` where the API server supports it. If it rejects
+that field selector, the adapter lists and watches all Services for that
+elected term, and every Service counts toward the same caps. The adapter
+only publishes LoadBalancer Services either way. One source can own record
+sets in at most eight zones, with at most
 1,000 endpoints per record set. A refused list does not remove last-good
 record sets. An affected zone can be `Ready` and `Degraded` at the same time:
 `SourcesIncomplete` names the source failure, while `SourcesNotRead` means

@@ -179,6 +179,22 @@ func awaitServingRuntime(t *testing.T, s *servingRuntime, predicate func() bool)
 	}
 }
 
+// awaitServingWakesPublished waits until the served publication includes
+// every publisher Wake issued so far. A converged runtime can still owe a
+// publication: a Wake that arrived after the served publication's preparation
+// read its candidate (the primary driver's restore Wake, which precedes its
+// Ready status) is answered by one more preparation, which publishes the same
+// cut again (D405). A test that compares publication identities across its
+// own commands waits for that one first; a later Wake is not waited for.
+func awaitServingWakesPublished(t *testing.T, s *servingRuntime) {
+	t.Helper()
+	wakes := s.publisher.Status().Wakes
+	awaitServingRuntime(t, s, func() bool {
+		st := s.publisher.Status()
+		return st.ProtectedReady && st.ServedWakes >= wakes
+	})
+}
+
 func TestServingRuntimeActualElectorNativeUpdateAndJoinedShutdown(t *testing.T) {
 	s := newServingRuntimeFixture(t)
 	before, err := s.opts.Store.ReadGeneration(t.Context())

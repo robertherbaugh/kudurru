@@ -62,13 +62,16 @@ func (g *partitionGate) answer(match func(*http.Request) bool, status metav1.Sta
 // faultPending reports whether an armed gateFault has not fired yet.
 func (g *partitionGate) faultPending() bool { return g.fault.Load() != nil }
 
-func newPartitionGate(t *testing.T, restConfig *rest.Config) *partitionGate {
+func newPartitionGate(t *testing.T, restConfig *rest.Config, modifyResponse ...func(*http.Response) error) *partitionGate {
 	t.Helper()
 	target, err := url.Parse(restConfig.Host)
 	if err != nil {
 		t.Fatal(err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	if len(modifyResponse) > 0 {
+		proxy.ModifyResponse = modifyResponse[0]
+	}
 	if proxy.Transport, err = rest.TransportFor(restConfig); err != nil {
 		t.Fatal(err)
 	}

@@ -176,11 +176,19 @@ func TestServingCacheCommandRefusesOriginalAuthorityLoss(t *testing.T) {
 			count, generation := rc.Len(), rc.Generation()
 			var held context.Context
 			called := false
+			clockCase := mode == "expiry" || mode == "expiry-empty" || mode == "regression"
+			var staged atomic.Bool
 			check := func(ctx context.Context) {
 				t.Helper()
 				removed, err := command(ctx, "target.example.")
 				if err == nil || removed != 0 {
 					t.Error("refused current proof invalidated cache", removed, err)
+				}
+				if clockCase {
+					var failure *api.Error
+					if !staged.Load() || !errors.As(err, &failure) || failure.Status != http.StatusUnauthorized {
+						t.Errorf("wanted credential refusal after staging, staged=%t: %v", staged.Load(), err)
+					}
 				}
 			}
 			f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -190,16 +198,15 @@ func TestServingCacheCommandRefusesOriginalAuthorityLoss(t *testing.T) {
 				defer func() { f.clock.Set(originalClock) }()
 				switch mode {
 				case "expiry", "expiry-empty", "regression":
-					var calls atomic.Int64
-					f.clock.Set(func() time.Time {
-						if calls.Add(1) > 1 {
-							if mode == "regression" {
-								return f.now.Add(-time.Nanosecond)
-							}
-							return f.expires
-						}
-						return f.now
-					})
+					finalTime := f.expires
+					if mode == "regression" {
+						finalTime = f.now.Add(-time.Nanosecond)
+					}
+					f.s.commandHooks.Store(&commandHooks{afterStage: func(context.Context) {
+						f.clock.Set(func() time.Time { return finalTime })
+						staged.Store(true)
+					}})
+					defer f.s.commandHooks.Store(nil)
 				case "writer":
 					f.cancel()
 				case "request":

@@ -1,0 +1,72 @@
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+I1120 20:08:07.521709  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 20:08:07.546616  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 20:08:08.076181  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:08.081487  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:08.700504  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:08:08.705450  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:08:15.336397  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:15.341047  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:18.448855  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:18.454213  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:22.359119  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:22.364082  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:385: credential replacement canceled the old provider's held request: cause=context canceled (deadline remaining: 29.689664459s)
+--- PASS: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (24.00s)
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 4063 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x67
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/log.go:60 +0xed
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).WithName(0xc0002f58c0, {0x65df1b1, 0x6})
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/deleg.go:147 +0x4a
+	>  github.com/go-logr/logr.Logger.WithName(...)
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.4/logr.go:345
+	>  sigs.k8s.io/controller-runtime/pkg/client.newClient(0xc00114e908, {0xc00430ca50, 0xc00444b490, {0xa663c28, 0xc0035a23c0}, 0x0, 0x0, {0x0, 0x0}, {0x0, ...}, ...})
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/client/client.go:210 +0x2fb
+	>  sigs.k8s.io/controller-runtime/pkg/client.New(0xc00114e908, {0x0, 0xc00444b490, {0xa663c28, 0xc0035a23c0}, 0x0, 0x0, {0x0, 0x0}, {0x0, ...}, ...})
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/client/client.go:145 +0x8e
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.openAuditLogClient({0xa65ad50, 0xc000f9a910}, 0xc00114e908, 0xc00081d250, 0x12a05f200)
+	>  	/home/vercel-sandbox/kudurru/.context/p3/integration/cmd/kudurru/auditlog.go:69 +0x1a7
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.openAuditLog({0xa65ad50, 0xc000f9a910}, 0xc00114e908, 0xc002e85c00, 0xc002f85770, 0xc00081d250, 0x12a05f200)
+	>  	/home/vercel-sandbox/kudurru/.context/p3/integration/cmd/kudurru/auditlog.go:42 +0x9d
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.runServe({0xa65ad50, 0xc000f9a910}, 0xc002048608, {0x0, 0x0})
+	>  	/home/vercel-sandbox/kudurru/.context/p3/integration/cmd/kudurru/serve.go:1373 +0x10e7a
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.kubeIntegrationMount.func1()
+	>  	/home/vercel-sandbox/kudurru/.context/p3/integration/cmd/kudurru/integration_kube_test.go:40 +0x54
+	>  created by github.com/robertherbaugh/kudurru/cmd/kudurru.kubeIntegrationMount in goroutine 3994
+	>  	/home/vercel-sandbox/kudurru/.context/p3/integration/cmd/kudurru/integration_kube_test.go:40 +0x15a
+I1120 20:08:31.177682  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 20:08:31.187981  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 20:08:32.011571  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:32.016661  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:32.636019  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:08:32.641502  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:08:39.161287  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:39.165426  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:42.271999  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:42.276780  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:45.656937  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:45.661538  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:385: credential replacement canceled the old provider's held request: cause=context canceled (deadline remaining: 29.714490095s)
+--- PASS: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (23.29s)
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+I1120 20:08:54.522537  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 20:08:54.538528  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 20:08:55.269425  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:55.274148  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:08:55.847080  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:08:55.852198  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 20:09:02.594309  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:09:02.598546  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:09:05.706467  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:09:05.710902  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:09:09.650185  117472 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 20:09:09.655637  117472 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:385: credential replacement canceled the old provider's held request: cause=context canceled (deadline remaining: 29.68705553s)
+--- PASS: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (24.07s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	72.509s
