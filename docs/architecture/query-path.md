@@ -106,8 +106,8 @@ publication that is served, not to the latest commit (D378): after a canonical
 commit that the node has not published yet they are still sent, and once a
 successor is published they are withheld, except that a query whose
 publication was captured before the swap still gets its answer for up to one
-second after the swap that replaced that publication, however many swaps
-followed (`servedSuccessorGrace`, `Publisher.ServedWithin`, D395). Nothing
+second after the swap that replaced it, as long as it is among the last eight
+replaced publications (`servedSuccessorGrace`, `Publisher.ServedWithin`, D395). Nothing
 qualifies across a DNS-only (fenced) publication, and the DNS dependency and
 anchor checks still apply at the handoff. Before D395 the queries in flight
 across each publication (about one in a few thousand) got no reply at all.
@@ -135,8 +135,18 @@ holds for the
 NOTAUTH that the transport sends for a failed TSIG check of an ordinary query
 before any pipeline work: it binds its own message to the captured output, so
 a client that sends a wrong or replaced key right after a commit reads BADKEY,
-BADSIG or BADTIME instead of timing out. A TSIG refusal of an UPDATE, NOTIFY
-or transfer keeps full data currency.
+BADSIG or BADTIME instead of timing out. A TSIG refusal of an UPDATE or
+NOTIFY keeps full data currency. A zone transfer (AXFR, IXFR, every
+continuation message and every refusal of one, TSIG refusals included) keeps
+full data currency too, except across transfer-neutral commits (D419): the
+NOTIFY acknowledgment, the status projection of a primary zone that keeps its
+name server addresses, and the driver's realignment of the zone's receipt
+after it. Those change nothing a transfer is computed from, and they follow
+every transfer and NOTIFY exchange; before D419 each withheld every transfer
+answer until the node published again, so a secondary's transfer right after
+a sync saw the connection close or time out. The store records which commits
+were neutral (`Store.TransferNeutral`), and any other commit, or any
+superseded dependency, still withholds the transfer at once.
 Ingress-only node-health and CHAOS identity replies also retain the original
 complete route during a failed settings preparation; their internal status
 establishes provenance, not a canonical zone-data grant. These retained

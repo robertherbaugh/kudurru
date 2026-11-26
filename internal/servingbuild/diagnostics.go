@@ -101,6 +101,20 @@ func (d *Diagnostics) ReadZone(ctx context.Context, objectName string) (*zone.Zo
 	return v.zone(objectName, d.now())
 }
 
+// ServedRecordSetReason reads a partial refusal from this request's served cut.
+func (d *Diagnostics) ServedRecordSetReason(ctx context.Context, desired *public.DNSRecordSet) string {
+	v, err := d.request(ctx)
+	if err != nil {
+		return ""
+	}
+	now := d.now()
+	model, err := v.zone(desired.Spec.ZoneRef.Name, now)
+	if err != nil || model.Type() != public.ZoneTypePrimary {
+		return ""
+	}
+	return v.runtime.primary.ServedRecordSetReason(model.Name(), desired, now)
+}
+
 // ReadTransferredMetadata reports the original cut's last acquired copy even
 // after expiry. It never recaptures a manager, returns another UID's data, or
 // changes ReadZone's refusal of unavailable contents.

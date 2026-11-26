@@ -389,6 +389,11 @@ func TestPublisherWakeDuringPreparationIsCoalescedNotCanceling(t *testing.T) {
 	for range 5 {
 		p.Wake()
 	}
+	// The served publication was prepared before these Wakes; Status says
+	// that one more publication is owed.
+	if st := p.Status(); st.Wakes < first.Wakes+5 || st.ServedWakes >= st.Wakes {
+		t.Fatalf("Status hid the unanswered Wakes: %+v", st)
+	}
 	close(release)
 	// The cut is published once, and the coalesced Wakes ask for one more
 	// preparation of it, published once more.
@@ -401,6 +406,9 @@ func TestPublisherWakeDuringPreparationIsCoalescedNotCanceling(t *testing.T) {
 	}
 	if calls.Load() != 2 || p.Status().Served.Publication != settled.Served.Publication {
 		t.Fatalf("five Wakes during one preparation cost %d preparations of the cut, want 2", calls.Load())
+	}
+	if settled.ServedWakes < settled.Wakes {
+		t.Fatalf("the publication that answered every Wake reported unanswered ones: %+v", settled)
 	}
 }
 

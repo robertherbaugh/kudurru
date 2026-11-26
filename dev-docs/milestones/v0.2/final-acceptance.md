@@ -55,12 +55,11 @@ status in the audit, rather than becoming invented current failures.
 
 | Package / remaining scope | Follow-up |
 |---|---|
-| ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
+| ZONE: Kubernetes workflow and runtime qualification | [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
-| UPDATE / HA: bounded failures after admission and local follower apply cutoff qualification | [#129](https://github.com/robertherbaugh/kudurru/issues/129), [#159](https://github.com/robertherbaugh/kudurru/issues/159); D409 remains implemented |
+| UPDATE / HA: owner-accepted publication grace, bounded follower apply, and member replacement | [#129 disposition and evidence](#owner-disposition-for-129); [#159](https://github.com/robertherbaugh/kudurru/issues/159) tracks the lifetime-refusal primary name. D409 remains implemented; loaded runtime and UPDATE findings remain in [#138](https://github.com/robertherbaugh/kudurru/issues/138). |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
-| RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
 | INTEGRATIONS / IDENTITY: partial UniFi update/delete recovery, actual live providers and unexplained partial-create stall | [#125](https://github.com/robertherbaugh/kudurru/issues/125) |
 | INTEGRATIONS: Kubernetes K3/K7, limits/refusals, credential and lease-loss qualification | [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
@@ -69,7 +68,7 @@ status in the audit, rather than becoming invented current failures.
 | IAM / HA: residual self-command error classification and mounted follower audit | [#137](https://github.com/robertherbaugh/kudurru/issues/137) |
 | Runtime: loaded readiness/long-apply/refusal attribution and term-end diagnostics | [#138](https://github.com/robertherbaugh/kudurru/issues/138) |
 | RBAC: precise permission-scanner helper allowlist and negative controls | [#139](https://github.com/robertherbaugh/kudurru/issues/139) |
-| OBS: hour-boundary summaries; Events, tracing and live sink final-source qualification | [#122](https://github.com/robertherbaugh/kudurru/issues/122), [#131](https://github.com/robertherbaugh/kudurru/issues/131) |
+| OBS: Events, tracing and live sink final-source qualification | [#131](https://github.com/robertherbaugh/kudurru/issues/131) |
 | EDGE: restore-hold continuity and temporarily unreachable backend behavior | [#128](https://github.com/robertherbaugh/kudurru/issues/128) |
 | OPS: manual UI, production entitlement/branding, package/deployment and release protection checks | [#133](https://github.com/robertherbaugh/kudurru/issues/133), [#140](https://github.com/robertherbaugh/kudurru/issues/140) |
 
@@ -77,23 +76,85 @@ The current report closes the specific final-source ClickHouse/Loki and
 issued-production-signature gaps within #131/#133. GitHub denied attempts to
 update the existing issue bodies with HTTP 403 (`Resource not accessible by
 integration`); those issue texts may still name the original uncompleted scope.
-No issue body or issue state was changed. This report and its committed
-evidence record the specific completed checks; remaining requirements in those
-issues stay open.
+The final-source report above changed no issue body or issue state. Its
+committed evidence records the specific completed checks; remaining requirements
+in those issues stay open.
+
+### Verified issue closeout, November 21, 2026
+
+The following scopes are complete on `main`. This evidence does not qualify
+the published release artifacts or waive any other acceptance gate.
+
+| Issue | Merged changes and evidence |
+|---|---|
+| [#122: query-log hour boundaries](https://github.com/robertherbaugh/kudurru/issues/122) | [#186](https://github.com/robertherbaugh/kudurru/pull/186) (`bec88078`) persists dirty-hour markers across restart on top of the live-read fix `63004b9c`. Fixed-clock regressions cover the hour boundary, a restarted and stopped source, and local and cluster agreement between raw, summary and client counts in partial-hour windows. The restart and stopped-source regressions failed on the old base; [hosted CI](https://github.com/robertherbaugh/kudurru/actions/runs/44809011740) passed with PostgreSQL 16 and 18. |
+| [#123: Kubernetes external-source health](https://github.com/robertherbaugh/kudurru/issues/123) | [#196](https://github.com/robertherbaugh/kudurru/pull/196) (`6757c340`) adds per-kind source conditions and metrics without replacing last-good answers. Mounted envtest exercises denied Ingress, Gateway API and Service reads, permission restoration and watch recovery. Focused tests pin cap accounting and watch-only recovery; [#213](https://github.com/robertherbaugh/kudurru/pull/213) (`115ba9bd`) verifies bounded retries and selector compatibility without changing the [documented caps](../../../docs/architecture/zones.md). |
+| [#130: RPZ diagnostics and CoreDNS import](https://github.com/robertherbaugh/kudurru/issues/130) | [#195](https://github.com/robertherbaugh/kudurru/pull/195) (`0d01b9df`) verifies both drivers' RPZ explanation and corrects Kubernetes policy state; [#188](https://github.com/robertherbaugh/kudurru/pull/188) (`48a80232`) pins retained answers and distinct omitted-name counts for multi-port imports. [#208](https://github.com/robertherbaugh/kudurru/pull/208) (`e12f07e1`) verifies pending filters, CLI messages and the signed Kubernetes fail-closed behavior. The [committed audit](followup-audit.md#sqlite-restart-and-pending-filters-163) records SQLite restart windows of 152 ms and 303 ms; the #208 description records 891 ms under the race detector. These runs had no NOERROR samples. The timings are samples, not release thresholds. |
+| [#155: definite Kubernetes head-write refusals](https://github.com/robertherbaugh/kudurru/issues/155) | [#193](https://github.com/robertherbaugh/kudurru/pull/193) (`adafd18d`) implements D384 option A for definite 400/403/413/422 rejections and preserves a single read-back and no replay for ambiguous outcomes. Unit tests and a mounted API-proxy 403 regression verify the classification and unchanged state; this was not a live RBAC change. [Hosted CI](https://github.com/robertherbaugh/kudurru/actions/runs/44811605270) passed. |
+| [#167: hosted DEB/RPM lifecycle](https://github.com/robertherbaugh/kudurru/issues/167) | [#180](https://github.com/robertherbaugh/kudurru/pull/180) (`07881d30`) adds the optional workflow. The [hosted job](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/job/136114422668) ran the real maintainer scripts and systemd lifecycle, including checksum-verified upgrade with edited config retained, restart, removal, DEB purge and RPM `.rpmsave` retention. This is snapshot-package evidence only. |
+
+The #167 [result artifact](https://github.com/robertherbaugh/kudurru/actions/runs/44684111762/artifacts/14606526721)
+reported `maintainerScriptsRun: true` and `systemdLifecycleRun: true` for both
+formats. The SHA-256 values from that run are recorded here before the artifact expires:
+
+| Package | SHA-256 |
+|---|---|
+| `kudurru_0.1.0_amd64.deb` | `8e331f16743b4ce7f5cfe3d71a6d6b4f9d52a0dab60f4d633abc29efbd1c36ec` |
+| `kudurru_0.2.0~SNAPSHOT-07881d30_amd64.deb` | `17fe476af85c5fe66e8e6897cb626cc2ccebf2c728c68cf6e4961f222820d022` |
+| `kudurru-0.1.0-1.x86_64.rpm` | `ddd5aec37db4a17050d1c0f5629a6566012e2eabe6a88b0ba0229addfba06437` |
+| `kudurru-0.2.0~SNAPSHOT_07881d30-1.x86_64.rpm` | `d81414c4868b7141d5b5a4980c1879328d07d9434654528f78988d87420b77e5` |
+
+Related issues remain open where the merged work covers only part of their scope:
+
+| Issue | Merged progress | Still open |
+|---|---|---|
+| #125 | #216 verifies recovery through a mounted SQLite and UniFi double, including restart, lease loss and foreign-record protection; #211 documents live prerequisites. | Authorized live acceptance and receipts in #153. |
+| #126 | #192 verifies the CLI and refusal contracts; #193 resolves definite head-write classification. | Mounted K3/K7 qualification in #156. |
+| #127 | #197 retains strict authority validation for same-serial IXFR without AA. | Hosted pinned private-daemon suites in #157, plus the documented dnsdist limitation. |
+| #129 | #190 documents the owner's grace, deadline and replacement decisions; #187 verifies how cut follower apply results name the original primary. | Deferred child #160. D358 remains separate. |
+| #131 | #209 adds bounded, counted Kubernetes Events delivery. | Tracing and hosted live-sink follow-ups #165 and #164. |
+| #133 | #183 documents the manual acceptance runbooks and #180 provides snapshot-package lifecycle evidence. | Final-artifact visual approval, authorized production issuance and expiry/grace evidence. |
+| #135 | #215 verifies abandoned-term rejoin, and #217 records hosted managed-anchor bootstrap and readiness evidence. | Production puller refusal and fencing coverage in #169. |
+| #136 | #206 and #202 cover Kubernetes ownership and SQLite partial-refusal visibility, respectively. | Pinned live edge TCP qualification in #127 and the remaining driver limits. |
+| #138 | #198 pins retiring-zone refusal and `LastError` lifetime; #210 covers budget classification and rotation cancellation. | Loaded runtime attribution in #172. |
+| #140 | #182 provides a merge-only proposal and a read-only verifier. | A November 21 read of the live rules still found rebase allowed and no required `promotion` check on either release branch. Apply and verify the live policy separately. |
+| #143 | #181 diagnoses the ineligible CNAME result; #179 proposes a host-equivalence preflight. | A passing final-source run on qualified hardware under the unchanged gates. |
 
 ### Owner disposition for #129
 
 On November 20, 2026, the owner accepted D395 as implemented (up to one second
-of grace for ordinary answers; strict paths remain strict) and D375 as
+of grace for ordinary answers; transfers still require the current publication,
+and UPDATE acknowledgments, API dig, and mutations remain strict) and D375 as
 implemented (one 30-second follower apply lifetime, honest per-document
 partial results and no replay; send large workloads to the primary). The
 [documented member replacement procedure](../../../docs/deploy/sqlite-join.md#replace-a-member-that-cannot-follow)
 is sufficient for v0.2; the #160 retirement command stays deferred.
 
-This is a product decision, not a test result. See the
-[local #159 evidence](../../followups.md#local-follower-apply-evidence-159) for
-the scope actually exercised. No release gate, including D358, is passed by
-this decision.
+The owner decision is separate from the verification:
+
+- **Local grace and replacement regressions:** focused `-race` runs on
+  `ce3ab6e2` passed `TestPublisherServedWithinKeepsRecentlyReplacedPublications`,
+  `TestPublisherServedWithinHasNoGapAtTheSwap`,
+  `TestRootAnchorServedDNSFollowsThePublication`,
+  `TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation`,
+  `TestReplacementReceiverNeedsItsOwnNameAndAddress`,
+  `TestInvitationAndActiveMemberCapacityDoNotPrune`,
+  `TestRevokedKeyCannotReturnUnderNewCertificateAndUUID`, and
+  `TestRootMemberListenerTLSSeparationAndLiveRevocation`. Those tests check
+  grace expiry, strict AXFR and mutation behavior, and the member identity and
+  roster rules; they are not an operator replacement drill.
+- **Local cutoff regression:** [#159 evidence](../../followups.md#local-follower-apply-evidence-159)
+  covers both forced cutoffs, the durable per-document results, and no replay.
+- **Hosted single-runner process tests:** [CI run 44667589755](https://github.com/robertherbaugh/kudurru/actions/runs/44667589755/job/136061099846)
+  on `91b4f2c5` (merged in #184) passed `TestEnrolledClusterProcessesPartitionCatchupAndRestart`
+  and `TestEnrolledClusterProcessesPromoteAndRejoin` under `-race`. The
+  original 200-document follower applies each returned all 200 as created,
+  in 8.49 seconds and 8.37 seconds, respectively. These timings are one
+  runner's result, not a guarantee under load.
+
+These results do not qualify a final release artifact or independent two-VM VIP
+failover. The D358 deferral and other release gates are unchanged. Keep #129
+open while its deferred #160 sub-issue remains open.
 
 ## Explicit future acceptance
 

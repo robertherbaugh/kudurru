@@ -49,4 +49,7 @@ const (
 	// does not run the Kubernetes source adapter (externalZones.enabled
 	// is off), so nothing keeps its records current.
 	ReasonSourcesNotRead = "SourcesNotRead"
+	// ReasonSourcesIncomplete: one or more requested Kubernetes sources are
+	// not fully observed by the enabled external-zone adapter.
+	ReasonSourcesIncomplete = "SourcesIncomplete"
 )

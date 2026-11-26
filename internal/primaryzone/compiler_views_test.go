@@ -2,11 +2,14 @@ package primaryzone
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 )
@@ -15,6 +18,98 @@ func viewEndpoint(name, target, view string) public.Endpoint {
 	e := endpoint(name, target)
 	e.Kudurru = &public.EndpointExt{View: view}
 	return e
+}
+
+func TestCompilerSummarizesRefusedViewsInServedSets(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		blockers []*public.DNSRecordSet
+		refused  public.Endpoint
+		want     string
+		signed   bool
+		viewOnly bool
+		dynamic  string
+	}{
+		{"duplicate", []*public.DNSRecordSet{desiredSet("first", viewEndpoint("printer", "192.0.2.1", "lan"))}, viewEndpoint("printer", "192.0.2.2", "lan"), "Duplicated", false, true, ""},
+		{"occluded", []*public.DNSRecordSet{desiredSet("first", public.Endpoint{DNSName: "child.example.", RecordType: "NS", Targets: []string{"ns.other.test."}})}, viewEndpoint("printer.child", "192.0.2.2", "lan"), "Occluded", false, false, ""},
+		{"signed", nil, viewEndpoint("printer", "192.0.2.2", "lan"), "Invalid: client-group views are not served in a DNSSEC-signed zone", true, false, ""},
+		{"dynamic owner", nil, viewEndpoint("printer", "192.0.2.2", "lan"), dynamicOwnerReason, false, false, "printer.example. 300 IN A 192.0.2.1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			z := desiredZone()
+			if tc.signed {
+				z.Spec.DNSSEC = &public.DNSSECSpec{Enabled: true}
+			}
+			kept := endpoint("kept", "192.0.2.3")
+			if tc.viewOnly {
+				kept = viewEndpoint("kept", "192.0.2.3", "lan")
+			}
+			mixed := desiredSet("mixed", tc.refused, kept)
+			in := &zonestate.DesiredInputs{Zone: z, RecordSets: append(tc.blockers, mixed), Complete: true}
+			compiler := NewCompiler(CompilerOptions{})
+			base := blank(z)
+			if tc.dynamic != "" {
+				base = withDynamic(t, compiler, z, &zonestate.DesiredInputs{Zone: z, Complete: true}, tc.dynamic)
+			}
+			compiled := compile(t, compiler, base, in, fixedNow)
+			if got := built(t, compiled).ForGroups([]string{"dns/lan"}).Lookup("kept.example.", dns.TypeA); got.Kind != zone.Success {
+				t.Fatalf("other endpoint was lost: %+v", got)
+			}
+			reason := servedViewRefusal(t, compiled, mixed)
+			if want := tc.refused.DNSName + " A (view dns/lan): " + tc.want; !strings.Contains(reason, want) {
+				t.Fatalf("reason %q lacks %q", reason, want)
+			}
+		})
+	}
+}
+
+func TestCompilerSummarizesSharedViewBudgetAcrossNamespaces(t *testing.T) {
+	z := desiredZone()
+	first := desiredSet("first")
+	first.Namespace = "ahead"
+	for index := range zone.MaxViews {
+		first.Spec.Endpoints = append(first.Spec.Endpoints, viewEndpoint(fmt.Sprintf("first-%02d", index), "192.0.2.1", fmt.Sprintf("view-%02d", index)))
+	}
+	mixed := desiredSet("mixed", endpoint("kept", "192.0.2.3"))
+	mixed.Namespace = "kids"
+	for index := range 20 {
+		mixed.Spec.Endpoints = append(mixed.Spec.Endpoints, viewEndpoint(fmt.Sprintf("printer-%02d", index), "192.0.2.2", fmt.Sprintf("view-%02d", index)))
+	}
+	in := &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{mixed, first}, Complete: true}
+	c := NewCompiler(CompilerOptions{})
+	compiled := compile(t, c, blank(z), in, fixedNow)
+	model := built(t, compiled)
+	groups := model.ViewGroups()
+	if len(groups) != zone.MaxViews || groups[0] != "ahead/view-00" || groups[len(groups)-1] != "ahead/view-15" {
+		t.Fatalf("wrong view budget winners: %v", groups)
+	}
+	if got := model.ForGroups([]string{"kids/view-00"}).Lookup("printer-00.example.", dns.TypeA); got.Kind != zone.NXDomain {
+		t.Fatalf("over-budget view served: %+v", got)
+	}
+	reason := servedViewRefusal(t, compiled, mixed)
+	if !strings.Contains(reason, "printer-00.example. A (view kids/view-00): Invalid: a zone serves at most 16 client-group views") ||
+		!strings.HasSuffix(reason, " more") || len(reason) > 512 || !utf8.ValidString(reason) {
+		t.Fatalf("unexpected bounded reason (%d bytes): %q", len(reason), reason)
+	}
+	if got := servedViewRefusal(t, compile(t, c, compiled, in, fixedNow), mixed); got != reason {
+		t.Fatalf("reason changed on identical recompile: %q != %q", got, reason)
+	}
+}
+
+func servedViewRefusal(t *testing.T, view *zonestate.View, rs *public.DNSRecordSet) string {
+	t.Helper()
+	for _, source := range view.Aggregate.Sources {
+		if source.ID != store.KeyOf(rs).String() {
+			continue
+		}
+		envelope, err := zonestate.DecodeSourceEnvelope(source.Desired)
+		if err != nil || envelope.FormatVersion != 1 || envelope.Projection != "served" || envelope.Reason == "" {
+			t.Fatalf("expected a served source with a refusal reason, got %+v (%v)", envelope, err)
+		}
+		return envelope.Reason
+	}
+	t.Fatal("missing source for record set")
+	return ""
 }
 
 // The committed primary (SQLite) keeps client-group views apart from the

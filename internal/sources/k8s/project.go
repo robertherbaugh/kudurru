@@ -49,7 +49,7 @@ var sourceKinds = []*sourceKind{
 	{label: "service", kind: "Service", gvr: schema.GroupVersionResource{Version: "v1", Resource: "services"}, family: familyService},
 }
 
-var gatewayResource = schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}
+var gatewayKind = &sourceKind{label: "gateway", kind: "Gateway", gvr: schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}, family: familyGateway}
 
 // Annotation keys (external-dns compatible). The current prefix wins over
 // the legacy alpha prefix when both are set.
@@ -216,7 +216,7 @@ func strip(k *sourceKind, u *unstructured.Unstructured, gateways map[string]gate
 		add(hosts, loadBalancerTargets(u.Object))
 	case familyService:
 		// external-dns publishes a Service only when it names its hosts.
-		if str(u.Object, "spec", "type") == "LoadBalancer" {
+		if isLoadBalancer(u) {
 			add(extra, loadBalancerTargets(u.Object))
 		}
 	case familyGateway:
@@ -258,6 +258,10 @@ func strip(k *sourceKind, u *unstructured.Unstructured, gateways map[string]gate
 		}
 	}
 	return s
+}
+
+func isLoadBalancer(service *unstructured.Unstructured) bool {
+	return str(service.Object, "spec", "type") == "LoadBalancer"
 }
 
 // acceptedParents returns namespace/name of every Gateway in the route's
