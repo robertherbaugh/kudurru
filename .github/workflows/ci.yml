@@ -307,6 +307,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Download Go modules
+        working-directory: .
         run: hack/go-modules.sh download
       - name: Embed the built bundle
         working-directory: .
