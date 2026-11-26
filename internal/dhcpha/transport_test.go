@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -147,4 +148,60 @@ func TestTrackedConnectionIdleLifetimeAndRequestDeadline(t *testing.T) {
 			t.Fatalf("caller deadline was replaced or failed to release: %v", err)
 		}
 	})
+}
+
+// Raft's CloseStreams closes only idle pooled sockets, so the partition hook
+// must also cut a socket an in-flight RPC already holds, including bytes the
+// peer sent before the partition began.
+func TestPartitionSeversEstablishedConnection(t *testing.T) {
+	a, b := net.Pipe()
+	defer func() { _ = b.Close() }()
+	var isolated atomic.Bool
+	s := &peerStream{}
+	s.blocked.Store(&partitionRule{blocked: func(peer string) bool { return peer == "node2" && isolated.Load() }})
+	var released atomic.Int32
+	gate := &gatedConn{Conn: a, entered: make(chan struct{}), proceed: make(chan struct{})}
+	c := &trackedConn{Conn: gate, stream: s, close: func() { released.Add(1) }}
+	c.startIdle(time.Minute)
+	c.bindPeer("node2")
+	defer func() { _ = c.Close() }()
+	go func() { _, _ = io.Copy(io.Discard, b) }()
+	if _, err := c.Write([]byte("heartbeat")); err != nil {
+		t.Fatalf("connected peer rejected a write: %v", err)
+	}
+	sent := make(chan error, 1)
+	reading := make(chan error, 1)
+	buf := make([]byte, 16)
+	go func() {
+		_, err := c.Read(buf)
+		reading <- err
+	}()
+	// The read passes the partition check and blocks before the partition
+	// begins; the reply arrives only after it.
+	<-gate.entered
+	isolated.Store(true)
+	go func() { _, err := b.Write([]byte("reply")); sent <- err }()
+	close(gate.proceed)
+	if err := <-reading; err == nil {
+		t.Fatalf("partitioned connection delivered %q", buf)
+	}
+	if _, err := c.Write([]byte("append")); err == nil {
+		t.Fatal("partitioned connection accepted a write")
+	}
+	if released.Load() != 1 {
+		t.Fatal("partitioned connection was not closed")
+	}
+	<-sent
+}
+
+// gatedConn holds the first read inside the underlying socket until released.
+type gatedConn struct {
+	net.Conn
+	once             sync.Once
+	entered, proceed chan struct{}
+}
+
+func (g *gatedConn) Read(p []byte) (int, error) {
+	g.once.Do(func() { close(g.entered); <-g.proceed })
+	return g.Conn.Read(p)
 }

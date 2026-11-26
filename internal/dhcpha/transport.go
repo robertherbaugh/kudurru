@@ -38,6 +38,10 @@ type peerStream struct {
 	wg           sync.WaitGroup
 	once         sync.Once
 	// Tests partition existing connections and new dials through this hook.
+	// Dials and handshakes consult it, and so does every read and write on an
+	// authenticated connection: Raft's CloseStreams only closes idle pooled
+	// sockets, so one checked out by an in-flight RPC would otherwise outlive
+	// the partition and keep replicating to the isolated peer.
 	blocked atomic.Pointer[partitionRule]
 }
 
@@ -104,6 +108,7 @@ func (s *peerStream) serve() {
 				s.discard(conn)
 				return
 			}
+			owned.bindPeer(h.NodeID)
 			if writeFrame(tc, s.hello(h.Kind)) != nil {
 				s.discard(conn)
 				return
@@ -170,7 +175,7 @@ func (s *peerStream) reserve() error {
 // own consumes an already reserved slot until the socket closes. Tracking the
 // underlying socket also lets shutdown interrupt TLS handshakes and idle pools.
 func (s *peerStream) own(raw net.Conn) (*trackedConn, error) {
-	c := &trackedConn{Conn: raw, done: make(chan struct{})}
+	c := &trackedConn{Conn: raw, stream: s, done: make(chan struct{})}
 	c.close = func() {
 		s.mu.Lock()
 		delete(s.connections, c)
@@ -242,10 +247,12 @@ func (s *peerStream) dial(ctx context.Context, address, kind string, timeout tim
 		<-s.limit
 		return nil, err
 	}
-	conn, err = s.own(conn)
+	owned, err := s.own(conn)
 	if err != nil {
 		return nil, err
 	}
+	owned.bindPeer(peer)
+	conn = owned
 	cfg := s.cfg.TLS.Clone()
 	if cfg.ServerName == "" {
 		cfg.ServerName, _, _ = net.SplitHostPort(address)
@@ -275,9 +282,13 @@ func (s *peerStream) dial(ctx context.Context, address, kind string, timeout tim
 
 type trackedConn struct {
 	net.Conn
-	once  sync.Once
-	close func()
-	done  chan struct{}
+	once   sync.Once
+	close  func()
+	done   chan struct{}
+	stream *peerStream
+	// peer is the voter ID at the other end: known before dialing, and set
+	// after hello validation on accepted connections.
+	peer atomic.Pointer[string]
 
 	idleMu       sync.Mutex
 	idleTimer    *time.Timer
@@ -321,8 +332,17 @@ func (c *trackedConn) expireIdle() {
 // handshake or management deadlines. Active large snapshots may run longer
 // than the idle timeout while completely idle pooled sockets are reclaimed.
 func (c *trackedConn) Read(p []byte) (int, error) {
+	if c.partitioned() {
+		return 0, c.sever()
+	}
 	c.activity()
 	n, err := c.Conn.Read(p)
+	// Bytes the peer sent before a partition began must not be delivered
+	// after it: the check after the read makes the cut independent of when
+	// the blocked read started.
+	if n > 0 && c.partitioned() {
+		return 0, c.sever()
+	}
 	if n > 0 {
 		c.activity()
 	}
@@ -332,6 +352,9 @@ func (c *trackedConn) Read(p []byte) (int, error) {
 	return n, err
 }
 func (c *trackedConn) Write(p []byte) (int, error) {
+	if c.partitioned() {
+		return 0, c.sever()
+	}
 	c.activity()
 	n, err := c.Conn.Write(p)
 	if n > 0 {
@@ -342,6 +365,24 @@ func (c *trackedConn) Write(p []byte) (int, error) {
 	}
 	return n, err
 }
+func (c *trackedConn) bindPeer(id string) { c.peer.Store(&id) }
+
+// partitioned reports whether the test partition hook isolates this
+// connection's authenticated peer (or this node). It is always false in
+// production, where no rule is installed.
+func (c *trackedConn) partitioned() bool {
+	if c.stream == nil {
+		return false
+	}
+	peer := c.peer.Load()
+	return peer != nil && c.stream.isBlocked(*peer)
+}
+
+func (c *trackedConn) sever() error {
+	_ = c.Close()
+	return errors.New("dhcp HA: voter is unreachable")
+}
+
 func (c *trackedConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() {
