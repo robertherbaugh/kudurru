@@ -1,0 +1,12 @@
+=== RUN   TestReadinessBudgetChargesOnlyRunnableTime
+--- PASS: TestReadinessBudgetChargesOnlyRunnableTime (0.00s)
+=== RUN   TestProcessSchedStatReadsThisProcess
+--- PASS: TestProcessSchedStatReadsThisProcess (0.05s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:351: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:352: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:423: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:455: apply of 120 documents took 19.514061756s: 225 correct DNS answers, 0 SERVFAIL, longest time without one 195.469738ms, 17 reads ok, 0 reads failed; last failed read: ; wall=26.702s process-cpu=20.716s runqueue-wait=25.959s gomaxprocs=2 loadavg="8.86 7.50 4.70 16/481 87666"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (26.76s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	26.863s

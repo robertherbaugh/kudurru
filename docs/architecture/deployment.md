@@ -323,8 +323,8 @@ flowchart LR
     CM --> OBS["every replica refreshes<br/>its observation every 2 s"]
     PUB --> INT["GET /internal/edge/blocks<br/>(internal TLS + cluster token)"]
     OBS --> INT
-    INT --> SUP["edge supervisor pulls every backend<br/>every 5 s; newest revision per owner,<br/>remembered across pulls"]
-    SUP --> FILE["edge-blocks.json in the<br/>configuration directory"]
+    INT --> SUP["edge supervisor pulls every backend every 5 s;<br/>per-owner revision floor and continuity"]
+    SUP --> FILE["edge-blocks.json: set, floors,<br/>and observation times"]
     SUP --> CON["console: addDynamicBlock with the<br/>remaining seconds (Drop)"]
     FILE -- "supervisor restart,<br/>no backend reachable" --> CON
     CON --> DD["dnsdist drops the prefix<br/>and expires the entry itself"]
@@ -335,19 +335,30 @@ copy with the highest revision, and remembers that revision across pulls and
 restarts (it is stored in `edge-blocks.json` with the set). A backend that
 serves a lower revision than one already applied is ignored, so a lagging
 follower cannot bring back a revoked block or wipe a new one, also while the
-newer backend misses pulls. Only when every pull that reports the owner has
-shown a lower revision for five minutes (`BlockRestoreHold`) does the edge
-take it as a deliberate step back, such as a restored backup or a promoted
-follower that had lagged; a primary that stays unreachable that long while a
-follower serves an older revision therefore brings that revision back after
-five minutes, still bounded by each block's expiry. An owner's revision is
-remembered for seven days and one hour after it was first applied (longer
-than any block a lower revision can carry), and at most eight owners that no
-backend reports any more are kept. Independent static twins are separate
-owners and their sets are combined; only owners reported in a pull
-contribute blocks. When no backend answers, the last set stays in force and
-is still expired locally. A failed write of `edge-blocks.json` is retried on
-every pull until it succeeds. A new dnsdist child gets the whole set; an addition
+newer backend misses pulls. The edge accepts a deliberate step back only
+after consecutive polls report that owner with only lower revisions for five
+minutes (`BlockRestoreHold`). A backward clock step, a pull with no answer
+for that owner, a current or higher revision, or an observation gap beyond
+the limit breaks that streak. The limit is the greater of three poll intervals
+and two poll intervals plus the three-second pull timeout (15 seconds with
+the default intervals). This allows consecutive pulls to complete even with
+a short poll interval and a slow backend; longer stalls still reset the streak.
+A short restart can continue the persisted streak within the same gap; a version-2 cache
+keeps its blocks and floors but starts a new streak. A primary that stays
+unreachable while a follower consistently serves an older revision can
+still bring that revision back after the hold, bounded by each entry's expiry.
+
+Independent static twins are separate owners. The union includes remembered,
+unexpired blocks from omitted owners until consecutive successful pulls omit
+them for the hold, subject to the same observation gap. When no backend
+answers, both streaks reset but the last set stays in force and still
+expires locally. After omission is confirmed, the edge drops the owner's
+blocks but remembers its revision floor for up to seven days and one hour
+after the revision was first applied. The cache keeps up to eight unreported
+owners, evicting owners with no active blocks before those with active blocks.
+A failed write of `edge-blocks.json` is retried on every pull until it
+succeeds; until then a restart sees the last successful checkpoint. A new
+dnsdist child gets the whole set; an addition
 adds only the new entry; a revoke or a changed expiry clears the dynamic
 block table and reinstalls the rest, because dnsdist has no per-entry
 removal and only ever extends an entry. Clearing also drops blocks the

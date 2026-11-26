@@ -269,7 +269,7 @@ func TestMergeEdgeBlocks(t *testing.T) {
 	a := internalapi.EdgeBlock{ID: "00000000000000a1", Prefix: "192.0.2.0/24", Until: now.Add(time.Hour)}
 	b := internalapi.EdgeBlock{ID: "00000000000000b2", Prefix: "2001:db8::/48", Until: now.Add(time.Hour)}
 	c := internalapi.EdgeBlock{ID: "00000000000000c3", Prefix: "198.51.100.0/24", Until: now.Add(time.Hour)}
-	hold := time.Minute
+	hold, maxGap := time.Minute, 15*time.Second
 	ids := func(bs []internalapi.EdgeBlock) string {
 		var out []string
 		for _, x := range bs {
@@ -277,45 +277,45 @@ func TestMergeEdgeBlocks(t *testing.T) {
 		}
 		return strings.Join(out, ",")
 	}
-	owners, got := mergeEdgeBlocks(nil, []internalapi.EdgeBlockList{blockList("o", 3, b), blockList("o", 2, a, b)}, hold, now)
+	owners, got := mergeEdgeBlocks(nil, []internalapi.EdgeBlockList{blockList("o", 3, b), blockList("o", 2, a, b)}, hold, maxGap, now)
 	if ids(got) != "b2" || owners["o"].Revision != 3 {
 		t.Fatalf("same pull: %s %+v", ids(got), owners)
 	}
 	// Only the lagging copy answers: the floor holds the newer set.
-	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 2, a, b)}, hold, now.Add(5*time.Second))
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 2, a, b)}, hold, maxGap, now.Add(5*time.Second))
 	if ids(got) != "b2" || owners["o"].LowerSince.IsZero() {
 		t.Fatalf("lagging pull: %s %+v", ids(got), owners)
 	}
 	// The newer copy answers again: the lower streak is broken.
-	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 3, b, c)}, hold, now.Add(10*time.Second))
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 3, b, c)}, hold, maxGap, now.Add(10*time.Second))
 	if ids(got) != "b2,c3" || !owners["o"].LowerSince.IsZero() {
 		t.Fatalf("same revision with new content: %s %+v", ids(got), owners)
 	}
 	// A pull without the owner also breaks the streak, then a sustained
 	// lower revision for the whole hold is taken as a restore.
-	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(20*time.Second))
-	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("other", 1)}, hold, now.Add(30*time.Second))
-	if got != nil || !owners["o"].LowerSince.IsZero() || owners["o"].Revision != 3 {
+	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, maxGap, now.Add(20*time.Second))
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("other", 1)}, hold, maxGap, now.Add(30*time.Second))
+	if ids(got) != "b2,c3" || !owners["o"].LowerSince.IsZero() || owners["o"].Revision != 3 {
 		t.Fatalf("absent owner: %s %+v", ids(got), owners)
 	}
-	for i, at := range []time.Duration{40 * time.Second, 90 * time.Second} {
-		owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(at))
+	for at := 40 * time.Second; at < 100*time.Second; at += 5 * time.Second {
+		owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, maxGap, now.Add(at))
 		if ids(got) != "b2,c3" {
-			t.Fatalf("restore accepted early at step %d: %s", i, ids(got))
+			t.Fatalf("restore accepted early at %s: %s", at, ids(got))
 		}
 	}
-	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(100*time.Second))
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, maxGap, now.Add(100*time.Second))
 	if ids(got) != "a1" || owners["o"].Revision != 1 {
 		t.Fatalf("restore after the hold: %s %+v", ids(got), owners)
 	}
 	// Absent owners are bounded and forgotten after the memory window.
 	for i := range maxEdgeBlockOwners + 3 {
-		owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("twin-"+strings.Repeat("x", i+1), 1)}, hold, now.Add(time.Duration(200+i)*time.Second))
+		owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("twin-"+strings.Repeat("x", i+1), 1)}, hold, maxGap, now.Add(time.Duration(200+i)*time.Second))
 	}
-	if len(owners) != maxEdgeBlockOwners {
-		t.Fatalf("%d owners remembered", len(owners))
+	if len(owners) != maxEdgeBlockOwners+1 || len(owners["o"].Blocks) != 1 {
+		t.Fatalf("expected bounded owner memory with the active absent owner retained: %+v", owners)
 	}
-	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("fresh", 1)}, hold, now.Add(edgeBlockOwnerMemory+time.Hour))
+	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("fresh", 1)}, hold, maxGap, now.Add(edgeBlockOwnerMemory+time.Hour))
 	if len(owners) != 1 {
 		t.Fatalf("expired owner memory kept: %+v", owners)
 	}

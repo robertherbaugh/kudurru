@@ -58,7 +58,16 @@ func directAnchorRuntime(t *testing.T, endpoint string, seeds []string) (*servin
 		}
 	})
 	runServingFixture(t, s)
-	parent, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	// The elected term ends only in this fixture's cleanup, not with
+	// t.Context(). The testing package cancels t.Context() before it calls
+	// the first cleanup, so a term derived from it ends before the cleanup of
+	// startDirectAnchorWriter (registered later, so run earlier) can stop the
+	// writer. A writer that has already returned by then is reported as
+	// stopped before caller cancellation, although only the test ended.
+	// Ending the term here keeps production's order (cluster.Runner): the
+	// writer is stopped and joined, then the election, then the always-on
+	// runtime (servingFixtureAlwaysOn).
+	parent, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), 20*time.Second)
 	carried := make(chan context.Context, 1)
 	joined := make(chan error, 1)
 	go func() {

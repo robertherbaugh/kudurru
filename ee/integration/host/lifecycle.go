@@ -285,7 +285,7 @@ func (h *Host) refresh(ctx context.Context) {
 		if next.mode != GuardNormal {
 			phase = PhaseTerminating
 		}
-		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
+		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", Result: h.carriedResult(key, i.owner, next.mode), CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)
 	}
 }
@@ -498,6 +498,20 @@ func (h *Host) setLocal(j *job, phase, reason string, result Result, leader bool
 		s.LastSync = h.opts.Now()
 	}
 	h.statuses[j.key] = s
+}
+
+// carriedResult is what a cleanup job reports before one of its own runs
+// counts: the last terminating count of the same instance, which a job it
+// replaces left in the status, instead of claiming that nothing is left. A
+// release never counts, so it carries nothing. Callers hold h.mu.
+func (h *Host) carriedResult(key string, owner InstanceID, mode GuardMode) Result {
+	if mode != GuardCleanup {
+		return Result{}
+	}
+	if s, ok := h.statuses[key]; ok && s.Owner == owner && s.Phase == PhaseTerminating {
+		return valueResult(&s.Result)
+	}
+	return Result{}
 }
 func (h *Host) leaseID(j *job) string {
 	return fmt.Sprintf("%s-%s-%d", h.incarnation, kinds.Digest([]byte(j.key))[:16], h.sequence.Add(1))

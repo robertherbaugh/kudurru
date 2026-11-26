@@ -1,0 +1,40 @@
+2026-11-20T19:29:21+00:00
+ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61
+go version go1.27.4 linux/amd64
+8
+pid 60467's current affinity list: 0-7
+max 100000
+11.05 8.72 3.88 3/474 60488
+mode=norace taskset=0 GOMAXPROCS=1 busy-loops=0 count=1 pattern=^Test(RunServe(SQLiteLongApplyKeepsServingDNSAndReads|SQLitePrimaryAnswersAcrossStatusWrites|StaticTwinsReadOnlyPeerLossRestart|RefusalInventory(Standalone|Static|Kubernetes))|ReadinessBudgetChargesOnlyRunnableTime|ProcessSchedStatReadsThisProcess)$
+=== RUN   TestReadinessBudgetChargesOnlyRunnableTime
+--- PASS: TestReadinessBudgetChargesOnlyRunnableTime (0.00s)
+=== RUN   TestProcessSchedStatReadsThisProcess
+--- PASS: TestProcessSchedStatReadsThisProcess (0.05s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.398904167s: 89 correct DNS answers, 0 SERVFAIL, longest time without one 259.539315ms, 13 reads ok, 0 reads failed; last failed read: ; wall=21.569s process-cpu=16.085s runqueue-wait=380ms gomaxprocs=1 loadavg="8.98 8.40 3.88 3/493 62829"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (21.60s)
+=== RUN   TestRunServeRefusalInventoryStandalone
+    serve_refusal_inventory_test.go:128: static server mount-test ready: wall=1.805s process-cpu=809ms runqueue-wait=71ms gomaxprocs=1 loadavg="8.98 8.40 3.88 4/495 62873"
+    serve_refusal_inventory_test.go:129: standalone: 212/212 operations walked, 18 answered 501 or 503, 28 stopped at request validation, 42 answered 404; wall=1.406s process-cpu=1.387s runqueue-wait=7ms gomaxprocs=1 loadavg="8.50 8.31 3.88 3/496 62914"
+--- PASS: TestRunServeRefusalInventoryStandalone (3.48s)
+=== RUN   TestRunServeRefusalInventoryStatic
+    serve_refusal_inventory_test.go:142: static server node-a ready: wall=674ms process-cpu=668ms runqueue-wait=5ms gomaxprocs=1 loadavg="8.50 8.31 3.88 3/496 62918"
+    serve_refusal_inventory_test.go:143: static: 212/212 operations walked, 102 answered 501 or 503, 7 stopped at request validation, 25 answered 404; wall=626ms process-cpu=617ms runqueue-wait=16ms gomaxprocs=1 loadavg="8.50 8.31 3.88 3/495 62946"
+--- PASS: TestRunServeRefusalInventoryStatic (1.53s)
+=== RUN   TestRunServeRefusalInventoryKubernetes
+    serve_refusal_inventory_test.go:150: unable to install CRDs onto control plane: unable to read CRD files: stat ../../deploy/kustomize/crd/bases: no such file or directory
+--- FAIL: TestRunServeRefusalInventoryKubernetes (2.79s)
+=== RUN   TestRunServeStaticTwinsReadOnlyPeerLossRestart
+    serve_static_cluster_test.go:160: static server node-a ready: wall=1.26s process-cpu=1.192s runqueue-wait=78ms gomaxprocs=1 loadavg="8.06 8.22 3.87 3/493 63079"
+    serve_static_cluster_test.go:160: static server node-b ready: wall=1.464s process-cpu=1.434s runqueue-wait=27ms gomaxprocs=1 loadavg="8.06 8.22 3.87 5/493 63487"
+    serve_static_cluster_test.go:257: static server node-b ready: wall=446ms process-cpu=438ms runqueue-wait=7ms gomaxprocs=1 loadavg="8.06 8.22 3.87 5/503 63611"
+--- PASS: TestRunServeStaticTwinsReadOnlyPeerLossRestart (4.05s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:260: 24 status writes of 24 new serials; probe: 2958 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 0 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending; wall=12.073s process-cpu=8.701s runqueue-wait=596ms gomaxprocs=1 loadavg="7.33 8.05 3.88 5/491 65406"
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (12.08s)
+FAIL
+test exit=1
+2026-11-20T19:30:07+00:00

@@ -1,13 +1,19 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/apiclient"
 )
 
 // processSchedStat sums, over every thread of this process, the time spent
@@ -54,6 +60,7 @@ type readinessBudget struct {
 	start           time.Time
 	budget, ceiling time.Duration
 	procs           int
+	creditChecks    int
 	run, wait       time.Duration
 	ok              bool
 	stat            func() (run, wait time.Duration, ok bool)
@@ -92,6 +99,9 @@ func (b *readinessBudget) expired(now time.Time) bool {
 		return true
 	}
 	_, wait, ok := b.since()
+	if ok {
+		b.creditChecks++
+	}
 	return !ok || wall-wait/time.Duration(b.procs) > b.budget
 }
 
@@ -101,9 +111,77 @@ func (b *readinessBudget) String() string {
 	run, wait, ok := b.since()
 	wall := time.Since(b.start).Round(time.Millisecond)
 	if !ok {
-		return fmt.Sprintf("wall=%s (no scheduler statistics)", wall)
+		return fmt.Sprintf("wall=%s gomaxprocs=%d (no scheduler statistics)", wall, b.procs)
 	}
 	return fmt.Sprintf("wall=%s process-cpu=%s runqueue-wait=%s gomaxprocs=%d", wall, run.Round(time.Millisecond), wait.Round(time.Millisecond), b.procs)
+}
+
+// mountedLoadSnapshot uses the readiness scheduler accounting for diagnostics
+// only; it is not a startup budget.
+func mountedLoadSnapshot() *readinessBudget {
+	return newReadinessBudget(0, 0)
+}
+
+func mountedRequestFailure(err error) string {
+	var op *net.OpError
+	if errors.As(err, &op) && op.Op == "dial" {
+		return "harness failed before observation"
+	}
+	var timeout interface{ Timeout() bool }
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
+		return "request did not complete within client timeout"
+	}
+	return "transport failure before a complete answer"
+}
+
+func mountedHTTPOutcome(status int) string {
+	if status >= 400 {
+		return "product refusal"
+	}
+	return "unexpected product response"
+}
+
+func (b *readinessBudget) loadSummary() string {
+	load, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return fmt.Sprintf("%s loadavg=unavailable", b)
+	}
+	return fmt.Sprintf("%s loadavg=%q", b, strings.TrimSpace(string(load)))
+}
+
+func (b *readinessBudget) logFailure(t *testing.T) {
+	if t.Failed() {
+		t.Logf("mounted failure load: %s", b.loadSummary())
+	}
+}
+
+func TestMountedOutcomeAttribution(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		err    error
+		stderr string
+		want   string
+	}{
+		{name: "wrapped refusal", err: fmt.Errorf("get: %w", &apiclient.Error{StatusCode: http.StatusServiceUnavailable, Key: "generation_pending"}), want: "product refusal (HTTP 503)"},
+		{name: "plain refusal", err: errors.New("generation_pending"), want: "product refusal"},
+		{name: "stderr refusal", err: errors.New("get failed"), stderr: "generation_pending: complete serving generation unavailable", want: "product refusal"},
+		{name: "deadline", err: fmt.Errorf("get: %w", context.DeadlineExceeded), want: "request did not complete within client timeout"},
+		{name: "read timeout", err: &net.OpError{Op: "read", Err: os.ErrDeadlineExceeded}, want: "request did not complete within client timeout"},
+		{name: "dial timeout", err: &net.OpError{Op: "dial", Err: os.ErrDeadlineExceeded}, want: "harness failed before observation"},
+		{name: "canceled", err: context.Canceled, want: "transport failure before a complete answer"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := mountedCLIOutcome(test.err, test.stderr); got != test.want {
+				t.Errorf("%v: got %q, want %q", test.err, got, test.want)
+			}
+		})
+	}
+	if got := mountedHTTPOutcome(http.StatusServiceUnavailable); got != "product refusal" {
+		t.Errorf("503: got %q, want product refusal", got)
+	}
+	if got := mountedHTTPOutcome(http.StatusOK); got != "unexpected product response" {
+		t.Errorf("200: got %q, want unexpected product response", got)
+	}
 }
 
 func TestReadinessBudgetChargesOnlyRunnableTime(t *testing.T) {
