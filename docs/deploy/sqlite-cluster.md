@@ -315,7 +315,8 @@ once in the dashboard works the same way, with a result for each name.
   after a sign-in, sign-out or settings change through the same follower, or
   once the held pull has waited 30 seconds. A document whose exchange the
   end of the 30 seconds interrupts reports `completion_unknown`, and every
-  later one `unavailable`.
+  later one `unavailable`, naming the original primary to send that unsent
+  document to.
   `TestRootMemberFollowerApplyCut` checks both cutoffs against the primary's
   stored objects: `created` documents are present, `unavailable` documents
   are absent, and no document is replayed, even when its receipt is lost.

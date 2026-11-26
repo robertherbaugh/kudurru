@@ -37,15 +37,7 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 			if err := json.Unmarshal(raw, &body); err != nil {
 				return nil, err
 			}
-			table := &cli.Table{Headers: []string{"NAME", "TYPE", "POLICY", "PHASE", "REASON", "DELETION REQUESTED", "UID", "REVISION"}}
-			for _, item := range body.Items {
-				requested := "-"
-				if item.Terminating && item.DeletionRequestedAt != nil {
-					requested = item.DeletionRequestedAt.UTC().Format(time.RFC3339)
-				}
-				table.Add(item.Name, item.Type, item.DeletionPolicy, item.Phase, item.Reason, requested, item.UID, item.Revision)
-			}
-			return table, nil
+			return integrationSummaryTable(body.Items), nil
 		})
 	}}
 	group.AddCommand(list)
@@ -140,6 +132,15 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if format := cli.Format(strings.ToLower(o.output)); command == "get" && (format == cli.FormatTable || format == cli.FormatWide) {
+				return o.render(cmd, raw, func(bool) (*cli.Table, error) {
+					var summary api.IntegrationSummary
+					if err := json.Unmarshal(raw, &summary); err != nil {
+						return nil, err
+					}
+					return integrationSummaryTable([]api.IntegrationSummary{summary}), nil
+				})
+			}
 			return o.render(cmd, raw, nil)
 		}}
 		if command != "get" {
@@ -156,6 +157,18 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 		group.AddCommand(cmd)
 	}
 	return group
+}
+
+func integrationSummaryTable(items []api.IntegrationSummary) *cli.Table {
+	table := &cli.Table{Headers: []string{"NAME", "TYPE", "POLICY", "PHASE", "REASON", "DELETION REQUESTED", "UID", "REVISION"}}
+	for _, item := range items {
+		requested := "-"
+		if item.Terminating && item.DeletionRequestedAt != nil {
+			requested = item.DeletionRequestedAt.UTC().Format(time.RFC3339)
+		}
+		table.Add(item.Name, item.Type, item.DeletionPolicy, item.Phase, item.Reason, requested, item.UID, item.Revision)
+	}
+	return table
 }
 
 func integrationCommandHelp(command string) string {

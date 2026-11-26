@@ -46,6 +46,7 @@ type RuntimeOwner struct {
 	keyringIdentity     string
 	tsig                *TSIGManagement
 	current             func() bool
+	transferCurrent     func() bool
 	dependenciesCurrent func() bool
 	dnsDependencies     func() bool
 	browser             func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
@@ -98,6 +99,17 @@ func (r *RuntimeOwner) DependenciesCurrent() bool {
 // DependenciesCurrent. It grants neither read nor write admission.
 func (r *RuntimeOwner) DNSDependenciesCurrent() bool {
 	return r != nil && r.dnsDependencies != nil && r.dnsDependencies()
+}
+
+// TransferCurrent is the currency of a zone transfer answer, or refusal,
+// from this owner's publication: every captured dependency is current and
+// the canonical image is the publication's own or moved past it through
+// transfer-neutral commits only (D419): a NOTIFY acknowledgment, a primary
+// zone's status projection and the receipt realignment after it. Any other
+// commit retires it, exactly as it retires full data currency. It grants
+// neither read nor write admission.
+func (r *RuntimeOwner) TransferCurrent() bool {
+	return r != nil && r.transferCurrent != nil && r.transferCurrent()
 }
 
 // Browser selects only this complete owner's provider capability and binds its
@@ -196,7 +208,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, dnsDependencies: owners.dnsDependenciesCurrent, browser: deps.Browser, cli: deps.CLI, edgeBlocks: edgeBlocks, clusterID: base.Term.ClusterID}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, transferCurrent: owners.transferCurrent, dependenciesCurrent: owners.dependenciesCurrent, dnsDependencies: owners.dnsDependenciesCurrent, browser: deps.Browser, cli: deps.CLI, edgeBlocks: edgeBlocks, clusterID: base.Term.ClusterID}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, owners.logging.Release),
 	}

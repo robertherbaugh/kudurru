@@ -624,6 +624,7 @@ func (s *Store) ApplyCluster(ctx context.Context, objects []store.Object, opts s
 	if len(rvs) > 0 {
 		s.head.Store(rvs[len(rvs)-1])
 	}
+	s.noteTransferLocked(a, false) // section rows are never transfer-neutral (D419)
 	s.publishAuthorityLocked(a)
 	s.publishGenerationLocked()
 	for n, m := range ms {

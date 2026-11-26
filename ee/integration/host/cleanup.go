@@ -334,7 +334,7 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		case out.again:
 			failures, fenced = 0, 0
 			delay = h.opts.PollInterval
-		case errors.Is(out.err, ErrFenced), errors.Is(out.err, ErrStalePreview), errors.Is(out.err, store.ErrConflict):
+		case cleanupFrameMoved(out.err):
 			// The frame or a ledger version moved under this run. The next
 			// run reads both again; back off so a lasting refusal stays cheap.
 			if fenced < 16 {
@@ -365,6 +365,13 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		case <-timer.C:
 		}
 	}
+}
+
+// cleanupFrameMoved is the terminating loop's first error class. Keep this
+// predicate explicit: a joined error can belong to another class as well, and
+// switch order decides which retry schedule it receives.
+func cleanupFrameMoved(err error) bool {
+	return errors.Is(err, ErrFenced) || errors.Is(err, ErrStalePreview) || errors.Is(err, store.ErrConflict)
 }
 
 // terminate is one bounded run. It returns the frame and guard it captured

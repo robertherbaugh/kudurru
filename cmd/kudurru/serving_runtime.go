@@ -268,7 +268,7 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if s.anchors.admission.current() {
 		anchorStore = o.Store
 	}
-	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, AnchorStore: anchorStore, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
+	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, TransferNeutral: o.Store.TransferNeutral, AnchorStore: anchorStore, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
 		if o.Logging == nil {
 			return &querylog.Captured{}, nil
 		}
