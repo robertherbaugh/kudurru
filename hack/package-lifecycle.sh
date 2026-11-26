@@ -5,7 +5,11 @@ readonly release_tag=v0.1.0
 readonly release_root="https://github.com/robertherbaugh/kudurru/releases/download/$release_tag"
 readonly release_manifest_sha=8383e8b1d0721e82eadff82123e1817a057621494ce5e5f9731d1e6d15b47d67
 readonly released_deb=kudurru_0.1.0_amd64.deb released_rpm=kudurru-0.1.0-1.x86_64.rpm
-readonly rocky_init_image=quay.io/rockylinux/rockylinux@sha256:f1879ea953baa37f34ede6862c41d471a1e891c77daa4ef5031b9aac37af5aa3
+# rockylinux/rockylinux:9-ubi-init, pinned from Docker Hub: Rocky rebuilds the
+# tag weekly and quay.io deletes the superseded manifest within hours, so a
+# quay.io digest stops resolving ("manifest unknown"). Bump it by hand
+# (Dependabot reads Dockerfiles, not this script).
+readonly rocky_init_image=docker.io/rockylinux/rockylinux@sha256:feb9a468e35facf41bf77d875cd75be2f8c91173899f47ef68c67b7d073662f1
 readonly conf=/etc/kudurru yaml=/etc/kudurru/kudurru.yaml env_file=/etc/kudurru/kudurru.env
 readonly api_cert=/var/lib/kudurru/keys/api.crt objects_probe="$conf/objects.d/package-lifecycle.yaml"
 readonly unit=kudurru.service unit_file=/usr/lib/systemd/system/kudurru.service
