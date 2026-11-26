@@ -606,7 +606,7 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	// margin above, so the window also ends two seconds before the
 	// committed observation's own expiry. The partition keeps the holder
 	// from retiring the head's chunks.
-	var source []byte
+	image := inbound.SourceImage{Head: &fresh}
 	for _, ref := range fresh.Spec.Chunks {
 		var sec corev1.Secret
 		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: kube.InternalSecretName(kinds.KindIntegrationSourceChunk, "", ref.Name)}, &sec); err != nil {
@@ -616,10 +616,10 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		if err := json.Unmarshal(sec.Data[kube.InternalObjectKey], &chunk); err != nil {
 			t.Fatal(err)
 		}
-		source = append(source, chunk.Spec.Data...)
+		image.Chunks = append(image.Chunks, &chunk)
 	}
-	var document inbound.Document
-	if err := json.Unmarshal(source, &document); err != nil || len(document.Snapshot.Clients) != 1 {
+	document, err := inbound.DecodeSource(image)
+	if err != nil || len(document.Snapshot.Clients) != 1 {
 		t.Fatal("the installed head's observation", err, len(document.Snapshot.Clients))
 	}
 	if end := document.Snapshot.Clients[0].ExpiresAt.Add(-2 * time.Second); end.Before(until) {
