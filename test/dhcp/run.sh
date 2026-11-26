@@ -44,7 +44,7 @@ output=/run/lab
 export KUDURRU_DHCP_PRIVATE_LAB=1
 export KUDURRU_DHCP_HOST_NETNS="$host_ns"
 pids=()
-capture_pids=()
+declare -A capture_pid=()
 cleanup() {
   trap - EXIT INT TERM
   for pid in "${pids[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
@@ -138,11 +138,35 @@ start_server() {
   for ((i=0;i<100;i++)); do [[ ! -f $output/server/ready ]] || return 0; kill -0 "$server_pid"; sleep .1; done
   echo 'Server readiness timed out' >&2; exit 1
 }
-for ns in srv relay; do
-  ip netns exec "$ns" tcpdump -U -i any -n -w "$output/$ns.pcap" 'arp or icmp or udp port 67 or udp port 68 or udp port 1067' >"$output/$ns-capture.log" 2>&1 &
-  pids+=("$!")
-  capture_pids+=("$!")
-done
+stop_server() {
+  local status=0
+  kill -TERM "$server_pid" || { echo "Server $server_pid had already exited before SIGTERM:" >&2; tail -n 20 "$output/server.log" >&2; exit 1; }
+  wait "$server_pid" || status=$?
+  ((status == 0)) || { echo "Server exited with status $status after SIGTERM:" >&2; tail -n 20 "$output/server.log" >&2; exit 1; }
+}
+# The wire evidence needs the very first exchange (the server's ARP probe of
+# 192.0.2.9), so nothing may transmit until both captures are live. tcpdump
+# prints "listening on" only after its socket is bound and filtered.
+# --immediate-mode hands each packet over at once; without it libpcap holds
+# packets in a ring block for up to a second, and SIGTERM discards that block.
+# Immediate mode uses one fixed-size ring frame per packet, sized by the
+# snaplen on "any": the 262144-byte default leaves about 7 frames, which a
+# bridged broadcast burst overflows. 2048 bytes holds a whole 1500-MTU frame.
+start_capture() {
+  local ns=$1 pid
+  ip netns exec "$ns" tcpdump --immediate-mode -U -s 2048 -i any -n -w "$output/$ns.pcap" 'arp or icmp or udp port 67 or udp port 68 or udp port 1067' >"$output/$ns-capture.log" 2>&1 &
+  pid=$!
+  pids+=("$pid")
+  capture_pid[$ns]=$pid
+  for ((i=0;i<100;i++)); do
+    grep -q '^tcpdump: listening on ' "$output/$ns-capture.log" && return 0
+    kill -0 "$pid" 2>/dev/null || { echo "Packet capture in $ns exited before listening:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+    sleep .1
+  done
+  echo "Packet capture in $ns was not listening after 10 s:" >&2; cat "$output/$ns-capture.log" >&2; exit 1
+}
+start_capture srv
+start_capture relay
 ip netns exec relay "$fixture" relay >"$output/relay.log" 2>&1 &
 pids+=("$!")
 start_server
@@ -237,8 +261,7 @@ wait_address a3 192.0.2.10
 printf 'PASS release and safe address reuse\n'
 # Capture expiration lower bound and ensure routed T1 renew persists after restart.
 before=$(jq -r '.remote[] | select(.Address=="203.0.113.10") | .ExpiresAt' "$output/server/leases.json")
-kill -TERM "$server_pid"
-wait "$server_pid"
+stop_server
 start_server file
 jq -e '.default[] | select(.Address=="192.0.2.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
 jq -e '.remote[] | select(.Address=="203.0.113.9" and .State=="declined")' "$output/server/leases.json" >/dev/null
@@ -264,14 +287,37 @@ wait_address a2 192.0.2.11
 printf 'PASS expiration and reacquisition\n'
 # Packet evidence proves ordinary T1 giaddr=0 traffic took the routed path and
 # that a trusted relay received responses at its giaddr server port.
-kill -TERM "$server_pid"
-wait "$server_pid"
-for pid in "${capture_pids[@]}"; do kill -TERM "$pid"; wait "$pid"; done
-for ns in srv relay; do tcpdump -nn -vv -r "$output/$ns.pcap" > "$output/$ns-packets.txt" 2>/dev/null; done
-grep -Eq '203\.0\.113\.10\.68 > 198\.51\.100\.[23]\.67' "$output/srv-packets.txt"
-grep -Eq '198\.51\.100\.2\.67 > 198\.51\.100\.1\.1067' "$output/srv-packets.txt"
-grep -Eq 'Server-ID.*198.51.100.3' "$output/relay-packets.txt"
-grep -Eq 'ARP, .*Request who-has 192.0.2.9' "$output/srv-packets.txt"
-grep -Eq '203.0.113.9 > 198.51.100.2: ICMP echo reply' "$output/srv-packets.txt"
+stop_server
+for ns in srv relay; do
+  pid=${capture_pid[$ns]} status=0
+  kill -TERM "$pid" || { echo "Packet capture in $ns had already exited before SIGTERM:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+  wait "$pid" || status=$?
+  ((status == 0)) || { echo "Packet capture in $ns exited with status $status after SIGTERM:" >&2; cat "$output/$ns-capture.log" >&2; exit 1; }
+  tcpdump -nn -vv -r "$output/$ns.pcap" > "$output/$ns-packets.txt" 2> "$output/$ns-read.log" ||
+    { echo "Could not decode $output/$ns.pcap:" >&2; cat "$output/$ns-read.log" >&2; exit 1; }
+done
+# Every check runs; each miss names its pattern and shows what was captured.
+missing=0
+expect_packet() {
+  local ns=$1 pattern=$2 what=$3 file=$output/$1-packets.txt
+  grep -Eq -- "$pattern" "$file" && return 0
+  missing=$((missing + 1))
+  {
+    printf 'Missing wire evidence: %s\n' "$what"
+    printf '  expected /%s/ in %s (%s packets decoded)\n' "$pattern" "$file" "$(awk '/^[0-9]/ {n++} END {print n + 0}' "$file")"
+    printf '  first packets:\n'
+    awk '/^[0-9]/ && n++ < 3 {print "    " substr($0, 1, 160)}' "$file"
+    printf '  last packets:\n'
+    awk '/^[0-9]/ {print "    " substr($0, 1, 160)}' "$file" | tail -n 5
+    printf '  capture log:\n'
+    awk '{print "    " $0}' "$output/$ns-capture.log"
+  } >&2
+}
+expect_packet srv '203\.0\.113\.10\.68 > 198\.51\.100\.[23]\.67' 'routed T1 renewal from 203.0.113.10 reached the server'
+expect_packet srv '198\.51\.100\.2\.67 > 198\.51\.100\.1\.1067' 'server replied to the trusted relay at its giaddr server port'
+expect_packet relay 'Server-ID.*198.51.100.3' 'relay received replies carrying server identifier 198.51.100.3'
+expect_packet srv 'ARP, .*Request who-has 192.0.2.9' 'server ARP-probed the occupied 192.0.2.9'
+expect_packet srv '203.0.113.9 > 198.51.100.2: ICMP echo reply' 'routed ICMP echo reply from the occupied 203.0.113.9'
+((missing == 0)) || { echo "$missing wire evidence check(s) failed" >&2; exit 1; }
 printf 'PASS wire routing evidence; all test resources remain inside the disconnected lab\n'
 printf 'PASS\n' > "$output/result"
