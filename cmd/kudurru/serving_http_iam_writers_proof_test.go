@@ -297,7 +297,12 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 	before := roleBindingImage(t, f.s.opts.Store)
 	w := f.call(t, "DELETE", "/iam/serviceaccounts/apps/full", roleBindingBody(t, objectReview(&sa)), f.token, nil, "")
 	expectServingHTTPStatus(t, w, http.StatusServiceUnavailable)
-	if !strings.Contains(w.Body.String(), `"key":"unavailable"`) {
+	// The capacity refusal (servingauth.ErrBounds) has no category of its own
+	// and answers the generic message. Requiring it rules out every
+	// categorized 503 with the same key, such as the dependency-cut refusal
+	// "current writable serving generation unavailable", which never reached
+	// the capacity check.
+	if !strings.Contains(w.Body.String(), `"key":"unavailable","message":"authentication operation unavailable"`) {
 		t.Fatalf("delete at capacity answered %s, want the capacity refusal", w.Body.String())
 	}
 	roleBindingUnchanged(t, f.s.opts.Store, before)
