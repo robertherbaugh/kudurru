@@ -198,7 +198,18 @@ func TestManagerRefreshRetryExpiryAndRecovery(t *testing.T) {
 	if st.Available || m.Snapshot().Lookup(zone.SecondaryIdentity(dz)).AvailableAt(clock.now()) {
 		t.Fatal("data served at absolute expiry")
 	}
+	// The retry scheduled for 3s after the failure is overdue now, so the
+	// poll ticker runs it at the expiry instant against the still-offline
+	// primary. Wait for that attempt instead of racing it: it must not renew
+	// expiry and must schedule the next retry from now. The clock stays put
+	// until the test moves it, so nothing else is due before that retry.
+	expired := awaitManager(t, m, dz, func(st Status) bool { return st.failures == 2 })
+	if expired.Available || !expired.ExpiresAt.Equal(renewed.ExpiresAt) || !expired.NextRefresh.Equal(clock.now().Add(3*time.Second)) ||
+		m.Snapshot().Lookup(zone.SecondaryIdentity(dz)).AvailableAt(clock.now()) {
+		t.Fatalf("failed retry at expiry renewed or served data: %+v", expired)
+	}
 	receiver.set(1, nil)
+	clock.advance(3 * time.Second)
 	m.Wake()
 	recovered := awaitManager(t, m, dz, func(st Status) bool { return st.Available && st.Serial == 1 && st.Error == "" })
 	if recovered.RecordCount != 4 || receiver.count() != 2 {

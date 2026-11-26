@@ -43,7 +43,7 @@ type requestItems struct {
 // waits, inside its lifetime, until the node has published everything
 // committed so far, and then commits nothing for rest, or until the callers
 // that waited have been served, so that other callers are served from that
-// publication (D420). It does so after work of its items, and
+// publication (D421). It does so after work of its items, and
 // at once when another caller's read waits for a publication
 // (Publisher.AwaitingHTTP) and the request has not yet spent longer in its
 // waits than in its own work, so that the read is served within its own

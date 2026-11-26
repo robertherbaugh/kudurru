@@ -36,7 +36,7 @@ func TestEntitlementWithdrawalRegainFloorsAndRejectsOldProof(t *testing.T) {
 		return capture.HostIdentity == "entitlement-withdrawn"
 	})
 	ctx, target := writer(t, f.store)
-	if err := f.coordinator.admit(ctx, target, nil); err != nil {
+	if _, err := f.coordinator.admit(ctx, target, nil); err != nil {
 		t.Fatal("explicit entitlement withdrawal failed", err)
 	}
 	for _, r := range f.registry(t).Authorities() {
@@ -87,7 +87,7 @@ func TestAuthorityAdmissionPinHostThroughFinalCommitAndDeadlineRollback(t *testi
 		return tx.RequireCommitCheck(func(context.Context) error { close(entered); <-release; return nil })
 	}
 	result := make(chan error, 1)
-	go func() { result <- f.coordinator.admit(ctx, target, cs) }()
+	go func() { _, err := f.coordinator.admit(ctx, target, cs); result <- err }()
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
@@ -123,7 +123,7 @@ func TestAuthorityAdmissionPinHostThroughFinalCommitAndDeadlineRollback(t *testi
 		f.clock.Store(deadline.UnixNano())
 		return nil
 	}
-	if err := f.coordinator.admit(ctx, target, cs); !errors.Is(err, ErrStale) {
+	if _, err := f.coordinator.admit(ctx, target, cs); !errors.Is(err, ErrStale) {
 		t.Fatal("expired authority admitted", err)
 	}
 	after, _ := f.store.ReadGeneration(t.Context())
