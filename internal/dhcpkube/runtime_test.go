@@ -295,7 +295,12 @@ func (h *harness) clock() time.Time {
 
 func (h *harness) replica(name string, ip string) *Runtime {
 	h.t.Helper()
-	r, err := New(Options{Store: h.st, Leases: h.leases, Pods: h.pods, Elector: &fakeElector{election: h.election, name: name},
+	return h.replicaWithLeases(name, ip, h.leases)
+}
+
+func (h *harness) replicaWithLeases(name string, ip string, leases LeaseAPI) *Runtime {
+	h.t.Helper()
+	r, err := New(Options{Store: h.st, Leases: leases, Pods: h.pods, Elector: &fakeElector{election: h.election, name: name},
 		PodName: name, ServerIdentifier: netip.MustParseAddr("198.51.100.67"), DataDir: h.t.TempDir(),
 		Now: h.clock, Interval: time.Hour,
 		LocalAddress: func(string) (netip.Addr, error) { return netip.MustParseAddr(ip), nil },
@@ -390,6 +395,157 @@ func TestReplicasShareLeasesAndFailOver(t *testing.T) {
 	if _, ok := h.leases.get(ObjectName("lan", lease.Address)); !ok {
 		t.Fatal("the failover lost a's lease object")
 	}
+}
+
+type heldLeaseList struct {
+	LeaseAPI
+	holdCall int64
+	calls    atomic.Int64
+	captured chan int
+	release  chan struct{}
+}
+
+func (l *heldLeaseList) List(ctx context.Context) ([]dhcpv1.DHCPLease, string, error) {
+	items, version, err := l.LeaseAPI.List(ctx)
+	if l.calls.Add(1) == l.holdCall && err == nil {
+		l.captured <- len(items)
+		select {
+		case <-l.release:
+		case <-ctx.Done():
+			return nil, "", ctx.Err()
+		}
+	}
+	return items, version, err
+}
+
+func TestAllocatorListDoesNotRestoreLeaseDeletedByWatch(t *testing.T) {
+	h := newHarness(t)
+	api := &heldLeaseList{LeaseAPI: h.leases, holdCall: 2, captured: make(chan int, 1), release: make(chan struct{})}
+	r := h.replicaWithLeases("kudurru-a", "10.0.0.1", api)
+	eventually(t, "empty scope working copy", func() bool { return len(r.Stores()) == 1 })
+	mac := "02:00:00:00:00:01"
+	address := netip.MustParseAddr("192.0.2.10")
+	obj := leaseObject("", "lan", dhcp.ExternalLease{
+		Record: dhcp.LeaseRecord{Address: address, MAC: mac, Hostname: "laptop", State: "bound",
+			Identity: dhcp.LeaseIdentity{Kind: "mac", Value: mac}, ExpiresAt: h.now.Add(time.Hour)},
+		Claim: dhcp.DNSClaim{Name: "laptop.leases.test.", Ticket: 1},
+	})
+	if err := api.Create(t.Context(), obj); err != nil {
+		t.Fatal(err)
+	}
+	bound := func() bool {
+		for _, leases := range r.Stores() {
+			if lease, ok := leases.DNS().Bound(address); ok && lease.MAC == mac {
+				return true
+			}
+		}
+		return false
+	}
+	eventually(t, "bound lease snapshot", bound)
+	h.election.grant("kudurru-a")
+	select {
+	case items := <-api.captured:
+		if items != 1 {
+			t.Fatalf("allocator captured %d leases, want one", items)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("allocator did not capture a lease list")
+	}
+	if err := api.Delete(t.Context(), obj.Name, obj.ResourceVersion); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "watch removed the lease MAC", func() bool { return !bound() })
+	close(api.release)
+	eventually(t, "allocator serving", r.Leader)
+	if bound() || len(listed(r, "lan")) != 0 {
+		t.Fatal("allocator's older list resurrected the deleted lease and its MAC")
+	}
+	if calls := api.calls.Load(); calls != 3 {
+		t.Fatalf("lease lists = %d, want initial, overtaken, and fresh lists", calls)
+	}
+}
+
+type expiredLeaseWatch struct {
+	*heldLeaseList
+	initial *watch.RaceFreeFakeWatcher
+	started bool
+	resumed chan string
+}
+
+func (l *expiredLeaseWatch) Watch(ctx context.Context, rv string) (watch.Interface, error) {
+	if !l.started {
+		l.started = true
+		return l.initial, nil
+	}
+	w, err := l.LeaseAPI.Watch(ctx, rv)
+	if err == nil {
+		select {
+		case l.resumed <- rv:
+		case <-ctx.Done():
+		}
+	}
+	return w, err
+}
+
+func TestExpiredWatchRelistsAcrossOwnLeaseWrite(t *testing.T) {
+	t.Run("pending", func(t *testing.T) { testExpiredWatchRelist(t, false) })
+	t.Run("expired", func(t *testing.T) { testExpiredWatchRelist(t, true) })
+}
+
+func testExpiredWatchRelist(t *testing.T, expirePending bool) {
+	t.Helper()
+	h := newHarness(t)
+	api := &expiredLeaseWatch{
+		heldLeaseList: &heldLeaseList{LeaseAPI: h.leases, holdCall: 3, captured: make(chan int, 1), release: make(chan struct{})},
+		initial:       watch.NewRaceFreeFake(),
+		resumed:       make(chan string, 1),
+	}
+	r := h.replicaWithLeases("kudurru-a", "10.0.0.1", api)
+	h.election.grant("kudurru-a")
+	eventually(t, "allocator serving", r.Leader)
+	api.initial.Error(&metav1.Status{Code: 410, Reason: metav1.StatusReasonExpired})
+	select {
+	case items := <-api.captured:
+		if items != 0 {
+			t.Fatalf("relist captured %d leases, want zero", items)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("expired watch did not relist")
+	}
+	const mac = "02:00:00:00:00:01"
+	lease, err := bind(t, r, mac, "laptop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expirePending {
+		h.nowMu.Lock()
+		h.now = h.now.Add(pendingWindow + time.Second)
+		h.nowMu.Unlock()
+	}
+	close(api.release)
+	select {
+	case rv := <-api.resumed:
+		if expirePending && rv == "0" {
+			t.Fatal("watch resumed a list that predated an expired pending write")
+		}
+		if !expirePending && rv != "0" {
+			t.Fatalf("watch resumed from %q, want the overtaken relist's version 0", rv)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch did not resume")
+	}
+	name := ObjectName("lan", lease.Address)
+	obj, ok := h.leases.get(name)
+	if !ok || !r.cached(name, obj.ResourceVersion, false) {
+		t.Fatal("relist discarded the allocator's committed lease")
+	}
+	if got := listed(r, "lan"); len(got) != 1 || got[0].Address != lease.Address {
+		t.Fatalf("working copy after relist = %+v, want %v", got, lease.Address)
+	}
+	if err := api.Delete(t.Context(), name, obj.ResourceVersion); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "resumed watch removing the external delete", func() bool { return len(listed(r, "lan")) == 0 })
 }
 
 func TestAddressOwnershipSurvivesAStaleView(t *testing.T) {

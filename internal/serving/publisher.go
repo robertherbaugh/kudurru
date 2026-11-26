@@ -223,6 +223,8 @@ func (p *Publisher) prepare(ctx context.Context) attemptResult {
 	bundle, err := newBundle(token, prepared, p.opts.Required)
 	if err != nil {
 		releasePrepared(prepared)
+	} else {
+		bundle.wakes = wakes
 	}
 	return attemptResult{token: token, bundle: bundle, err: err, wakes: wakes}
 }

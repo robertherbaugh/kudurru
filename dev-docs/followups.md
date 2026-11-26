@@ -67,6 +67,7 @@ This does not change the SQLite takeover behavior, which is now documented in
 |---|---|---|
 | Stored TSIG keys: SQLite and Kubernetes management with hot reload (D292, D314, D365) and the `kudurru tsigkeys` CLI (D394) are integrated, and TSIG on DoH/DoQ/DoH3 is integrated (F07b, `a6bf8e1`). Open: `kudurru tsigkeys` has not run against a Kubernetes node, and F07a's final gates (G21–G24) | dev-docs/milestones/m2/xfr.md; F07a | v0.2 |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
+| Zone transfers across other commits: D419 keeps transfer answers current only across the NOTIFY acknowledgment, a primary zone's status projection and its receipt realignment. Any other commit (an unrelated object write such as a token or sign-in, the controller's or the list fetcher's status of other kinds) still withholds every transfer answer, refusals included, until the node publishes again (D395). Extending the transfer-neutral set needs a proof per shape that no transfer is computed from it | #236 (D419) | v0.3 |
 
 ## Active Directory DNS replacement (D222)
 
@@ -344,6 +345,41 @@ deadline, and pre-deduplication counts are unchanged. Local checks:
 |---|---|---|
 | `CGO_ENABLED=1 go test -p 4 ./cmd/kudurru -run 'TestRootMember.*Apply\|TestMemberItemRefusal' -race -count=3` | Pass, 112.574 s | `.context/gh159-primary-race.log` |
 | `CGO_ENABLED=1 go test -p 3 ./internal/cluster/replica -run Hold -race -count=1` | Pass, 3.049 s | `.context/gh159-primary-checks.log` |
+
+### Tracing/cache failure attribution (#165)
+
+The [hosted failure](https://github.com/robertherbaugh/kudurru/actions/runs/43514296652/job/132192391544)
+on November 13, 2026, tested `531bffd0`. The `go test 1/2` log reported:
+
+```text
+--- FAIL: TestRunServeTracingThroughCacheAndRace (4.52s)
+    serve_tracing_cache_test.go:218: trace 7479c20d94664b9ce2cff08616a423c2: span kudurru.dnssec ends before it starts
+```
+
+The log has no raw OTLP timestamps to attribute that individual failure to
+a particular interleaving or clock change. A second failure mentioned in
+the audit has no attributable run or assertion in the retained evidence.
+
+On November 20, 2026, the unmodified race-enabled test passed 30/30 on
+`ce3ab6e2` with five available CPUs and 30/30 on CPU 0 with `GOMAXPROCS=1`.
+A temporary `go test -overlay` on the same source forced the detached
+prefetch to start its `kudurru.dnssec` span after the answer cutoff was
+captured but before `Trace.Finish`. The still-open span got an end before
+its start: wall delta −90,058 ns, monotonic delta −90.056 µs. The unchanged
+mounted test failed at the same assertion. The same forced ordering
+passed after clipping detached span timestamps to the answer. This is
+local, controlled reproduction of a mechanism, not a reconstruction of
+the original hosted timestamps. No deadline or observation was relaxed.
+
+The deterministic unit regression and the tracing and pipeline suites
+passed under race with the fix. The local `BenchmarkTracedChain` allocation
+remeasurement on `ce3ab6e2` and the fix is in the
+[tracing guide](../docs/deploy/tracing.md#what-tracing-costs-a-query).
+The four existing slow-exporter regressions also passed locally under race:
+`TestSlowExporterNeverBlocksFinish`,
+`TestSinkFanoutBlockedSinkNeverStallsPrimaryOrTail`,
+`TestHTTPSinkStalledDestinationLosesOnlyItsOwnQueries`, and
+`TestRunServeQuerylogSinksStalledFailingAndReload`.
 
 ### November 20 managed-anchor term-rejoin regressions (#170)
 
