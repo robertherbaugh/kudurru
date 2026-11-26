@@ -33,9 +33,9 @@ import (
 // The newest revision is remembered per owner across pulls and restarts
 // (edgeBlockOwner), so a backend serving an older revision than one already
 // applied cannot bring back a revoked block or wipe a new one, also when the
-// newer backend misses pulls. Only a lower revision that every pull reporting
-// the owner has shown for BlockRestoreHold is taken as a deliberate step back
-// (a restored backup or a promoted follower that lagged).
+// newer backend misses pulls. Only consecutive pulls reporting lower revisions
+// for BlockRestoreHold count as a deliberate step back (a restored backup or
+// a promoted follower that lagged).
 
 // EdgeBlockLister reads one backend's edge blocks
 // (internalapi.Client.EdgeBlocks).
@@ -45,12 +45,12 @@ type EdgeBlockLister interface {
 
 const (
 	edgeBlocksFile        = "edge-blocks.json"
-	edgeBlocksFileVersion = 2
+	edgeBlocksFileVersion = 3
 	// The file is local and written by the supervisor; this only bounds a
 	// corrupted one before decoding.
 	maxEdgeBlocksFileBytes = 8 << 20
-	// Owners no longer reported by any backend are remembered (for their
-	// revision floor) up to this many, oldest dropped first.
+	// Keep at most this many absent owners, preferring active blocks and then
+	// newer floors.
 	maxEdgeBlockOwners = 8
 	// An owner's memory is useless once every block a lower revision can
 	// carry has expired: those blocks were created before the remembered
@@ -63,6 +63,7 @@ const (
 	// statement well under maxConsoleCommand.
 	edgeBlocksPerStatement = 64
 	edgeBlockApplyTick     = 250 * time.Millisecond
+	edgeBlockPullTimeout   = 3 * time.Second
 )
 
 type edgeBlocksDocument struct {
@@ -76,10 +77,13 @@ type edgeBlocksDocument struct {
 // when Revision was first applied; LowerSince is when pulls began to report
 // only a lower revision (zero while none does).
 type edgeBlockOwner struct {
-	Revision   uint64                  `json:"revision,string"`
-	AcceptedAt time.Time               `json:"acceptedAt"`
-	LowerSince time.Time               `json:"lowerSince,omitzero"`
-	Blocks     []internalapi.EdgeBlock `json:"blocks"`
+	Revision      uint64                  `json:"revision,string"`
+	AcceptedAt    time.Time               `json:"acceptedAt"`
+	LowerSince    time.Time               `json:"lowerSince,omitzero"`
+	LastLowerAt   time.Time               `json:"lastLowerAt,omitzero"`
+	MissingSince  time.Time               `json:"missingSince,omitzero"`
+	LastMissingAt time.Time               `json:"lastMissingAt,omitzero"`
+	Blocks        []internalapi.EdgeBlock `json:"blocks"`
 }
 
 // edgeBlockState is owned by mu.
@@ -127,12 +131,10 @@ func combineEdgeBlocks(lists []internalapi.EdgeBlockList, now time.Time) []inter
 
 // mergeEdgeBlocks folds one pull into the remembered owners and returns the
 // new memory and the desired set. A list below the remembered revision of
-// its owner is ignored and the remembered blocks stay in force, unless every
-// pull that reported the owner has carried only lower revisions for hold:
-// then the newest lower list is accepted as a restore. Only owners reported
-// in this pull contribute blocks (an owner no backend reports any more is
-// gone), but their floors are remembered until edgeBlockOwnerMemory.
-func mergeEdgeBlocks(owners map[string]edgeBlockOwner, lists []internalapi.EdgeBlockList, hold time.Duration, now time.Time) (map[string]edgeBlockOwner, []internalapi.EdgeBlock) {
+// its owner is ignored until consecutive pulls show only lower revisions for
+// hold. Successful pulls that omit an owner retain its unexpired blocks until
+// consecutive omissions span hold, then remember only its floor.
+func mergeEdgeBlocks(owners map[string]edgeBlockOwner, lists []internalapi.EdgeBlockList, hold, maxGap time.Duration, now time.Time) (map[string]edgeBlockOwner, []internalapi.EdgeBlock) {
 	newest := map[string]internalapi.EdgeBlockList{}
 	for _, l := range lists {
 		if cur, ok := newest[l.Owner]; !ok || l.Revision > cur.Revision {
@@ -141,44 +143,89 @@ func mergeEdgeBlocks(owners map[string]edgeBlockOwner, lists []internalapi.EdgeB
 	}
 	next := make(map[string]edgeBlockOwner, len(owners)+len(newest))
 	for name, o := range owners {
-		if _, reported := newest[name]; !reported {
-			if now.Sub(o.AcceptedAt) > edgeBlockOwnerMemory {
+		o.Blocks = activeEdgeBlocks(o.Blocks, now)
+		if _, reported := newest[name]; reported {
+			o.MissingSince, o.LastMissingAt = time.Time{}, time.Time{}
+		} else {
+			o.LowerSince, o.LastLowerAt = time.Time{}, time.Time{}
+			if len(o.Blocks) > 0 {
+				o.MissingSince = edgeBlockStreakStart(o.MissingSince, o.LastMissingAt, now, maxGap)
+				o.LastMissingAt = now
+				if now.Sub(o.MissingSince) >= hold {
+					o.Blocks = nil
+				}
+			}
+			if len(o.Blocks) == 0 {
+				o.MissingSince, o.LastMissingAt = time.Time{}, time.Time{}
+			}
+			if len(o.Blocks) == 0 && now.Sub(o.AcceptedAt) > edgeBlockOwnerMemory {
 				continue
 			}
-			o.LowerSince = time.Time{} // agreement on a lower revision must be unbroken
 		}
-		o.Blocks = activeEdgeBlocks(o.Blocks, now)
 		next[name] = o
 	}
-	effective := make([]internalapi.EdgeBlockList, 0, len(newest))
 	for name, l := range newest {
 		o, known := next[name]
 		switch {
 		case !known || l.Revision > o.Revision:
 			o = edgeBlockOwner{Revision: l.Revision, AcceptedAt: now, Blocks: activeEdgeBlocks(l.Blocks, now)}
 		case l.Revision == o.Revision:
-			o.LowerSince, o.Blocks = time.Time{}, activeEdgeBlocks(l.Blocks, now)
-		case o.LowerSince.IsZero():
-			o.LowerSince = now
-		case now.Sub(o.LowerSince) >= hold:
-			o = edgeBlockOwner{Revision: l.Revision, AcceptedAt: now, Blocks: activeEdgeBlocks(l.Blocks, now)}
+			o.LowerSince, o.LastLowerAt, o.Blocks = time.Time{}, time.Time{}, activeEdgeBlocks(l.Blocks, now)
+		default:
+			o.LowerSince = edgeBlockStreakStart(o.LowerSince, o.LastLowerAt, now, maxGap)
+			o.LastLowerAt = now
+			if now.Sub(o.LowerSince) >= hold {
+				o = edgeBlockOwner{Revision: l.Revision, AcceptedAt: now, Blocks: activeEdgeBlocks(l.Blocks, now)}
+			}
 		}
 		next[name] = o
-		effective = append(effective, internalapi.EdgeBlockList{Owner: name, Revision: o.Revision, Blocks: o.Blocks})
 	}
-	if extra := len(next) - max(maxEdgeBlockOwners, len(newest)); extra > 0 {
+	if extra := len(next) - len(newest) - maxEdgeBlockOwners; extra > 0 {
 		var absent []string
 		for name := range next {
 			if _, reported := newest[name]; !reported {
 				absent = append(absent, name)
 			}
 		}
-		slices.SortFunc(absent, func(a, b string) int { return next[a].AcceptedAt.Compare(next[b].AcceptedAt) })
-		for _, name := range absent[:min(extra, len(absent))] {
+		slices.SortFunc(absent, func(a, b string) int {
+			left, right := next[a], next[b]
+			if len(left.Blocks) == 0 && len(right.Blocks) > 0 {
+				return -1
+			}
+			if len(right.Blocks) == 0 && len(left.Blocks) > 0 {
+				return 1
+			}
+			if order := left.AcceptedAt.Compare(right.AcceptedAt); order != 0 {
+				return order
+			}
+			return strings.Compare(a, b)
+		})
+		for _, name := range absent[:extra] {
 			delete(next, name)
 		}
 	}
+	effective := make([]internalapi.EdgeBlockList, 0, len(next))
+	for name, o := range next {
+		effective = append(effective, internalapi.EdgeBlockList{Owner: name, Revision: o.Revision, Blocks: o.Blocks})
+	}
 	return next, combineEdgeBlocks(effective, now)
+}
+
+func edgeBlockStreakStart(since, last, now time.Time, maxGap time.Duration) time.Time {
+	if since.IsZero() || last.Before(since) || now.Before(last) || now.Sub(last) > maxGap {
+		return now
+	}
+	return since
+}
+
+func interruptEdgeBlockStreaks(owners map[string]edgeBlockOwner) map[string]edgeBlockOwner {
+	next := maps.Clone(owners)
+	for name, o := range next {
+		o.LowerSince, o.LastLowerAt = time.Time{}, time.Time{}
+		o.MissingSince, o.LastMissingAt = time.Time{}, time.Time{}
+		next[name] = o
+	}
+	return next
 }
 
 func activeEdgeBlocks(in []internalapi.EdgeBlock, now time.Time) []internalapi.EdgeBlock {
@@ -199,7 +246,7 @@ func (s *Supervisor) loadEdgeBlocks(now time.Time) ([]internalapi.EdgeBlock, map
 		return nil, nil
 	}
 	var doc edgeBlocksDocument
-	valid := len(data) <= maxEdgeBlocksFileBytes && json.Unmarshal(data, &doc) == nil && doc.Version == edgeBlocksFileVersion &&
+	valid := len(data) <= maxEdgeBlocksFileBytes && json.Unmarshal(data, &doc) == nil && (doc.Version == 2 || doc.Version == edgeBlocksFileVersion) &&
 		(internalapi.EdgeBlockList{Owner: "persisted", Blocks: doc.Blocks}).Validate() == nil && len(doc.Owners) <= maxEdgeBlockOwners+maxResolverSources
 	for name, o := range doc.Owners {
 		valid = valid && (internalapi.EdgeBlockList{Owner: name, Revision: o.Revision, Blocks: o.Blocks}).Validate() == nil
@@ -207,6 +254,9 @@ func (s *Supervisor) loadEdgeBlocks(now time.Time) ([]internalapi.EdgeBlock, map
 	if !valid {
 		s.log.Warn("ignoring malformed persisted edge blocks", "file", s.edgeBlocksPath())
 		return nil, nil
+	}
+	if doc.Version == 2 {
+		doc.Owners = interruptEdgeBlockStreaks(doc.Owners)
 	}
 	return activeEdgeBlocks(doc.Blocks, now), doc.Owners
 }
@@ -225,7 +275,7 @@ func (s *Supervisor) pullEdgeBlocks(ctx context.Context, eps []cluster.Endpoint)
 	if len(eps) > maxResolverSources {
 		return nil, false
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, edgeBlockPullTimeout)
 	defer cancel()
 	var mu sync.Mutex
 	var lists []internalapi.EdgeBlockList
@@ -333,7 +383,7 @@ func planEdgeBlocks(desired []internalapi.EdgeBlock, installed map[string]time.T
 // resent (clear first) on the next tick; the child is not retired, because
 // a failed abuse block must not take the edge out of service.
 func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
-	now := time.Now()
+	now := s.cfg.blockNow()
 	s.mu.Lock()
 	child := s.child
 	st := &s.blocks
@@ -392,9 +442,13 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 }
 
 // sameEdgeBlockOwners reports whether two owner memories persist the same.
+// The last observations are checkpointed on each pull during a streak so
+// a short restart can distinguish a current streak from a stale one.
 func sameEdgeBlockOwners(a, b map[string]edgeBlockOwner) bool {
 	return maps.EqualFunc(a, b, func(x, y edgeBlockOwner) bool {
-		return x.Revision == y.Revision && x.AcceptedAt.Equal(y.AcceptedAt) && x.LowerSince.Equal(y.LowerSince) && slices.Equal(x.Blocks, y.Blocks)
+		return x.Revision == y.Revision && x.AcceptedAt.Equal(y.AcceptedAt) &&
+			x.LowerSince.Equal(y.LowerSince) && x.LastLowerAt.Equal(y.LastLowerAt) &&
+			x.MissingSince.Equal(y.MissingSince) && x.LastMissingAt.Equal(y.LastMissingAt) && slices.Equal(x.Blocks, y.Blocks)
 	})
 }
 
@@ -408,48 +462,67 @@ func edgeBlockSet(blocks []internalapi.EdgeBlock) map[string]time.Time {
 
 // runEdgeBlocks pulls every BlockPoll and applies every tick until ctx ends.
 func (s *Supervisor) runEdgeBlocks(ctx context.Context) {
-	pull := time.NewTimer(0)
-	defer pull.Stop()
+	ticks := s.cfg.blockPollTicks
+	var pull *time.Timer
+	if ticks == nil {
+		pull = time.NewTimer(0)
+		defer pull.Stop()
+		ticks = pull.C
+	}
 	apply := time.NewTicker(edgeBlockApplyTick)
 	defer apply.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-pull.C:
-			now := time.Now()
-			s.mu.Lock()
-			eps := slices.Clone(s.endpoints)
-			s.mu.Unlock()
-			if lists, ok := s.pullEdgeBlocks(ctx, eps); ok {
-				s.mu.Lock()
-				owners, blocks := mergeEdgeBlocks(s.blocks.owners, lists, s.cfg.BlockRestoreHold, now)
-				st := &s.blocks
-				if !slices.Equal(blocks, activeEdgeBlocks(st.desired, now)) || !sameEdgeBlockOwners(owners, st.owners) {
-					st.persistDirty = true
-				}
-				st.desired, st.owners, st.source, st.pulled = blocks, owners, "backends", now
-				dirty := st.persistDirty
-				s.mu.Unlock()
-				// A failed save is retried on every pull until it succeeds,
-				// so a revoke is not undone by a restart from a stale file.
-				if dirty {
-					err := s.saveEdgeBlocks(blocks, owners, now)
-					s.mu.Lock()
-					if err == nil && sameEdgeBlockOwners(owners, s.blocks.owners) && slices.Equal(blocks, s.blocks.desired) {
-						s.blocks.persistDirty = false
-					}
-					s.mu.Unlock()
-					if err != nil {
-						s.log.Warn("cannot persist edge blocks; retrying on the next pull", "err", err)
-					}
-				}
+		case <-ticks:
+			s.syncEdgeBlocks(ctx)
+			if pull != nil {
+				pull.Reset(s.cfg.BlockPoll)
 			}
-			pull.Reset(s.cfg.BlockPoll)
 		case <-apply.C:
 		}
 		s.applyEdgeBlocks(ctx)
 	}
+}
+
+func (s *Supervisor) syncEdgeBlocks(ctx context.Context) {
+	s.mu.Lock()
+	eps := slices.Clone(s.endpoints)
+	s.mu.Unlock()
+	lists, ok := s.pullEdgeBlocks(ctx, eps)
+	if ctx.Err() != nil {
+		return
+	}
+	now := s.cfg.blockNow().UTC()
+	s.mu.Lock()
+	st := &s.blocks
+	active := activeEdgeBlocks(st.desired, now)
+	var owners map[string]edgeBlockOwner
+	blocks := active
+	if ok {
+		maxGap := max(3*s.cfg.BlockPoll, 2*s.cfg.BlockPoll+edgeBlockPullTimeout)
+		owners, blocks = mergeEdgeBlocks(st.owners, lists, s.cfg.BlockRestoreHold, maxGap, now)
+		st.source, st.pulled = "backends", now
+	} else {
+		owners = interruptEdgeBlockStreaks(st.owners)
+	}
+	if !slices.Equal(blocks, active) || !sameEdgeBlockOwners(owners, st.owners) {
+		st.persistDirty = true
+	}
+	st.desired, st.owners = blocks, owners
+	dirty := st.persistDirty
+	s.mu.Unlock()
+	if !dirty {
+		return
+	}
+	if err := s.saveEdgeBlocks(blocks, owners, now); err != nil {
+		s.log.Warn("cannot persist edge blocks; retrying on the next pull", "err", err)
+		return
+	}
+	s.mu.Lock()
+	st.persistDirty = false
+	s.mu.Unlock()
 }
 
 // edgeBlockStatus is the /status projection: counts only, no prefixes.
