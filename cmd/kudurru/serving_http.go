@@ -17,6 +17,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 )
 
+const servingHTTPCaptureWait = 2 * time.Second
+
 type servingHTTPOptions struct {
 	Runtime     *servingRuntime
 	Cookie      session.CookieConfig
@@ -56,7 +58,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	if o.CrossOrigin == nil {
 		o.CrossOrigin = new(http.CrossOriginProtection)
 	}
-	a, err := servinghttp.New(servinghttp.Options{Publisher: o.Runtime.publisher, Cookie: o.Cookie, CrossOriginProtection: o.CrossOrigin, MaxDuration: o.MaxDuration, CaptureWait: 2 * time.Second, Now: o.Runtime.opts.Now})
+	a, err := servinghttp.New(servinghttp.Options{Publisher: o.Runtime.publisher, Cookie: o.Cookie, CrossOriginProtection: o.CrossOrigin, MaxDuration: o.MaxDuration, CaptureWait: servingHTTPCaptureWait, Now: o.Runtime.opts.Now})
 	if err != nil {
 		return nil, err
 	}

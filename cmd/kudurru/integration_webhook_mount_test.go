@@ -178,7 +178,7 @@ func webhookMountFixture(t *testing.T, p *webhookMountPeer, viewer bool) *integr
 		return true
 	})
 	var err error
-	f.adapter, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now})
+	f.adapter, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, CaptureWait: servingHTTPCaptureWait, Now: f.s.opts.Now})
 	if err != nil {
 		t.Fatal(err)
 	}

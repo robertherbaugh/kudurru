@@ -200,6 +200,12 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+Current K3/K7 follow-through: [mounted Kubernetes evidence for #156](milestones/v0.2/followup-audit.md#k3k7-mounted-evidence-156)
+supersedes the historical test gaps below for election, shared budgets,
+holder recovery, partition and re-acquisition, cleanup fencing, rotation,
+license expiry and UID replacement. This is local envtest evidence only;
+it does not change deployment support or claim live qualification.
+
 | Item | Source | Target |
 |---|---|---|
 | Define what `kudurru integrations list/get -o name` should print. The current list prints a table and get prints YAML; #154 preserves both formats. | PR #192 review | Integration CLI follow-up |
@@ -338,6 +344,41 @@ deadline, and pre-deduplication counts are unchanged. Local checks:
 |---|---|---|
 | `CGO_ENABLED=1 go test -p 4 ./cmd/kudurru -run 'TestRootMember.*Apply\|TestMemberItemRefusal' -race -count=3` | Pass, 112.574 s | `.context/gh159-primary-race.log` |
 | `CGO_ENABLED=1 go test -p 3 ./internal/cluster/replica -run Hold -race -count=1` | Pass, 3.049 s | `.context/gh159-primary-checks.log` |
+
+### Tracing/cache failure attribution (#165)
+
+The [hosted failure](https://github.com/robertherbaugh/kudurru/actions/runs/43514296652/job/132192391544)
+on November 13, 2026, tested `531bffd0`. The `go test 1/2` log reported:
+
+```text
+--- FAIL: TestRunServeTracingThroughCacheAndRace (4.52s)
+    serve_tracing_cache_test.go:218: trace 7479c20d94664b9ce2cff08616a423c2: span kudurru.dnssec ends before it starts
+```
+
+The log has no raw OTLP timestamps to attribute that individual failure to
+a particular interleaving or clock change. A second failure mentioned in
+the audit has no attributable run or assertion in the retained evidence.
+
+On November 20, 2026, the unmodified race-enabled test passed 30/30 on
+`ce3ab6e2` with five available CPUs and 30/30 on CPU 0 with `GOMAXPROCS=1`.
+A temporary `go test -overlay` on the same source forced the detached
+prefetch to start its `kudurru.dnssec` span after the answer cutoff was
+captured but before `Trace.Finish`. The still-open span got an end before
+its start: wall delta −90,058 ns, monotonic delta −90.056 µs. The unchanged
+mounted test failed at the same assertion. The same forced ordering
+passed after clipping detached span timestamps to the answer. This is
+local, controlled reproduction of a mechanism, not a reconstruction of
+the original hosted timestamps. No deadline or observation was relaxed.
+
+The deterministic unit regression and the tracing and pipeline suites
+passed under race with the fix. The local `BenchmarkTracedChain` allocation
+remeasurement on `ce3ab6e2` and the fix is in the
+[tracing guide](../docs/deploy/tracing.md#what-tracing-costs-a-query).
+The four existing slow-exporter regressions also passed locally under race:
+`TestSlowExporterNeverBlocksFinish`,
+`TestSinkFanoutBlockedSinkNeverStallsPrimaryOrTail`,
+`TestHTTPSinkStalledDestinationLosesOnlyItsOwnQueries`, and
+`TestRunServeQuerylogSinksStalledFailingAndReload`.
 
 ### November 20 managed-anchor term-rejoin regressions (#170)
 
