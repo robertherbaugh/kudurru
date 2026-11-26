@@ -209,7 +209,9 @@ func (c *Coordinator) RunWriter(ctx context.Context, target serving.TermActivati
 		}
 		// Subscribe BEFORE admission and retain these subscriptions through
 		// the next wait, as acquisition does (D343): a change while admission
-		// runs wakes the next wait instead of disappearing.
+		// runs wakes the next wait instead of disappearing. An admission that
+		// commits closes these itself, so it is followed by one more admission
+		// (normally a no-op) after RetryInterval: one per change, by design.
 		changes = c.Changes()
 		generation = c.opts.Store.GenerationChanges()
 		authority = c.opts.Store.AuthorityChanges()

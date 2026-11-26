@@ -139,25 +139,43 @@ func TestRunWriterAdmitsAgainOnHostAndRetainedChanges(t *testing.T) {
 }
 
 // The original host deadline still bounds a successful admission: the writer
-// admits again when it passes, with no notification.
+// admits again when it passes, with no notification, and not before.
 func TestRunWriterRetainsHostDeadline(t *testing.T) {
 	f := newFixture(t)
-	deadline := time.Now().Add(2 * time.Second)
 	var calls atomic.Int64
+	var deadline atomic.Pointer[time.Time]
+	deadline.Store(&time.Time{})
 	writerRunner(t, f, func(ctx context.Context, r *providerregistry.Registry) (HostCapture, error) {
 		calls.Add(1)
 		h, err := f.host.capture(ctx, r)
-		h.ValidUntil = deadline
+		h.ValidUntil = *deadline.Load()
 		return h, err
 	}, 10*time.Millisecond, time.Now)
 	awaitAdmission(t, &calls, 0, "initial admission missing")
+	quietAdmissions(t, &calls)
+
+	// Only the admission the host notification starts captures the deadline,
+	// so the quiet interval above cannot have used it up.
+	until := time.Now().Add(time.Second)
+	deadline.Store(&until)
 	before := calls.Load()
+	f.host.install(f.host.state.Load())
+	awaitAdmission(t, &calls, before, "host notification did not admit again")
+	captured := calls.Load()
 	select {
-	case <-time.After(time.Until(deadline) + 200*time.Millisecond):
+	case <-time.After(time.Until(until) - 100*time.Millisecond):
 	case <-t.Context().Done():
 		t.Fatal(t.Context().Err())
 	}
-	if calls.Load() <= before {
+	if calls.Load() != captured {
+		t.Fatal("the writer admitted again before the host deadline")
+	}
+	select {
+	case <-time.After(time.Until(until) + 200*time.Millisecond):
+	case <-t.Context().Done():
+		t.Fatal(t.Context().Err())
+	}
+	if calls.Load() <= captured {
 		t.Fatal("host deadline was not retained")
 	}
 }
