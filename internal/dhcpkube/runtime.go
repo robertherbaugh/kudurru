@@ -44,6 +44,8 @@ const (
 	importTimeout = 5 * time.Minute
 )
 
+var errLeaseListOvertaken = errors.New("DHCPLease list overtaken by a lease update")
+
 // Options configures a Runtime.
 type Options struct {
 	// Store holds the DHCPScope objects; their status is written here.
@@ -94,6 +96,7 @@ type pendingWrite struct {
 	rv      string
 	deleted bool
 	at      time.Time
+	epoch   uint64
 }
 
 // generation is one dhcp.Service and its stores. A changed scope set or
@@ -125,9 +128,11 @@ type Runtime struct {
 	listenErr string
 	serverIP  netip.Addr
 
-	leaseMu sync.Mutex // the lease cache, pending and in-flight writes
-	cache   map[string]leaseEntry
-	pending map[string]pendingWrite
+	leaseMu         sync.Mutex // the lease cache, pending and in-flight writes
+	leaseEpoch      uint64
+	leaseWriteEpoch uint64
+	cache           map[string]leaseEntry
+	pending         map[string]pendingWrite
 	// inflight marks objects this replica is writing or rereading; watch
 	// events for them wait until the cache and pending entry are recorded.
 	inflight map[string]chan struct{}
@@ -625,9 +630,7 @@ func (r *Runtime) watchLeases(ctx context.Context) {
 	for ctx.Err() == nil {
 		var err error
 		if rv == "" {
-			var items []dhcpv1.DHCPLease
-			if items, rv, err = r.opts.Leases.List(ctx); err == nil {
-				r.replaceLeases(ctx, items)
+			if rv, err = r.refreshLeases(ctx); err == nil {
 				r.leasesOnce.Do(func() { close(r.leasesReady) })
 			}
 		}
@@ -644,7 +647,11 @@ func (r *Runtime) watchLeases(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		r.log.Warn("DHCPLease watch failed; retrying", "error", err, "after", backoff)
+		if errors.Is(err, errLeaseListOvertaken) {
+			r.log.Debug("DHCPLease watch list overtaken; retrying", "after", backoff)
+		} else {
+			r.log.Warn("DHCPLease watch failed; retrying", "error", err, "after", backoff)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -682,9 +689,25 @@ func (r *Runtime) leaseSession(ctx context.Context, w watch.Interface, rv string
 	}
 }
 
+// refreshLeases reads without blocking the watch. If the cache advanced
+// during the read, installing this list could lose an already-observed event.
+func (r *Runtime) refreshLeases(ctx context.Context) (string, error) {
+	r.leaseMu.Lock()
+	epoch, writeEpoch := r.leaseEpoch, r.leaseWriteEpoch
+	r.leaseMu.Unlock()
+	items, rv, err := r.opts.Leases.List(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !r.replaceLeases(ctx, items, epoch, writeEpoch) {
+		return "", errLeaseListOvertaken
+	}
+	return rv, nil
+}
+
 // replaceLeases installs a complete list. Writes of this replica that the
 // list does not show yet stay in the cache until their own events arrive.
-func (r *Runtime) replaceLeases(ctx context.Context, items []dhcpv1.DHCPLease) {
+func (r *Runtime) replaceLeases(ctx context.Context, items []dhcpv1.DHCPLease, epoch, writeEpoch uint64) bool {
 	next := map[string]leaseEntry{}
 	for i := range items {
 		scope, lease, err := leaseFromObject(&items[i])
@@ -695,13 +718,25 @@ func (r *Runtime) replaceLeases(ctx context.Context, items []dhcpv1.DHCPLease) {
 		next[items[i].Name] = leaseEntry{scope: scope, lease: lease, rv: items[i].ResourceVersion}
 	}
 	r.leaseMu.Lock()
+	if r.leaseEpoch != epoch {
+		r.leaseMu.Unlock()
+		return false
+	}
 	now := r.opts.Now()
+	if r.leaseWriteEpoch != writeEpoch {
+		for _, pending := range r.pending {
+			if pending.epoch > writeEpoch && now.Sub(pending.at) > pendingWindow {
+				r.leaseMu.Unlock()
+				return false
+			}
+		}
+	}
 	for name, p := range r.pending {
 		listed, ok := next[name]
 		switch {
-		case now.Sub(p.at) > pendingWindow:
+		case !p.deleted && ok && listed.rv == p.rv:
 			delete(r.pending, name)
-		case p.deleted && !ok, !p.deleted && ok && listed.rv == p.rv:
+		case p.epoch <= writeEpoch && (now.Sub(p.at) > pendingWindow || (p.deleted && !ok)):
 			delete(r.pending, name)
 		case p.deleted:
 			delete(next, name)
@@ -712,8 +747,10 @@ func (r *Runtime) replaceLeases(ctx context.Context, items []dhcpv1.DHCPLease) {
 		}
 	}
 	r.cache = next
+	r.leaseEpoch++
 	r.leaseMu.Unlock()
 	r.resetStores(ctx)
+	return true
 }
 
 // resetStores refills every working copy from the cache. Each store reads
@@ -755,6 +792,7 @@ func (r *Runtime) observe(ctx context.Context, obj *dhcpv1.DHCPLease, deleted bo
 		}
 		r.leaseMu.Lock()
 	}
+	r.leaseEpoch++
 	if p, ok := r.pending[name]; ok {
 		if deleted && p.deleted || !deleted && obj.ResourceVersion == p.rv {
 			delete(r.pending, name)
@@ -849,6 +887,13 @@ func (r *Runtime) end(name string, done chan struct{}, record func()) {
 	close(done)
 }
 
+func (r *Runtime) recordPending(name string, p pendingWrite) {
+	r.leaseWriteEpoch++
+	p.epoch = r.leaseWriteEpoch
+	p.at = r.opts.Now()
+	r.pending[name] = p
+}
+
 func (r *Runtime) knownScope(scope string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -880,7 +925,7 @@ func (r *Runtime) persister(scope string) dhcp.ExternalPersister {
 						err = nil
 						record = func() {
 							delete(r.cache, name)
-							r.pending[name] = pendingWrite{deleted: true, at: r.opts.Now()}
+							r.recordPending(name, pendingWrite{deleted: true})
 						}
 					}
 				}
@@ -896,7 +941,7 @@ func (r *Runtime) persister(scope string) dhcp.ExternalPersister {
 					lease := *c.Lease
 					record = func() {
 						r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
-						r.pending[name] = pendingWrite{rv: obj.ResourceVersion, at: r.opts.Now()}
+						r.recordPending(name, pendingWrite{rv: obj.ResourceVersion})
 					}
 				}
 			}
@@ -932,6 +977,7 @@ func (r *Runtime) reread(ctx context.Context, scope string, names []string) {
 		switch {
 		case errors.Is(err, ErrNotFound):
 			record = func() {
+				r.leaseEpoch++
 				delete(r.pending, name)
 				if old, ok := r.cache[name]; ok {
 					found = append(found, reread{name: name, address: old.lease.Record.Address, deleted: true})
@@ -945,6 +991,7 @@ func (r *Runtime) reread(ctx context.Context, scope string, names []string) {
 		default:
 			if s, lease, err := leaseFromObject(obj); err == nil && s == scope {
 				record = func() {
+					r.leaseEpoch++
 					delete(r.pending, name)
 					r.cache[name] = leaseEntry{scope: scope, lease: lease, rv: obj.ResourceVersion}
 					found = append(found, reread{name: name, rv: obj.ResourceVersion, lease: lease})
@@ -991,17 +1038,23 @@ func addressOf(scope, name string) (netip.Addr, bool) {
 func (r *Runtime) term(ctx context.Context) {
 	r.log.Info("DHCP allocator term started", "pod", r.opts.PodName)
 	for ctx.Err() == nil {
-		items, _, err := r.opts.Leases.List(ctx)
+		_, err := r.refreshLeases(ctx)
 		if err == nil {
-			r.replaceLeases(ctx, items)
 			break
 		}
-		r.log.Warn("DHCPLease list failed before serving; retrying", "error", err)
+		if errors.Is(err, errLeaseListOvertaken) {
+			r.log.Debug("DHCPLease list overtaken before serving; retrying", "after", time.Second)
+		} else {
+			r.log.Warn("DHCPLease list failed before serving; retrying", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(time.Second):
 		}
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	r.mu.Lock()
 	if gen := r.gen; gen != nil {

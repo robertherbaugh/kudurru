@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,12 +17,16 @@ import (
 	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -34,12 +41,20 @@ import (
 // LoadBalancer Service, over UDP and TCP, with no license key. Records follow
 // their sources, a foreign record set holding a derived name is neither
 // taken over nor served, record sets written outside the adapter are not
-// served, partitioning the elected writer moves the writes to the other
-// replica without duplicates, and deleting the sources withdraws every name.
+// served, and partitioning the elected writer moves the writes to the other
+// replica without duplicates. The incoming leader diagnoses denied source
+// reads while both replicas keep serving. Restoring permissions recovers the
+// watches, and deleting the sources withdraws every name.
 // An RFC 2136 UPDATE into the zone is refused with NOTAUTH and writes
 // nothing, and 40 Ingresses created at once converge within 15 s.
 func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
-	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases", "../../internal/sources/k8s/testdata"}, ErrorIfCRDPathMissing: true}
+	useExistingCluster := false
+	control := &envtest.Environment{
+		UseExistingCluster:    &useExistingCluster,
+		BinaryAssetsDirectory: mountedKubeTestAssets(t),
+		CRDDirectoryPaths:     []string{"../../deploy/kustomize/crd/bases", "../../internal/sources/k8s/testdata"},
+		ErrorIfCRDPathMissing: true,
+	}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
 	t.Cleanup(func() {
 		if err := control.Stop(); err != nil {
@@ -51,7 +66,7 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	scheme := runtime.NewScheme()
-	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, coordinationv1.AddToScheme, networkingv1.AddToScheme, public.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, coordinationv1.AddToScheme, networkingv1.AddToScheme, rbacv1.AddToScheme, public.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
@@ -65,12 +80,14 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	if err := admin.Get(ctx, client.ObjectKey{Name: "kube-system"}, &identity); err != nil {
 		t.Fatal(err)
 	}
+	replicaCredentials, setSourceReads := externalZoneReplicaCredentials(t, control, admin)
 	replica := func(name string, gate *partitionGate) *config.Config {
 		cfg := offlineServeConfig(t, gate.server.URL)
 		cfg.Node.Name = name
 		cfg.Store.Kube.ExpectedClusterID = string(identity.UID)
 		cfg.Store.Kube.StartupTimeout = config.Duration(5 * time.Second)
 		cfg.Listeners.DNS = []config.DNSListener{{Address: offlineFreeAddress(t, "tcp"), Protocols: []string{"udp", "tcp"}}}
+		cfg.Listeners.Metrics.Address = offlineFreeAddress(t, "tcp")
 		cfg.ExternalZones.Enabled = true
 		cfg.Blocking.Enabled = false
 		cfg.DNSSEC.Enabled = false
@@ -241,23 +258,44 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 		}
 		return out
 	}
-	assertForeignUntouched := func() {
+	assertUnownedRecordSetUntouched := func(original *public.DNSRecordSet) {
 		t.Helper()
 		var cur public.DNSRecordSet
-		if err := admin.Get(ctx, client.ObjectKeyFromObject(foreign), &cur); err != nil {
+		if err := admin.Get(ctx, client.ObjectKeyFromObject(original), &cur); err != nil {
 			t.Fatal(err)
 		}
 		// The zone controller writes its status (NotSelected), which moves
 		// the resourceVersion; the spec, metadata and ownership stay the
 		// foreign writer's.
-		if !reflect.DeepEqual(cur.Spec, foreign.Spec) || cur.Generation != foreign.Generation || len(cur.Annotations) != 0 || len(cur.Labels) != 0 || len(cur.OwnerReferences) != 0 || zonemodel.ExternalSourceOwned(&cur) {
-			t.Fatalf("the foreign record set was taken over: generation %d -> %d, annotations %v, labels %v, owners %v", foreign.Generation, cur.Generation, cur.Annotations, cur.Labels, cur.OwnerReferences)
+		if cur.UID != original.UID || !reflect.DeepEqual(cur.Spec, original.Spec) || cur.Generation != original.Generation || len(cur.Annotations) != 0 || len(cur.Labels) != 0 || len(cur.OwnerReferences) != 0 || zonemodel.ExternalSourceOwned(&cur) {
+			t.Fatalf("unowned record set %s changed: UID %s -> %s, generation %d -> %d, annotations %v, labels %v, owners %v", original.Name, original.UID, cur.UID, original.Generation, cur.Generation, cur.Annotations, cur.Labels, cur.OwnerReferences)
 		}
 	}
 	first := map[string]string{"web.ext.example.": "192.0.2.40", "shop.ext.example.": "192.0.2.50", "svc.ext.example.": "192.0.2.60",
 		"taken.ext.example.": "", "manual.ext.example.": "", "absent.ext.example.": ""}
 
-	gateA, gateB := newPartitionGate(t, restConfig), newPartitionGate(t, restConfig)
+	conditions := func() (ready, degraded *metav1.Condition) {
+		var extZone public.DNSZone
+		if err := admin.Get(ctx, client.ObjectKey{Name: "ext"}, &extZone); err != nil {
+			t.Fatal(err)
+		}
+		return meta.FindStatusCondition(extZone.Status.Conditions, public.ConditionReady), meta.FindStatusCondition(extZone.Status.Conditions, public.ConditionDegraded)
+	}
+	isServing := func(ready *metav1.Condition) bool {
+		return ready != nil && ready.Status == metav1.ConditionTrue && ready.Reason == public.ReasonServing
+	}
+	isHealthy := func() bool {
+		ready, degraded := conditions()
+		return isServing(ready) && degraded != nil && degraded.Status == metav1.ConditionFalse
+	}
+	gateA := newPartitionGate(t, replicaCredentials)
+	credentialsB := rest.CopyConfig(replicaCredentials)
+	var ingressProbe externalZoneIngressProbe
+	credentialsB.Wrap(func(next http.RoundTripper) http.RoundTripper {
+		ingressProbe.RoundTripper = next
+		return &ingressProbe
+	})
+	gateB := newPartitionGate(t, credentialsB)
 	// offlineServeConfig sets the process-global KUBECONFIG, which runServe
 	// reads at startup: build and start each replica before the next config.
 	cfgA := replica("external-a", gateA)
@@ -273,17 +311,12 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	if got := derived(); len(got) != 3 || len(got["ingress"]) != 1 || len(got["httproute"]) != 1 || len(got["service"]) != 1 || holder() != "external-a" {
 		t.Fatal("a second replica changed leadership or duplicated record sets", got, holder())
 	}
-	assertForeignUntouched()
-	// With the adapter mounted the zone does not report SourcesNotRead.
-	var extZone public.DNSZone
-	if err := admin.Get(ctx, client.ObjectKey{Name: "ext"}, &extZone); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range extZone.Status.Conditions {
-		if c.Reason == public.ReasonSourcesNotRead {
-			t.Fatal("the zone reports no adapter although one runs:", c.Message)
-		}
-	}
+	assertUnownedRecordSetUntouched(foreign)
+	assertUnownedRecordSetUntouched(manual)
+	await(30*time.Second, "the zone is serving but reports the unselected record sets", func() bool {
+		ready, degraded := conditions()
+		return isServing(ready) && degraded != nil && degraded.Status == metav1.ConditionTrue && degraded.Reason == public.ReasonNotSelected
+	})
 	// Sources stay read-only: no finalizer, annotation or status of ours.
 	var seen networkingv1.Ingress
 	if err := admin.Get(ctx, client.ObjectKeyFromObject(web), &seen); err != nil {
@@ -293,38 +326,112 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 		t.Fatal("the adapter wrote its source", seen.Finalizers, seen.ResourceVersion, web.ResourceVersion)
 	}
 
-	// Records follow their sources.
+	// Records follow their sources without removing unowned record sets.
+	if err := admin.Delete(ctx, taken); err != nil {
+		t.Fatal(err)
+	}
 	setIngressAddress(web, "192.0.2.41")
-	moved := map[string]string{"web.ext.example.": "192.0.2.41", "shop.ext.example.": "192.0.2.50", "svc.ext.example.": "192.0.2.60"}
+	moved := map[string]string{"web.ext.example.": "192.0.2.41", "shop.ext.example.": "192.0.2.50", "svc.ext.example.": "192.0.2.60", "taken.ext.example.": "", "manual.ext.example.": ""}
 	await(30*time.Second, "both replicas follow the changed Ingress", func() bool { return serves(cfgA, moved) && serves(cfgB, moved) })
+	for _, records := range []*public.DNSRecordSet{foreign, manual} {
+		assertUnownedRecordSetUntouched(records)
+		if err := admin.Delete(ctx, records); err != nil {
+			t.Fatal(err)
+		}
+	}
+	await(30*time.Second, "the external zone is healthy after removing the unowned fixtures", isHealthy)
 
-	// Partition the elected writer from the API server: B takes the term and
-	// alone applies later source changes; A keeps serving its last data.
+	stored := func() map[string]public.DNSRecordSetSpec {
+		records := map[string]public.DNSRecordSetSpec{}
+		for _, group := range derived() {
+			for _, rs := range group {
+				records[string(rs.UID)] = rs.Spec
+			}
+		}
+		return records
+	}
+	lastGood := stored()
+	setSourceReads(false)
+	restricted, err := dynamic.NewForConfig(replicaCredentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	await(10*time.Second, "the API server denies restricted Ingress lists", func() bool {
+		_, err := restricted.Resource(networkingv1.SchemeGroupVersion.WithResource("ingresses")).List(ctx, metav1.ListOptions{Limit: 1})
+		return apierrors.IsForbidden(err)
+	})
+	// Partition the elected writer so B starts a new term with no already
+	// authorized source watches. A keeps serving its last data.
 	gateA.partition(true)
-	await(60*time.Second, "B acquires the Lease after A's partition", func() bool { return holder() == "external-b" })
 	setServiceAddress("192.0.2.61")
-	moved["svc.ext.example."] = "192.0.2.61"
-	await(30*time.Second, "B applies the changed Service", func() bool { return serves(cfgB, moved) })
-	if got, _ := answer(cfgA, "udp", "web.ext.example."); got != "192.0.2.41" {
-		t.Fatal("the partitioned replica stopped serving its last data:", got)
+	await(60*time.Second, "B acquires the Lease after A's partition", func() bool { return holder() == "external-b" })
+	var ready, degraded *metav1.Condition
+	deniedKinds := []string{"Ingress", "Gateway", "HTTPRoute", "GRPCRoute", "TLSRoute", "Service"}
+	await(30*time.Second, "the zone reports SourcesIncomplete naming every denied source list", func() bool {
+		ready, degraded = conditions()
+		if degraded == nil || degraded.Status != metav1.ConditionTrue || degraded.Reason != public.ReasonSourcesIncomplete {
+			return false
+		}
+		return !slices.ContainsFunc(deniedKinds, func(kind string) bool {
+			return !strings.Contains(degraded.Message, kind+": list denied")
+		})
+	})
+	if !isServing(ready) {
+		t.Fatalf("source RBAC failure changed readiness: %+v", ready)
+	}
+	for _, kind := range deniedKinds {
+		await(15*time.Second, "B counts the forbidden "+kind+" list", func() bool {
+			value, ok := mountedMetric(t, cfgB.Listeners.Metrics.Address, "kudurru_external_zone_source_list_total", `kind="`+strings.ToLower(kind)+`"`, `result="forbidden"`)
+			return ok && value > 0
+		})
+	}
+	if !serves(cfgA, moved) {
+		t.Fatal("the partitioned replica stopped serving its last-good answers")
 	}
 	gateA.partition(false)
-	await(30*time.Second, "A converges after the partition heals", func() bool { return serves(cfgA, moved) })
+	if got := stored(); !reflect.DeepEqual(got, lastGood) {
+		t.Fatalf("source denial removed or changed stored record sets: got %v, want %v", got, lastGood)
+	}
+	if !serves(cfgA, moved) || !serves(cfgB, moved) {
+		t.Fatal("a replica stopped serving its last-good answers during the source denial")
+	}
+
+	setSourceReads(true)
+	await(25*time.Second, "B reopens an authorized Ingress watch after the grant", ingressProbe.watched.Load)
+	listed := ingressProbe.listed.Load()
+	if listed == nil {
+		t.Fatal("B opened an Ingress watch without a successful list")
+	}
+	resumed := ingress("resumed", "resumed.ext.example")
+	if err := admin.Create(ctx, resumed); err != nil {
+		t.Fatal(err)
+	}
+	setIngressAddress(resumed, "192.0.2.42")
+	const periodicResync = 10 * time.Second
+	deadline := listed.Add(periodicResync)
+	await(time.Until(deadline), "B serves a new Ingress before the next periodic resync", func() bool {
+		got, _ := answer(cfgB, "udp", "resumed.ext.example.")
+		return time.Now().Before(deadline) && got == "192.0.2.42"
+	})
+	await(30*time.Second, "restoring source permissions clears Degraded", isHealthy)
+	moved["svc.ext.example."] = "192.0.2.61"
+	moved["resumed.ext.example."] = "192.0.2.42"
+	await(30*time.Second, "both replicas serve the recovered sources", func() bool { return serves(cfgA, moved) && serves(cfgB, moved) })
 	if holder() != "external-b" {
 		t.Fatal("the healed former leader reclaimed the Lease", holder())
 	}
 	got := derived()
-	if len(got) != 3 || len(got["ingress"]) != 1 || len(got["httproute"]) != 1 || len(got["service"]) != 1 {
+	if len(got) != 3 || len(got["ingress"]) != 2 || len(got["httproute"]) != 1 || len(got["service"]) != 1 {
 		t.Fatal("the term change duplicated derived record sets", got)
 	}
 	if eps := got["service"][0].Spec.Endpoints; len(eps) != 1 || !slices.Equal(eps[0].Targets, []string{"192.0.2.61"}) || eps[0].RecordTTL != 45 {
 		t.Fatal("derived Service record set", eps)
 	}
-	assertForeignUntouched()
-
 	// Deleting the sources withdraws their names on both replicas.
-	if err := admin.Delete(ctx, web); err != nil {
-		t.Fatal(err)
+	for _, in := range []*networkingv1.Ingress{web, resumed} {
+		if err := admin.Delete(ctx, in); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := routes.Delete(ctx, "shop", metav1.DeleteOptions{}); err != nil {
 		t.Fatal(err)
@@ -332,17 +439,11 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	if err := admin.Delete(ctx, svc); err != nil {
 		t.Fatal(err)
 	}
-	gone := map[string]string{"web.ext.example.": "", "shop.ext.example.": "", "svc.ext.example.": ""}
+	gone := map[string]string{"web.ext.example.": "", "resumed.ext.example.": "", "shop.ext.example.": "", "svc.ext.example.": ""}
 	await(30*time.Second, "deletion withdraws every name on both replicas", func() bool { return serves(cfgA, gone) && serves(cfgB, gone) })
 	if got := derived(); len(got) != 0 {
 		t.Fatal("deleted sources left derived record sets", got)
 	}
-	assertForeignUntouched()
-	var kept public.DNSRecordSet
-	if err := admin.Get(ctx, client.ObjectKeyFromObject(manual), &kept); err != nil {
-		t.Fatal("the adapter removed a record set it does not own:", err)
-	}
-
 	// An RFC 2136 UPDATE into the external zone is refused on both replicas
 	// (NOTAUTH: no primary zone has that apex) and writes nothing.
 	allRecordSets := func() int {
@@ -406,4 +507,72 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 		}
 	}
 	await(15*time.Second, "the bulk sources are withdrawn", func() bool { return serves(cfgA, bulkGone) && serves(cfgB, bulkGone) })
+}
+
+func externalZoneReplicaCredentials(t *testing.T, control *envtest.Environment, admin client.Client) (*rest.Config, func(bool)) {
+	t.Helper()
+	const name = "external-zone-replica"
+	user, err := control.AddUser(envtest.User{Name: name, Groups: []string{"system:authenticated"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := []string{"get", "list", "watch"}
+	storeRules := []rbacv1.PolicyRule{
+		{APIGroups: []string{public.Group}, Resources: []string{"*"}, Verbs: []string{"*"}},
+		{APIGroups: []string{""}, Resources: []string{"namespaces"}, Verbs: read},
+		{APIGroups: []string{""}, Resources: []string{"configmaps", "secrets"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+		{APIGroups: []string{coordinationv1.GroupName}, Resources: []string{"leases"}, Verbs: []string{"get", "create", "update"}},
+	}
+	sourceRules := []rbacv1.PolicyRule{
+		{APIGroups: []string{networkingv1.GroupName}, Resources: []string{"ingresses"}, Verbs: read},
+		{APIGroups: []string{"gateway.networking.k8s.io"}, Resources: []string{"gateways", "httproutes", "grpcroutes", "tlsroutes"}, Verbs: read},
+		{APIGroups: []string{""}, Resources: []string{"services"}, Verbs: read},
+	}
+	storeRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name + "-store"}, Rules: storeRules}
+	sourceRole := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: name + "-sources"}, Rules: sourceRules}
+	for _, role := range []*rbacv1.ClusterRole{storeRole, sourceRole} {
+		if err := admin.Create(t.Context(), role); err != nil {
+			t.Fatal(err)
+		}
+		binding := &rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: role.Name},
+			RoleRef:    rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: role.Name},
+			Subjects:   []rbacv1.Subject{{APIGroup: rbacv1.GroupName, Kind: rbacv1.UserKind, Name: name}},
+		}
+		if err := admin.Create(t.Context(), binding); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return user.Config(), func(granted bool) {
+		t.Helper()
+		sourceRole.Rules = nil
+		if granted {
+			sourceRole.Rules = sourceRules
+		}
+		if err := admin.Update(t.Context(), sourceRole); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// externalZoneIngressProbe observes B's first successful list and watch after
+// grants return. The list finishes before the adapter starts its periodic
+// wait, so an answer within one resync of the list requires a watch wake-up.
+type externalZoneIngressProbe struct {
+	http.RoundTripper
+	listed  atomic.Pointer[time.Time]
+	watched atomic.Bool
+}
+
+func (probe *externalZoneIngressProbe) RoundTrip(req *http.Request) (*http.Response, error) {
+	res, err := probe.RoundTripper.RoundTrip(req)
+	if err == nil && res.StatusCode == http.StatusOK && req.Method == http.MethodGet && req.URL.Path == "/apis/networking.k8s.io/v1/ingresses" {
+		if req.URL.Query().Get("watch") == "true" {
+			probe.watched.Store(true)
+		} else {
+			now := time.Now()
+			probe.listed.CompareAndSwap(nil, &now)
+		}
+	}
+	return res, err
 }

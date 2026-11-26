@@ -400,8 +400,8 @@ normally. Unlike primary zones, where a `local.db`
 snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
 answers, this stops forwarding too for every client whose policy selects an RPZ
 list, unsigned feeds with an unexpired copy included. An RPZ feed does not wait
-for the list resolver: a policy decision carries every referenced BlockList that
-exists but is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
+for the list resolver: a policy decision carries each referenced BlockList with
+an enabled RPZ source that is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
 selectors require those lists' feeds too (D390). A just-started node therefore
 applies a persisted copy, or fails closed, from its first answer, whatever
 `blocking.allowDegraded` says; the downloaded sources of a mixed list still
@@ -414,6 +414,11 @@ unsynced snapshot's index, which references no list, made the node ready about
 manager is not a leader-only runnable. The shared dnsdist cache eligibility
 above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
 changes, so an edge-cached answer can outlive a feed update by its TTL.
+
+Kubernetes HTTP dig runs through that same selector. The Kubernetes policy-state
+read uses the node's binding for the requested BlockList revision: it adds RPZ
+rule counts to the compiled text-list count, and requires both a compiled list
+and available feeds for readiness. Shared BlockList status is unchanged.
 
 ```mermaid
 flowchart LR
@@ -428,6 +433,7 @@ flowchart LR
     Zc --> Bind
     Decision --> KSelect["Blocking stage selector<br/>(per request)"]
     Bind --> KSelect
+    Bind --> KRead["RPZ-backed policy list reads"]
     KSelect --> KHit["blocked_rpz + list + rule"]
 ```
 

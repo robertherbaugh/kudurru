@@ -315,7 +315,8 @@ once in the dashboard works the same way, with a result for each name.
   after a sign-in, sign-out or settings change through the same follower, or
   once the held pull has waited 30 seconds. A document whose exchange the
   end of the 30 seconds interrupts reports `completion_unknown`, and every
-  later one `unavailable`.
+  later one `unavailable`, naming the original primary to send that unsent
+  document to.
   `TestRootMemberFollowerApplyCut` checks both cutoffs against the primary's
   stored objects: `created` documents are present, `unavailable` documents
   are absent, and no document is replayed, even when its receipt is lost.
@@ -445,7 +446,10 @@ Use the [member replacement procedure](sqlite-join.md#replace-a-member-that-cann
 with a new name, internal address, and data directory. Take the old member
 offline permanently and do not reuse its identity. Replacement does not remove
 the old member: its name and address stay reserved, and it still counts toward
-the 64-member limit.
+the 64-member limit. Replacement is not member revocation, and v0.2.0 has no
+operator command or API to revoke a member. The replacement needs a fresh
+identity and key: enrollment rejects a previously recorded member ID or key,
+even if that member was revoked or the key has a new certificate.
 
 ## Answers of the cluster commands
 

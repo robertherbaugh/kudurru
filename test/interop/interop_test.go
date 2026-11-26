@@ -284,12 +284,18 @@ zone "denied.test" {
 	})
 
 	t.Run("TSIGRefused", func(t *testing.T) {
+		// Each refusal is an answer: REFUSED for the unsigned request, NOTAUTH
+		// (a TSIG error the client cannot verify) for a wrong secret or an
+		// unknown key. A connection closed without a reply (EOF) or a read
+		// timeout is not a refusal: it is the answer withheld, which the
+		// bookkeeping commits after named's transfers caused (D419, #236).
 		cases := []struct {
 			name, key, secret string
+			want              string
 		}{
-			{"unsigned", "", ""},
-			{"wrong secret", keyName, newSecret(t)},
-			{"unknown key", "other-key", secret},
+			{"unsigned", "", "", fmt.Sprintf("dns: bad xfr rcode: %d", dns.RcodeRefused)},
+			{"wrong secret", keyName, newSecret(t), dns.ErrAuth.Error()},
+			{"unknown key", "other-key", secret, dns.ErrAuth.Error()},
 		}
 		for _, c := range cases {
 			rrs, err := axfr(spec.Ports.DNS, "interop.test.", c.key, keyAlg, c.secret)
@@ -301,6 +307,10 @@ zone "denied.test" {
 				if rr.Header().Rrtype != dns.TypeSOA {
 					t.Errorf("%s: transfer leaked %s", c.name, rr)
 				}
+			}
+			if err.Error() != c.want {
+				t.Errorf("%s: AXFR failed with %v, want the refusal %q", c.name, err, c.want)
+				continue
 			}
 			t.Logf("%s: refused: %v", c.name, err)
 		}

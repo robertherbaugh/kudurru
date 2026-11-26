@@ -191,12 +191,15 @@ func (e notDispatchedError) Unwrap() error { return e.err }
 // every dispatch attempt after the writer binding and before the first
 // publication check; afterRecapture runs after a pre-dispatch recapture.
 // dispatch runs when an attempt's transaction body begins. afterStage runs
-// after a successful callback, before the transaction's final commit checks.
+// after a successful callback, before the transaction's final commit checks;
+// afterCommit runs after a successful commit of a command with an
+// acknowledgment step, before that acknowledgment.
 type commandHooks struct {
 	beforeCheck    func(ctx context.Context)
 	afterRecapture func(ctx context.Context)
 	dispatch       func(ctx context.Context)
 	afterStage     func(ctx context.Context)
+	afterCommit    func(ctx context.Context)
 }
 
 func (s *servingRuntime) dispatchHook(ctx context.Context) {
@@ -281,6 +284,9 @@ func (s *servingRuntime) currentAuthCommandOnce(ctx context.Context, fn func(con
 	}
 	if after == nil {
 		return true, nil
+	}
+	if hooks := s.commandHooks.Load(); hooks != nil && hooks.afterCommit != nil {
+		hooks.afterCommit(ctx)
 	}
 	// Our own commit can supersede the request's HTTP lease. Only the original
 	// writer episode and target remain admission constraints on acknowledgment.

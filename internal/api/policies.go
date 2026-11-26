@@ -285,7 +285,8 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 		refs []string
 	}{{"block", p.Spec.BlockListRefs}, {"allow", p.Spec.AllowListRefs}} {
 		for _, name := range ref.refs {
-			l := policyListState(name, ref.role, lists[name])
+			blockList := lists[name]
+			l := policyListState(name, ref.role, blockList)
 			if captured {
 				l.Entries, l.Ready = 0, false
 				if l.Exists && l.Enabled {
@@ -293,6 +294,10 @@ func (s *Server) policyState(ctx context.Context, in *nsObjectInput) (*policySta
 					if err != nil || l.Entries < 0 {
 						return nil, errUnavailable("original policy list state unavailable")
 					}
+				}
+			} else if l.Enabled && s.opts.KubeRPZPolicyListState != nil {
+				if entries, ready, projected := s.opts.KubeRPZPolicyListState(blockList, now); projected {
+					l.Entries, l.Ready = entries, ready
 				}
 			}
 			out.Lists = append(out.Lists, l)

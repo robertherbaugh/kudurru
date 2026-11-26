@@ -831,7 +831,8 @@ func TestMemberLogoutFailureAnswers(t *testing.T) {
 	if refused := answer(memberLogoutError(clusterreplica.ErrForbidden, true, true)); refused.Status != http.StatusForbidden || refused.Body.Key != api.KeyForbidden {
 		t.Fatal("refused sign-out answer", refused)
 	}
-	if refused := answer(memberLogoutError(clusterreplica.ErrUnauthorized, true, true)); refused.Status != http.StatusUnauthorized || refused.Body.Key != api.KeyUnauthenticated {
-		t.Fatal("unauthenticated sign-out answer", refused)
+	if refused := answer(memberLogoutError(clusterreplica.ErrUnauthorized, false, true)); refused.Status != http.StatusServiceUnavailable || refused.Body.Key != api.KeyUnavailable ||
+		!strings.HasPrefix(refused.Body.Message, "cluster authority changed;") || !strings.Contains(refused.Body.Message, "cookie was cleared") {
+		t.Fatal("member authority sign-out answer", refused)
 	}
 }

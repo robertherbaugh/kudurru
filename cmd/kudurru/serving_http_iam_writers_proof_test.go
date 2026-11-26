@@ -261,7 +261,7 @@ func TestServingHTTPIAMWritersDeleteFloorsSurviveReplicaPromotion(t *testing.T) 
 // unavailable and commits nothing: the account, its token and the image stay
 // exactly as they were. Reads keep working.
 func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
-	f := newServingHTTPFixture(t, false)
+	f := newServingHTTPFixtureOn(t, newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false)), false)
 	defer f.stop()
 	sa := serviceAccountResponse(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("full")), f.token, nil, ""), http.StatusCreated)
 	localUsersFresh(t, f)
@@ -297,7 +297,12 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 	before := roleBindingImage(t, f.s.opts.Store)
 	w := f.call(t, "DELETE", "/iam/serviceaccounts/apps/full", roleBindingBody(t, objectReview(&sa)), f.token, nil, "")
 	expectServingHTTPStatus(t, w, http.StatusServiceUnavailable)
-	if !strings.Contains(w.Body.String(), `"key":"unavailable"`) {
+	// The capacity refusal (servingauth.ErrBounds) has no category of its own
+	// and answers the generic message. Requiring it rules out every
+	// categorized 503 with the same key, such as the dependency-cut refusal
+	// "current writable serving generation unavailable", which never reached
+	// the capacity check.
+	if !strings.Contains(w.Body.String(), `"key":"unavailable","message":"authentication operation unavailable"`) {
 		t.Fatalf("delete at capacity answered %s, want the capacity refusal", w.Body.String())
 	}
 	roleBindingUnchanged(t, f.s.opts.Store, before)
@@ -310,7 +315,7 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 }
 
 func TestServingHTTPIAMWritersDeleteRecoversFullRevocationHistory(t *testing.T) {
-	f := newServingHTTPFixture(t, false)
+	f := newServingHTTPFixtureOn(t, newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false)), false)
 	defer f.stop()
 	sa := serviceAccountResponse(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("history")), f.token, nil, ""), http.StatusCreated)
 	localUsersFresh(t, f)

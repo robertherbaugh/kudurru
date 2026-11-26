@@ -160,15 +160,15 @@ func memberLogoutNotSent(err error, signOut bool) error {
 	return memberLogoutUnavailable(signOut, message)
 }
 
-// memberLogoutError keeps clean primary refusals distinct from an unsent
-// command and from an unknown outcome. Nothing is retried.
+// memberLogoutError distinguishes definite failures before execution from an
+// unknown outcome. Nothing is retried.
 func memberLogoutError(err error, sent, signOut bool) error {
-	switch {
-	case errors.Is(err, clusterreplica.ErrForbidden), errors.Is(err, servingauth.ErrDenied):
+	switch classifyMemberForwardRefusal(err, sent) {
+	case memberForwardForbidden:
 		return &api.Error{Status: http.StatusForbidden, Body: api.ErrorBody{Key: api.KeyForbidden, Message: "the primary refused this credential; the session was not revoked"}}
-	case errors.Is(err, clusterreplica.ErrUnauthorized):
-		return &api.Error{Status: http.StatusUnauthorized, Body: api.ErrorBody{Key: api.KeyUnauthenticated, Message: "the primary did not accept this credential"}}
-	case !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown):
+	case memberForwardAuthorityChanged:
+		return memberLogoutUnavailable(signOut, "cluster authority changed")
+	case memberForwardUnavailable:
 		return memberLogoutUnavailable(signOut, "the enrolled primary is unavailable")
 	default:
 		message := "the outcome of revoking the session is unknown; it may stay valid until it expires; do not replay this request"

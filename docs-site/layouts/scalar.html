@@ -17,18 +17,20 @@
   <p>{{ .Description | markdownify }}
     <a href="{{ "reference/api/openapi.json" | relURL }}">openapi.json</a> ·
     <a href="{{ (site.GetPage "/reference/api/endpoints").RelPermalink }}">endpoint index</a> ·
-    <a href="{{ "reference/api/scalar-LICENSE.txt" | relURL }}">Scalar licence (MIT)</a></p>
+    <a href="{{ "reference/api/scalar-LICENSE.txt" | relURL }}">Scalar license (MIT)</a></p>
 </div>
 <main id="main">
-  <script id="api-reference" data-proofer-ignore data-url="{{ "reference/api/openapi.json" | relURL }}" data-configuration="{{ jsonify (dict "withDefaultFonts" false "telemetry" false "agent" (dict "disabled" true) "hideTestRequestButton" true "hideClientButton" true) }}"></script>
+  <div id="scalar-explorer" data-url="{{ "reference/api/openapi.json" | relURL }}"></div>
 </main>
+{{- $site := resources.Get "js/site.js" | minify | fingerprint }}
+<script src="{{ $site.RelPermalink }}" integrity="{{ $site.Data.Integrity }}" defer></script>
 {{- with resources.Get "scalar/standalone.js" }}
 {{- $js := . | fingerprint "sha384" }}
-<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}"></script>
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
+{{- $explorer := resources.Get "js/scalar.js" | minify | fingerprint }}
+<script src="{{ $explorer.RelPermalink }}" integrity="{{ $explorer.Data.Integrity }}" defer></script>
 {{- else }}
 {{- warnf "the Scalar bundle is missing: run `make docs-assets` (or `make docs-site`)" }}
 {{- end }}
-{{ $js := resources.Get "js/site.js" | minify | fingerprint -}}
-<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>
 </body>
 </html>

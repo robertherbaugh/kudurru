@@ -197,6 +197,49 @@ func TestTransferClientPrimary(t *testing.T) {
 	}
 }
 
+func TestTransferClientSignedSameSerialIXFRAuthority(t *testing.T) {
+	ring := transferRing(t, transferKey, "hmac-sha256", transferSecret)
+	soa := transferSOA()
+	base := []dns.RR{soa, transferRR(t, "Ns1.Example.org. 87 IN A 192.0.2.53")}
+	original := []dns.RR{dns.Copy(base[0]), dns.Copy(base[1])}
+	for _, test := range []struct {
+		name          string
+		authoritative bool
+	}{
+		{name: "Authoritative", authoritative: true},
+		{name: "AALess"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			address := transferPrimary(t, ring, func(writer dns.ResponseWriter, request *dns.Msg) {
+				defer func() { _ = writer.Close() }()
+				if request.IsTsig() == nil || writer.TsigStatus() != nil || request.Question[0].Qtype != dns.TypeIXFR ||
+					len(request.Ns) != 1 || !dns.IsDuplicate(request.Ns[0], soa) {
+					t.Error("expected an authenticated IXFR query at the stored serial")
+					return
+				}
+				reply := transferReply(request, soa)
+				reply.Authoritative = test.authoritative
+				reply.SetTsig(transferKey, dns.HmacSHA256, 300, time.Now().Unix())
+				if err := writer.WriteMsg(reply); err != nil {
+					t.Errorf("write signed IXFR reply: %v", err)
+				}
+			})
+			client := &TransferClient{Keyring: ring}
+			got, err := client.IXFR(t.Context(), transferZone(true), address, base)
+			if test.authoritative {
+				if err != nil || !reflect.DeepEqual(got, original) {
+					t.Fatalf("authoritative same-serial reply did not confirm the existing copy: %v", err)
+				}
+			} else if got != nil || err == nil || err.Error() != "secondary: non-authoritative response" {
+				t.Fatalf("AA-less reply returned data or was not rejected for missing AA: %v", err)
+			}
+			if !reflect.DeepEqual(base, original) {
+				t.Fatal("same-serial IXFR modified the stored snapshot")
+			}
+		})
+	}
+}
+
 func TestTransferClientTSIGRejections(t *testing.T) {
 	ring := transferRing(t, transferKey, "hmac-sha256", transferSecret)
 	for _, test := range []struct {

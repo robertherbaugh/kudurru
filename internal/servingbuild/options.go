@@ -79,6 +79,11 @@ type Options struct {
 	Upstreams  upstream.Options
 	ZoneLimits zonestate.Limits
 	MaxZones   int
+	// TransferNeutral reports whether an authority read from Authority only
+	// moved past the candidate's token through commits that change nothing a
+	// zone transfer is computed from (sqlite.Store.TransferNeutral, D419).
+	// Nil keeps transfers at exact token currency.
+	TransferNeutral func(sqlite.GenerationToken, replication.Authority) bool
 	// AnchorStore supplies original committed managed input for this candidate.
 	// Nil permits only never-managed static history. The publisher must bound
 	// its original preparation context before reading the candidate. This does
