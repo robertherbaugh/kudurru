@@ -101,6 +101,144 @@ func upgradeMountedRequest(t *testing.T, client *http.Client, base, method, path
 	}
 }
 
+// upgradeProgressView is what a progress-bounded wait compares between two
+// polls of the API: the readiness status, the response status and the body
+// without the fields that differ on every request. Every API body carries
+// took_ms, the server-side duration of that one request (lists and errors
+// alike), so a wait that compared raw bodies took every poll for progress
+// and a stalled wait ran to its overall limit instead of failing after the
+// no-progress bound. A body that is not JSON is compared as it is.
+func upgradeProgressView(ready, status int, body []byte) string {
+	var decoded any
+	if json.Unmarshal(body, &decoded) == nil {
+		// encoding/json sorts map keys, so equal state renders equally.
+		if canonical, err := json.Marshal(withoutPerRequestFields(decoded)); err == nil {
+			body = canonical
+		}
+	}
+	return fmt.Sprintf("%d %d %s", ready, status, body)
+}
+
+// perRequestFields are the JSON keys of an API body whose values change
+// from one request to the next whatever the state: took_ms is the only one
+// (the API sends no request ID or response time in a body).
+var perRequestFields = []string{"took_ms"}
+
+// withoutPerRequestFields removes perRequestFields from a decoded JSON
+// value at every depth.
+func withoutPerRequestFields(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		for _, k := range perRequestFields {
+			delete(v, k)
+		}
+		for k, e := range v {
+			v[k] = withoutPerRequestFields(e)
+		}
+	case []any:
+		for i, e := range v {
+			v[i] = withoutPerRequestFields(e)
+		}
+	}
+	return v
+}
+
+// progressBound bounds a wait by progress: it is exceeded when the view the
+// wait observes has not changed for noProgress, or after overall however
+// often it changed. A view must leave out what changes without the state
+// changing (upgradeProgressView), or every observation counts as progress.
+type progressBound struct {
+	noProgress, overall time.Duration
+	from, progress      time.Time
+	changes             int
+	last                string
+}
+
+func newProgressBound(noProgress, overall time.Duration, now time.Time, view string) *progressBound {
+	return &progressBound{noProgress: noProgress, overall: overall, from: now, progress: now, last: view}
+}
+
+// observe records the view taken at now; a view other than the last one is
+// progress.
+func (b *progressBound) observe(now time.Time, view string) {
+	if view != b.last {
+		b.changes++
+		b.progress, b.last = now, view
+	}
+}
+
+// exceeded is why the wait fails at now, or empty while it may go on.
+func (b *progressBound) exceeded(now time.Time) string {
+	switch {
+	case now.Sub(b.progress) > b.noProgress:
+		return fmt.Sprintf("nothing changed for %s (%d changes in %s): %s", b.noProgress, b.changes, now.Sub(b.from).Round(time.Millisecond), b.last)
+	case now.Sub(b.from) > b.overall:
+		return fmt.Sprintf("not reached after %s (%d changes): %s", b.overall, b.changes, b.last)
+	}
+	return ""
+}
+
+// TestProgressBoundIgnoresTookMS proves that a /zones response that differs
+// only in took_ms is no progress, so a stalled wait fails after the
+// no-progress bound, while a change of the zones or of readiness is.
+func TestProgressBoundIgnoresTookMS(t *testing.T) {
+	zones := func(serial int, took float64) []byte {
+		return fmt.Appendf(nil, `{"items":[{"name":"temp","zoneName":"temp.test.","serial":%d,"ready":false,"reason":"Pending"}],"continue":"","took_ms":%g}`, serial, took)
+	}
+	unavailable := func(took float64) []byte {
+		return fmt.Appendf(nil, `{"error":{"key":"unavailable","message":"publishing"},"took_ms":%g}`, took)
+	}
+	if bytes.Equal(zones(1, 0.4), zones(1, 1.7)) {
+		t.Fatal("the fixture bodies do not differ in took_ms")
+	}
+	if a, b := upgradeProgressView(200, 200, zones(1, 0.4)), upgradeProgressView(200, 200, zones(1, 1.7)); a != b {
+		t.Fatalf("bodies that differ only in took_ms are different views:\n%s\n%s", a, b)
+	}
+	if a, b := upgradeProgressView(503, 503, unavailable(2)), upgradeProgressView(503, 503, unavailable(3)); a != b {
+		t.Fatalf("errors that differ only in took_ms are different views:\n%s\n%s", a, b)
+	}
+	if got := upgradeProgressView(200, 200, zones(1, 0.4)); strings.Contains(got, "took_ms") || !strings.Contains(got, `"serial":1`) {
+		t.Fatalf("view %s", got)
+	}
+	start := time.Unix(1_000_000, 0)
+	// A wait whose responses change only in took_ms, every 100 ms.
+	stalled := newProgressBound(30*time.Second, 3*time.Minute, start, upgradeProgressView(200, 200, zones(1, 0.1)))
+	for i := 1; i <= 310; i++ {
+		at := start.Add(time.Duration(i) * 100 * time.Millisecond)
+		if why := stalled.exceeded(at); why != "" {
+			if at.Sub(start) <= 30*time.Second || !strings.HasPrefix(why, "nothing changed for 30s (0 changes in ") || !strings.Contains(why, `"serial":1`) {
+				t.Fatalf("exceeded after %s: %s", at.Sub(start), why)
+			}
+			break
+		}
+		stalled.observe(at, upgradeProgressView(200, 200, zones(1, float64(i)/10)))
+		if i == 310 {
+			t.Fatal("a wait that changed only took_ms was not exceeded after 31s")
+		}
+	}
+	// A new serial, a readiness change and a non-JSON body are progress.
+	moving := newProgressBound(30*time.Second, 3*time.Minute, start, upgradeProgressView(200, 200, zones(1, 0.1)))
+	for i, view := range []string{
+		upgradeProgressView(200, 200, zones(2, 0.2)),
+		upgradeProgressView(503, 200, zones(2, 0.3)),
+		upgradeProgressView(503, 503, unavailable(0.4)),
+		upgradeProgressView(503, 502, []byte("bad gateway")),
+	} {
+		at := start.Add(time.Duration(i+1) * 25 * time.Second)
+		if why := moving.exceeded(at); why != "" {
+			t.Fatalf("exceeded after %s although the view changed: %s", at.Sub(start), why)
+		}
+		moving.observe(at, view)
+	}
+	if moving.changes != 4 {
+		t.Fatalf("%d changes, want 4", moving.changes)
+	}
+	moving.observe(start.Add(3*time.Minute), upgradeProgressView(200, 200, zones(3, 0.5)))
+	if why := moving.exceeded(start.Add(3*time.Minute + time.Second)); !strings.HasPrefix(why, "not reached after 3m0s (5 changes): ") {
+		t.Fatalf("overall bound: %q", why)
+	}
+}
+
 // upgradeMountedConfig is the mounted configuration for a data directory of
 // the 0.1.0 release: no static provider or TSIG file of the fixture's own.
 func upgradeMountedConfig(t *testing.T) *config.Config {
@@ -642,7 +780,9 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		// serial, conditions) and readiness have not changed for 30 s, or
 		// after three minutes. The view changes several times per commit
 		// (readiness turns 503 and back for each publication: 21 changes
-		// in 12.5 s in mounted10), so a count of changes is no bound.
+		// in 12.5 s in mounted10), so a count of changes is no bound. The
+		// view leaves out took_ms, which every response carries and which
+		// differs from one request to the next (upgradeProgressView).
 		zonesView := func() string {
 			response, err := client.Get(base + "/zones")
 			if err != nil {
@@ -650,27 +790,20 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			}
 			body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 			_ = response.Body.Close()
-			return fmt.Sprintf("%d %d %s", ready(), response.StatusCode, body)
+			return upgradeProgressView(ready(), response.StatusCode, body)
 		}
 		waitForTemp := func(want string, matches func() bool) {
 			t.Helper()
-			from := time.Now()
-			progress, changes, last := from, 0, zonesView()
+			bound := newProgressBound(30*time.Second, 3*time.Minute, time.Now(), zonesView())
 			for !matches() {
 				now := time.Now()
-				switch {
-				case now.Sub(progress) > 30*time.Second:
-					t.Fatalf("temp.test. did not reach %s: nothing changed for 30s (%d changes in %s): %s", want, changes, now.Sub(from).Round(time.Millisecond), last)
-				case now.Sub(from) > 3*time.Minute:
-					t.Fatalf("temp.test. did not reach %s after 3 minutes (%d changes): %s", want, changes, last)
+				if why := bound.exceeded(now); why != "" {
+					t.Fatalf("temp.test. did not reach %s: %s", want, why)
 				}
-				if view := zonesView(); view != last {
-					changes++
-					progress, last = now, view
-				}
+				bound.observe(now, zonesView())
 				time.Sleep(100 * time.Millisecond)
 			}
-			t.Logf("timing: temp.test. reached %s after %s and %d changes", want, time.Since(from).Round(time.Millisecond), changes)
+			t.Logf("timing: temp.test. reached %s after %s and %d changes", want, time.Since(bound.from).Round(time.Millisecond), bound.changes)
 		}
 		waitForTemp("served = true", tempServed)
 		upgradeMountedRequest(t, client, base, http.MethodDelete, "/objects/dnszones/temp", session.CSRF, nil, http.StatusNoContent, nil)

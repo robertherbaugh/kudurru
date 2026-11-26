@@ -680,6 +680,11 @@ The host decides from each captured object what it runs, and every job holds
 one mode for its lifetime (`ExecutionGuard.Mode`). A change of mode replaces
 the job like any other change of authority: the old job is canceled and
 joined before the next one may be elected on the same per-instance key.
+An incomplete or failed capture supplies no runnable frames and cancels the
+local jobs. The host records a sanitized capture failure reason independently
+of instance observations, and clears it on the next complete capture. On
+SQLite, integration list and get use it instead of stale local observations;
+capture logs and metrics report the time and result without raw adapter errors.
 
 | Captured object | Job | Mode |
 | --- | --- | --- |

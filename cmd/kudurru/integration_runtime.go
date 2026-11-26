@@ -92,6 +92,7 @@ func (r *integrationRuntime) hostOptions() (ih.Options, error) {
 			return nil, ih.ErrUnsupported
 		}
 	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Produce: r.produceEvents, Now: s.opts.Now,
+		Logger: s.opts.Upstreams.Logger, Metrics: s.opts.Registerer,
 		CaptureTimeout: s.opts.IntegrationBounds.Capture, OperationTimeout: s.opts.IntegrationBounds.Operation}, nil
 }
 

@@ -74,9 +74,28 @@ point the tests at servers of your own with `KUDURRU_TEST_CLICKHOUSE_URL`
 (and `KUDURRU_TEST_CLICKHOUSE_USER`, `KUDURRU_TEST_CLICKHOUSE_PASSWORD` for
 a user that may create a database) and `KUDURRU_TEST_LOKI_URL`. The tests
 skip when a URL is empty; `KUDURRU_REQUIRE_SINK_SERVERS=1` makes that a
-failure.
+failure. On code changes, the informational `sinks` CI job uses this flag
+with digest-pinned ClickHouse 25.8 and Loki 3.7.9 and reports the actual
+server versions. The job fails if either server is unavailable, but is
+not part of the required `ci-ok` check.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
+
+### Pinned DNS interoperability
+
+The separate `pinned-interop` workflow is informational, not part of `ci-ok`.
+On a disposable Linux host with Docker, passwordless `sudo`, `jq`, and a C
+compiler for the dnsdist race tests, reproduce the suites one at a time:
+
+```sh
+hack/lab-dockerd.sh knot .context/interop-knot
+CGO_ENABLED=1 hack/lab-dockerd.sh dnsdist .context/interop-dnsdist
+```
+
+Each job uses its own Docker daemon and records the checked-out commit,
+registry digests, image IDs, program versions, and per-suite Go JSON results.
+A missing or skipped test fails the job. The dnsdist client-ID suite still
+expects the [dnsdist 2.1.3 standalone empty QUIC FIN limitation](docs/deploy/client-identity.md).
 
 ## Branches and releases
 
