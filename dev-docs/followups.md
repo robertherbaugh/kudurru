@@ -67,6 +67,7 @@ This does not change the SQLite takeover behavior, which is now documented in
 |---|---|---|
 | Stored TSIG keys: SQLite and Kubernetes management with hot reload (D292, D314, D365) and the `kudurru tsigkeys` CLI (D394) are integrated, and TSIG on DoH/DoQ/DoH3 is integrated (F07b, `a6bf8e1`). Open: `kudurru tsigkeys` has not run against a Kubernetes node, and F07a's final gates (G21–G24) | dev-docs/milestones/m2/xfr.md; F07a | v0.2 |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
+| Zone transfers across other commits: D419 keeps transfer answers current only across the NOTIFY acknowledgment, a primary zone's status projection and its receipt realignment. Any other commit (an unrelated object write such as a token or sign-in, the controller's or the list fetcher's status of other kinds) still withholds every transfer answer, refusals included, until the node publishes again (D395). Extending the transfer-neutral set needs a proof per shape that no transfer is computed from it | #236 (D419) | v0.3 |
 
 ## Active Directory DNS replacement (D222)
 

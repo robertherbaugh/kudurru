@@ -100,6 +100,8 @@ type recursiveRootSeal struct {
 	static            *sqlite.AnchorStaticInput
 	admission         *rootAnchorAdmission
 	served            func(*recursiveRootSeal) bool
+	// transferDependencies is the runtime owner's TransferCurrent (D419).
+	transferDependencies func() bool
 }
 
 func (s *recursiveRootSeal) current() bool {
@@ -137,6 +139,22 @@ func (s *recursiveRootSeal) servedCurrent() bool {
 		return true
 	}
 	return s != nil && s.served != nil && s.served(s) && s.dnsCurrent()
+}
+
+// transferCurrent admits a zone transfer answer or refusal (AXFR, IXFR and
+// every continuation message): every dependency of full data currency and
+// the static/managed anchor owner are current, and the canonical image is
+// this publication's own or moved past it only through transfer-neutral
+// commits (D419): a NOTIFY acknowledgment, a primary zone's status
+// projection and the receipt realignment after it, none of which changes
+// what a transfer is computed from. Any other commit withholds the answer
+// exactly as full data currency does (D395); the served-publication grace
+// of ordinary queries never applies to transfers.
+func (s *recursiveRootSeal) transferCurrent() bool {
+	if s.current() {
+		return true
+	}
+	return s != nil && s.transferDependencies != nil && s.transferDependencies() && s.inputCurrent()
 }
 
 func (s *recursiveRootSeal) inputCurrent() bool {
@@ -207,7 +225,7 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 	if err != nil {
 		return prepared, err
 	}
-	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current, dnsDependencies: runtime.DNSDependenciesCurrent, served: o.served}
+	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current, dnsDependencies: runtime.DNSDependenciesCurrent, transferDependencies: runtime.TransferCurrent, served: o.served}
 	var domain [32]byte
 	switch policy.Mode {
 	case config.RootAnchorsStatic:
