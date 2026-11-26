@@ -82,7 +82,7 @@ jobs:
           node-version: 24
       # The Go reference: the node oracle the tests run (go run) and the
       # golden.json regeneration below.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Typecheck, lint, test and build
@@ -196,7 +196,7 @@ jobs:
         with:
           node-version: 24
       # The suite checks issued keys with the Go node oracle (go run).
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Install (frozen lockfile)
