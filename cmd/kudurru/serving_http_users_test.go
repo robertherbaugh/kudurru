@@ -484,14 +484,18 @@ func TestServingHTTPLocalUsersResetFactorTokensAndRollback(t *testing.T) {
 		t.Fatal("held immutable cut was mutated")
 	}
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", factorBody(t, api.LoginRequest{Username: u.Name, Password: "replacement-password"}), "", nil, ""), 401)
-	cookie, info := localUsersLogin(t, f, u.Name, "replacement-password", servingHTTPFactorCode(t, seed, time.Now()))
+	// The replay below must send this very code. A code computed again later
+	// belongs to the next 30 s step once a step boundary passes between the
+	// two logins, and is then a valid unused code, not a replay.
+	code := servingHTTPFactorCode(t, seed, time.Now())
+	cookie, info := localUsersLogin(t, f, u.Name, "replacement-password", code)
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/tokens", `{}`, "", cookie, info.CSRF), 403)
 	localUsersFresh(t, f)
 	// Replay is not reset by the administrator operation.
 	f.h.factorMu.Lock()
 	f.h.factorLimit.Reset(u.Name)
 	f.h.factorMu.Unlock()
-	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", factorBody(t, api.LoginRequest{Username: u.Name, Password: "replacement-password", TOTPCode: servingHTTPFactorCode(t, seed, time.Now())}), "", nil, ""), 401)
+	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", factorBody(t, api.LoginRequest{Username: u.Name, Password: "replacement-password", TOTPCode: code}), "", nil, ""), 401)
 }
 
 func TestServingHTTPLocalUsersSelfResetCookieAndToken(t *testing.T) {
