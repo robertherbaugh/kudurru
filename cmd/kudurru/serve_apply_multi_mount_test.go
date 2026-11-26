@@ -140,9 +140,19 @@ func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...stri
 // it returns began and ended.
 func mountedRequestWindow(t *testing.T, cfg *config.Config, cli *harness, args ...string) (string, string, time.Time, time.Time) {
 	t.Helper()
+	return mountedRequestWindowFrom(t, cfg, cli, nil, args...)
+}
+
+// mountedRequestWindowFrom is mountedRequestWindow that calls sending, when
+// it is not nil, just before each attempt is sent.
+func mountedRequestWindowFrom(t *testing.T, cfg *config.Config, cli *harness, sending func(), args ...string) (string, string, time.Time, time.Time) {
+	t.Helper()
 	const stale = "current writable serving generation unavailable"
 	for attempt := 1; ; attempt++ {
 		mountedQuiet(t, cfg, cli)
+		if sending != nil {
+			sending()
+		}
 		began := time.Now()
 		out, stderr, err := cli.run(args...)
 		ended := time.Now()
@@ -360,19 +370,21 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	long := writeManifest(t, "long.yaml", documents...)
 
 	var mu sync.Mutex
-	var answered, servfail, read []time.Time
+	var answered, read []time.Time
 	// refusal is one read of the second caller that failed, with when the
 	// CLI began and ended it.
 	type refusal struct {
 		from, to time.Time
 		err      string
+		pending  bool // the capture wait's generation_pending refusal
 	}
 	var refused []refusal
 	// missed holds every probe that got no correct answer, with what it got,
 	// so that a gap is explained in the failure message.
 	type miss struct {
-		at   time.Time
-		what string
+		at       time.Time
+		what     string
+		servfail bool
 	}
 	var missed []miss
 	// stalls are the intervals in which this test process itself was not
@@ -384,6 +396,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	var slowest time.Duration
 	var readError string
 	stop := make(chan struct{})
+	sending := make(chan struct{})
 	var probes sync.WaitGroup
 	stopProbes := sync.OnceFunc(func() { close(stop); probes.Wait() })
 	defer stopProbes()
@@ -408,14 +421,13 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			slowest = max(slowest, time.Since(sent))
 			switch {
 			case err != nil:
-				missed = append(missed, miss{sent, mountedRequestFailure(err) + ": " + err.Error()})
+				missed = append(missed, miss{sent, mountedRequestFailure(err) + ": " + err.Error(), false})
 			case answer.Rcode == dns.RcodeServerFailure:
-				servfail = append(servfail, time.Now())
-				missed = append(missed, miss{sent, "product refusal: SERVFAIL"})
+				missed = append(missed, miss{sent, "product refusal: SERVFAIL", true})
 			case answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 && probeAddress(answer.Answer[0]) == "198.51.100.200":
 				answered = append(answered, time.Now())
 			default:
-				missed = append(missed, miss{sent, "unexpected product response: " + dns.RcodeToString[answer.Rcode] + " " + fmt.Sprint(answer.Answer)})
+				missed = append(missed, miss{sent, "unexpected product response: " + dns.RcodeToString[answer.Rcode] + " " + fmt.Sprint(answer.Answer), false})
 			}
 			mu.Unlock()
 			time.Sleep(50 * time.Millisecond)
@@ -448,12 +460,21 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		// by design (the request is held to at most about twice as slow).
 		// Asking once per capture wait leaves the credit to the request, so
 		// each read waits for the node's next publication only: the
-		// condition under which D378 serves a read.
-		for {
-			select {
-			case <-stop:
-				return
-			case <-time.After(servingHTTPCaptureWait):
+		// condition under which D378 serves a read. The first read goes out
+		// as the request is sent, so that one is in flight however short the
+		// request is.
+		select {
+		case <-stop:
+			return
+		case <-sending:
+		}
+		for first := true; ; first = false {
+			if !first {
+				select {
+				case <-stop:
+					return
+				case <-time.After(servingHTTPCaptureWait):
+				}
 			}
 			asked := time.Now()
 			_, stderr, err := reader.run("get", "dnszones", "-o", "name")
@@ -462,12 +483,12 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 				read = append(read, time.Now())
 			} else {
 				readError = fmt.Sprintf("%s: %v: %s", mountedCLIOutcome(err, stderr), err, strings.TrimSpace(stderr))
-				refused = append(refused, refusal{asked, time.Now(), readError})
+				refused = append(refused, refusal{asked, time.Now(), readError, strings.Contains(err.Error()+stderr, "generation_pending")})
 			}
 			mu.Unlock()
 		}
 	})
-	out, stderr, began, ended := mountedRequestWindow(t, cfg, cli, "apply", "-f", long)
+	out, stderr, began, ended := mountedRequestWindowFrom(t, cfg, cli, sync.OnceFunc(func() { close(sending) }), "apply", "-f", long)
 	stopProbes()
 	if created := strings.Count(out, " created"); created != count {
 		t.Fatalf("unexpected product result: one apply of %d new record sets created %d:\nstdout:\n%s\nstderr:\n%s", count, created, out, stderr)
@@ -482,10 +503,17 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		return in
 	}
 	mu.Lock()
-	answers, servfails, reads := within(answered), len(within(servfail)), within(read)
+	answers, reads := within(answered), within(read)
+	// wrong is every probe sent during the request that got no correct
+	// answer and no SERVFAIL, which the check below counts on its own.
+	var servfails int
 	var wrong []string
 	for _, m := range missed {
-		if m.at.After(began) && m.at.Before(ended) {
+		switch {
+		case !m.at.After(began) || !m.at.Before(ended):
+		case m.servfail:
+			servfails++
+		default:
 			wrong = append(wrong, fmt.Sprintf("+%s %s", m.at.Sub(began).Round(time.Millisecond), m.what))
 		}
 	}
@@ -520,10 +548,11 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		return stalled
 	}
 	stalled := stalledWithin(gapFrom, gapFrom.Add(gap))
-	// A read refused while this process was not scheduled for so long that
-	// the node had less than one capture wait of time to publish for it is
-	// not the node's refusal to count; every other refusal within the
-	// request is.
+	// A generation_pending refusal of a read during which this process was
+	// measured as not scheduled, for so long that the node had less than one
+	// capture wait of time to publish for it, is not the node's refusal to
+	// count. Every other failed read within the request counts: any other
+	// error, and a generation_pending refusal without such a stall.
 	var failed int
 	var excused []string
 	readError = ""
@@ -532,13 +561,13 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			continue
 		}
 		readError = r.err
-		if paused := stalledWithin(r.from, r.to); r.to.Sub(r.from)-paused < servingHTTPCaptureWait {
+		if paused := stalledWithin(r.from, r.to); r.pending && paused > 0 && r.to.Sub(r.from)-paused < servingHTTPCaptureWait {
 			excused = append(excused, fmt.Sprintf("+%s for %s, process not scheduled for %s", r.from.Sub(began).Round(time.Millisecond), r.to.Sub(r.from).Round(time.Millisecond), paused.Round(time.Millisecond)))
 			continue
 		}
 		failed++
 	}
-	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, %d other, slowest answer %s, longest time without one %s (process not scheduled for %s of it), %d reads ok, %d reads failed, %d more refused while the process was not scheduled %q; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, len(wrong)-servfails, slowest, gap, stalled, len(reads), failed, len(excused), excused, readError, load.loadSummary())
+	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, %d other misses, slowest answer %s, longest time without one %s (process not scheduled for %s of it), %d reads ok, %d reads failed, %d more refused while the process was not scheduled %q; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, len(wrong), slowest, gap, stalled, len(reads), failed, len(excused), excused, readError, load.loadSummary())
 	// The zone answers its committed data across every status write of a new
 	// serial that follows each commit (D378 and the status-write row): a
 	// publication that lands while the zone's lifecycle receipt still names
@@ -553,7 +582,8 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// not published yet, and a replaced provider resource set, withhold
 	// nothing, and an answer whose publication was replaced while it was
 	// computed is still sent (D395). So every probe gets the committed
-	// record, however slowly the node answers under load.
+	// record, however slowly the node answers under load; SERVFAIL is
+	// counted by the check above.
 	if len(wrong) > 0 {
 		t.Errorf("%d DNS queries for an existing record got no correct answer during one request: %q; %s", len(wrong), wrong, load.loadSummary())
 	}
@@ -594,7 +624,9 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	if !raceEnabled && failed > 0 {
 		t.Fatalf("%d reads of a second caller failed during one request (%d answered); last: %s; %s", failed, len(reads), readError, load.loadSummary())
 	}
-	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
+	// The first read goes out as the request is sent, so without the race
+	// detector at least one read is answered during every request.
+	if elapsed := ended.Sub(began); (!raceEnabled || elapsed > 5*defaultItemPace.work) && len(reads) == 0 {
 		t.Fatalf("no read of a second caller was answered during the %s of one request; last failure: %s; %s", elapsed, readError, load.loadSummary())
 	}
 }
