@@ -78,7 +78,11 @@ type Bundle struct {
 	components map[string]Component
 	current    func() bool
 	anchor     *sqlite.AnchorPublication
-	refs       atomic.Int64
+	// wakes is the Publisher's Wake count noted before this bundle's
+	// preparation read its candidate: the bundle includes what each of
+	// those Wakes announced (D405).
+	wakes uint64
+	refs  atomic.Int64
 }
 
 // Identity returns the actual published generation/dependency identity.
