@@ -1,0 +1,14 @@
+=== RUN   TestTerminatingSlowCommandsMakeDurableProgress
+2026/11/20 19:50:43 INFO integration terminating integration=dns/sink reason=CleanupInProgress remaining=1 blocked=0 pending=0
+    cleanup_test.go:38: first bounded run: durable ledger rows 2 -> 1
+2026/11/20 19:51:02 INFO integration finalized integration=dns/sink released=false recordSetsDeleted=2 recordsForgotten=2 runs=2
+    cleanup_test.go:38: second bounded run: durable ledger rows 1 -> 0, two owned deletes total
+--- PASS: TestTerminatingSlowCommandsMakeDurableProgress (37.56s)
+=== RUN   TestTerminatingSlowRereadMakesDurableProgress
+2026/11/20 19:51:06 INFO integration terminating integration=dns/sink reason=CleanupInProgress remaining=1 blocked=0 pending=0
+    cleanup_test.go:48: first bounded run: durable ledger rows 2 -> 1
+2026/11/20 19:51:09 INFO integration finalized integration=dns/sink released=false recordSetsDeleted=2 recordsForgotten=2 runs=2
+    cleanup_test.go:48: second bounded run: durable ledger rows 1 -> 0, two owned deletes total
+--- PASS: TestTerminatingSlowRereadMakesDurableProgress (6.95s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/ee/integration/host	44.526s

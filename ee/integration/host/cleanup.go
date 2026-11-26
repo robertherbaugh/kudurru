@@ -140,6 +140,10 @@ type terminatingLease struct {
 	providerCut bool
 	// forgetTook is how long the last Forget that committed took.
 	forgetTook time.Duration
+	// deleteTook is the duration of the last delete from fence through confirmation.
+	deleteTook time.Duration
+	// readTook is the duration of the last complete cleanup observation.
+	readTook time.Duration
 }
 
 // forgetChunk is how many operations the next Forget of this lease carries.
@@ -178,7 +182,19 @@ var errYield = errors.New("integration cleanup: run yields")
 // progress always goes on, so a slow store still moves.
 func (h *Host) yields(ctx context.Context, st *terminatingLease) bool {
 	deadline, ok := ctx.Deadline()
-	return ok && st.progress && time.Until(deadline) < max(st.forgetTook*3/2, h.opts.OperationTimeout/8)
+	return ok && st.progress && time.Until(deadline) < h.cleanupCommitReserve(st)
+}
+
+// yieldsBeforeDelete reserves time for the next complete observation and a
+// forget after this run has confirmed a delete.
+func (h *Host) yieldsBeforeDelete(ctx context.Context, st *terminatingLease, applied int) bool {
+	deadline, ok := ctx.Deadline()
+	return ok && st != nil && applied > 0 && time.Until(deadline) < st.deleteTook+st.readTook+h.cleanupCommitReserve(st)
+}
+
+// cleanupCommitReserve estimates how much time to leave for a forget commit.
+func (h *Host) cleanupCommitReserve(st *terminatingLease) time.Duration {
+	return max(st.forgetTook*3/2, h.opts.OperationTimeout/8)
 }
 
 // forget runs one Forget of the lease and notes whether the run's bound
@@ -559,6 +575,7 @@ func terminatingError(ctx context.Context, err error) error {
 // configuration still names: its complete remote snapshot and the instance's
 // ledger rows there, bound into a cleanup plan input with nothing desired.
 func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease) ([]publicationInput, error) {
+	started := time.Now()
 	publisher, ok := j.provider.(Publisher)
 	if !ok {
 		return nil, ErrUnsupported
@@ -602,6 +619,7 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return nil, err
 	}
+	st.readTook = time.Since(started)
 	return out, nil
 }
 
@@ -658,7 +676,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	result.Applied, result.Pending = applied.Applied, applied.Pending
 	st.summary.RecordSetsDeleted += applied.Applied
 	st.progress = st.progress || applied.Applied > 0
-	if applyErr != nil {
+	if applyErr != nil && !errors.Is(applyErr, errYield) {
 		return false, failed(ctx, ReasonCleanupFailed, result, applyErr)
 	}
 	if result.Applied > 0 {

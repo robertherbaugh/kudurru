@@ -84,7 +84,7 @@ jobs:
       KUDURRU_REQUIRE_ENVTEST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
@@ -145,7 +145,7 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
@@ -205,13 +205,64 @@ jobs:
       KUDURRU_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Central-database tests
         run: |
           go test -count=1 ./internal/central/...
           go test -count=1 -run '^TestDoctorDatabase$' ./cmd/kudurru
+  # Informational until the owner approves making it part of ci-ok.
+  sinks:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 10
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.8@sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77
+        env:
+          CLICKHOUSE_PASSWORD: kudurru
+        ports: ["58123:8123"]
+      loki:
+        image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+        ports: ["53100:3100"]
+    env:
+      KUDURRU_TEST_CLICKHOUSE_URL: http://127.0.0.1:58123
+      KUDURRU_TEST_CLICKHOUSE_USER: default
+      KUDURRU_TEST_CLICKHOUSE_PASSWORD: kudurru
+      KUDURRU_TEST_LOKI_URL: http://127.0.0.1:53100
+      KUDURRU_REQUIRE_SINK_SERVERS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Wait for both sink servers and report versions
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          for url in "$KUDURRU_TEST_CLICKHOUSE_URL/ping" "$KUDURRU_TEST_LOKI_URL/ready"; do
+            echo "Waiting for $url"
+            curl -fsS --max-time 2 --retry 30 --retry-delay 2 --retry-all-errors --retry-max-time 70 "$url"
+          done
+          echo "Sink qualification source: $(git rev-parse HEAD) (head $HEAD_SHA)"
+          printf 'ClickHouse version: '
+          curl -fsS --max-time 5 --user "$KUDURRU_TEST_CLICKHOUSE_USER:$KUDURRU_TEST_CLICKHOUSE_PASSWORD" \
+            --data-binary 'SELECT version()' "$KUDURRU_TEST_CLICKHOUSE_URL/"
+          printf 'Loki build info: '
+          curl -fsS --max-time 5 "$KUDURRU_TEST_LOKI_URL/loki/api/v1/status/buildinfo"
+      - name: Live query-log sink tests
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/sinks-tests.log"
+          go test -count=1 -run '^TestLive(ClickHouseReadsTheDocumentedTable|LokiServesTheDocumentedMapping)$' -v ./internal/querylog/sinks/ | tee "$log"
+          for test in TestLiveClickHouseReadsTheDocumentedTable TestLiveLokiServesTheDocumentedMapping; do
+            if ! grep -q "^--- PASS: $test (" "$log"; then
+              echo "Mandatory sink qualification did not pass: $test" >&2
+              exit 1
+            fi
+          done
   # The dashboard SPA (dashboard/, D69): lint, typecheck, unit tests with MSW,
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.
@@ -240,7 +291,7 @@ jobs:
         run: bun run test
       - name: Build (fails over the initial-load budget)
         run: bun run build
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Embed the built bundle
@@ -268,7 +319,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Install (frozen lockfile)
@@ -334,7 +385,7 @@ jobs:
       KUDURRU_NAMED: /usr/sbin/named
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       # The upgrade tests build the previous release from its tag
@@ -396,7 +447,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Install stock DHCP client and namespace tools
@@ -435,7 +486,7 @@ jobs:
     name: fuzz ${{ matrix.shard }}/7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Fuzz each target for 60 s
@@ -461,7 +512,7 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Vet
@@ -472,7 +523,7 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -488,10 +539,10 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
         with:
           version: v4.3.0
       - name: Cache kubeconform schemas and tools
@@ -531,18 +582,18 @@ jobs:
     runs-on: ubicloud-standard-2-ubuntu-2404
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       - name: Deny copyleft modules
         run: |
           go install github.com/google/go-licenses@latest
           go-licenses check ./... --disallowed_types=forbidden,restricted
-  # The one check to watch and to require: it passes when every job above
+  # The one required check: it passes when every job in needs
   # passed or was skipped (docs-only changes) and fails otherwise. It runs
   # even when a job fails, rather than being skipped, because a skipped job
   # satisfies a required status check; the same goes for a canceled run.
-  # Add new jobs to needs.
+  # Add new blocking jobs to needs.
   ci-ok:
     needs: [changes, go, build, postgres, dashboard, dashboard-e2e, e2e, dhcp-acceptance, fuzz, vet, lint, helm, licenses]
     if: always()

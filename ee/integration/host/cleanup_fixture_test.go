@@ -48,6 +48,7 @@ type cleanupWorld struct {
 	// beforeDelete runs before the provider's delete request, outside the
 	// world's lock, with the context of the run that asked for it.
 	beforeDelete func(context.Context)
+	beforeRead   func(context.Context) error
 	// hangAfterDelete makes a delete request, once it reached the world,
 	// wait for its context and answer like the Cloudflare adapter does when
 	// the reread after an unacknowledged batch fails: a partial receipt
@@ -165,6 +166,11 @@ func (p cleanupPublisher) Destinations(context.Context) ([]Publication, error) {
 }
 func (p cleanupPublisher) Records(ctx context.Context, d kinds.Destination) (RemoteSnapshot, error) {
 	var out RemoteSnapshot
+	if p.w.beforeRead != nil {
+		if err := p.w.beforeRead(ctx); err != nil {
+			return out, err
+		}
+	}
 	err := p.request(ctx, false, func() error {
 		out.Complete = !p.w.incomplete
 		for _, row := range p.w.remote[d] {
@@ -305,7 +311,9 @@ type cleanupFixture struct {
 	forgets  []int
 	// forgetCost is how long each delete of a ledger forget takes; a forget
 	// that its context ends first commits nothing.
-	forgetCost time.Duration
+	forgetCost            time.Duration
+	commandLatencyDivisor int
+	cleanupReadDelay      time.Duration
 	// ledgerRefused makes the host's paged reads of ledger rows fail.
 	ledgerRefused atomic.Bool
 	// operationsStalled makes the host's paged reads of operations wait for
@@ -386,9 +394,18 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	if configure != nil {
 		configure(f)
 	}
+	if f.cleanupReadDelay > 0 {
+		f.w.beforeRead = func(ctx context.Context) error { return f.delayCleanup(ctx, f.cleanupReadDelay) }
+	}
 	repository, err := ledger.New(ledger.Options{Reader: f.st, Now: f.now, Write: func(ctx context.Context, g ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
 		var out store.Object
 		err := f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			switch o.(type) {
+			case *kinds.IntegrationLedger, *kinds.IntegrationOperation:
+				if err := f.delayCleanupCommand(ctx); err != nil {
+					return err
+				}
+			}
 			if _, operation := o.(*kinds.IntegrationOperation); operation && f.writesStalled.Load() {
 				<-ctx.Done()
 				return ctx.Err()
@@ -400,6 +417,9 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		return out, err
 	}, Delete: func(ctx context.Context, g ledger.Guard, requests []store.DeleteRequest) error {
 		return f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			if err := f.delayCleanupCommand(ctx); err != nil {
+				return err
+			}
 			if f.forgetCost > 0 {
 				select {
 				case <-time.After(f.forgetCost * time.Duration(len(requests))):
@@ -428,7 +448,7 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	if f.slots == 0 {
 		f.slots = 2
 	}
-	if f.timeout == 0 {
+	if f.timeout == 0 && f.commandLatencyDivisor == 0 {
 		f.timeout = 5 * time.Second
 	}
 	if f.records == 0 {
@@ -518,6 +538,30 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		}
 	})
 	return f
+}
+
+func (f *cleanupFixture) delayCleanupCommand(ctx context.Context) error {
+	if f.commandLatencyDivisor == 0 {
+		return nil
+	}
+	return f.delayCleanup(ctx, f.h.opts.OperationTimeout/time.Duration(f.commandLatencyDivisor))
+}
+
+func (f *cleanupFixture) delayCleanup(ctx context.Context, cost time.Duration) error {
+	f.mu.Lock()
+	terminating := f.object != nil && !f.object.DeletionTimestamp.IsZero()
+	f.mu.Unlock()
+	if !terminating {
+		return nil
+	}
+	timer := time.NewTimer(cost)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // now is a strictly increasing clock: the ledger requires an observation to

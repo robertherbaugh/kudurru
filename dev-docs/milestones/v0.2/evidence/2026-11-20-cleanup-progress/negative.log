@@ -1,0 +1,7 @@
+=== RUN   TestTerminatingSlowCommandsMakeDurableProgress
+2026/11/20 19:35:26 INFO integration terminating integration=dns/sink reason=CleanupInProgress remaining=2 blocked=0 pending=1
+    cleanup_test.go:49: first bounded run: expected 2 -> 1 durable ledger rows, got 2 -> 2
+--- FAIL: TestTerminatingSlowCommandsMakeDurableProgress (30.01s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/ee/integration/host	30.027s
+FAIL

@@ -6,6 +6,7 @@ import (
 	"crypto"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -310,7 +311,7 @@ func TestAnchorLifecycleBoundsBeforeOwnerAllocation(t *testing.T) {
 }
 
 func TestAnchorSQLActualTermination(t *testing.T) {
-	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error", "context-ended", "context-ended-after-commit"} {
+	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error", "context-ended", "context-ended-statement", "context-ended-wrapped-statement", "context-ended-joined-statement", "context-ended-after-commit"} {
 		t.Run(kind, func(t *testing.T) {
 			s := openTemp(t)
 			ctx, cancel := context.WithCancel(t.Context())
@@ -321,6 +322,7 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 			}
 			boundary := anchorSQL{tx: tx, ctx: ctx}
 			var result error
+			independent := errors.New("independent refusal")
 			expected := AnchorRolledBack
 			switch kind {
 			case "unchanged":
@@ -349,6 +351,20 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 				cancel()
 				awaitTxDone(t, tx)
 				result = ctx.Err()
+			case "context-ended-statement", "context-ended-wrapped-statement", "context-ended-joined-statement":
+				cancel()
+				awaitTxDone(t, tx)
+				var one int
+				result = tx.QueryRowContext(t.Context(), "SELECT 1").Scan(&one)
+				if result != sql.ErrTxDone {
+					t.Fatal("statement did not see the canceled transaction end", result)
+				}
+				if kind == "context-ended-joined-statement" {
+					result = errors.Join(result, independent)
+				}
+				if kind != "context-ended-statement" {
+					result = fmt.Errorf("read object: %w", result)
+				}
 			case "context-ended-after-commit":
 				// A commit attempt stays unknown even when the context
 				// ended first.
@@ -370,8 +386,18 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 			if kind == "already-rolled-back" && !errors.Is(result, sql.ErrTxDone) {
 				t.Fatal("lost unconfirmed rollback category")
 			}
-			if kind == "context-ended" && (!errors.Is(result, context.Canceled) || errors.Is(result, sql.ErrTxDone)) {
-				t.Fatal("a context rollback changed the caller's error", result)
+			switch kind {
+			case "context-ended", "context-ended-statement", "context-ended-wrapped-statement":
+				if !errors.Is(result, context.Canceled) || errors.Is(result, sql.ErrTxDone) {
+					t.Fatal("a context rollback did not report cancellation", result)
+				}
+				if kind == "context-ended-wrapped-statement" && !strings.Contains(result.Error(), "read object:") {
+					t.Fatal("a context rollback lost the statement diagnostic", result)
+				}
+			case "context-ended-joined-statement":
+				if !errors.Is(result, independent) || !errors.Is(result, sql.ErrTxDone) || errors.Is(result, context.Canceled) {
+					t.Fatal("a context rollback replaced independent error causes", result)
+				}
 			}
 		})
 	}

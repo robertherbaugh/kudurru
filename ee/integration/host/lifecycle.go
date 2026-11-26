@@ -27,9 +27,19 @@ func (h *Host) Wake() {
 }
 
 // Statuses returns stable private copies of sanitized local diagnostics.
+// It is empty while the last capture failed; StatusSnapshot also reports why.
 func (h *Host) Statuses() []InstanceStatus {
+	statuses, _ := h.StatusSnapshot()
+	return statuses
+}
+
+// StatusSnapshot returns instance observations and the current host-wide capture failure reason.
+func (h *Host) StatusSnapshot() ([]InstanceStatus, string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	if h.captureFailure != "" {
+		return nil, h.captureFailure
+	}
 	out := make([]InstanceStatus, 0, len(h.statuses))
 	for _, s := range h.statuses {
 		s.Result = valueResult(&s.Result)
@@ -37,7 +47,7 @@ func (h *Host) Statuses() []InstanceStatus {
 		out = append(out, s)
 	}
 	slices.SortFunc(out, func(a, b InstanceStatus) int { return strings.Compare(instanceKey(a.Owner), instanceKey(b.Owner)) })
-	return out
+	return out, ""
 }
 func instanceKey(i InstanceID) string { return i.Namespace + "/" + i.Name }
 
@@ -103,6 +113,7 @@ func (h *Host) Run(ctx context.Context) error {
 }
 func (h *Host) refresh(ctx context.Context) {
 	capture := h.captures.Add(1)
+	started := time.Now()
 	captureCtx, cancel := context.WithTimeout(ctx, h.opts.CaptureTimeout)
 	input, err := h.opts.Capture(captureCtx)
 	var instances []*Instance
@@ -118,7 +129,15 @@ func (h *Host) refresh(ctx context.Context) {
 			sourceDigest = kinds.Digest(encoded)
 		}
 	}
+	if contextErr := captureCtx.Err(); contextErr != nil {
+		err = contextErr
+	}
 	cancel()
+	duration := time.Since(started)
+	reason := captureFailureReason(err)
+	if ctx.Err() == nil {
+		h.captureMetrics.observe(reason, duration)
+	}
 	desired := map[string]*Instance{}
 	if err == nil {
 		for _, i := range instances {
@@ -126,7 +145,14 @@ func (h *Host) refresh(ctx context.Context) {
 		}
 	}
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	previousFailure := h.captureFailure
+	h.captureFailure = reason
+	defer func() {
+		h.mu.Unlock()
+		if reason != "" && reason != previousFailure && ctx.Err() == nil {
+			h.opts.Logger.Warn("integration capture failed", "reason", reason, "duration", duration, "bound", h.opts.CaptureTimeout)
+		}
+	}()
 	for key, j := range h.jobs {
 		select {
 		case <-j.done:

@@ -680,6 +680,11 @@ The host decides from each captured object what it runs, and every job holds
 one mode for its lifetime (`ExecutionGuard.Mode`). A change of mode replaces
 the job like any other change of authority: the old job is canceled and
 joined before the next one may be elected on the same per-instance key.
+An incomplete or failed capture supplies no runnable frames and cancels the
+local jobs. The host records a sanitized capture failure reason independently
+of instance observations, and clears it on the next complete capture. On
+SQLite, integration list and get use it instead of stale local observations;
+capture logs and metrics report the time and result without raw adapter errors.
 
 | Captured object | Job | Mode |
 | --- | --- | --- |
@@ -796,6 +801,14 @@ flowchart TD
   then no integration job gets a frame. Operations, which ordinary life
   never prunes, count toward that store limit; it is the open limit on an
   instance's history.
+- **Bounded progress.** After a confirmed delete, the host uses the last
+  delete and complete observation times to estimate whether another delete
+  fits with time left for a reread and a forget commit. If not, it defers the
+  next intent and moves to the reread and proof-based forget in the current
+  run. Neither the deadline nor the frame, lease, and ownership checks
+  change. A later lease
+  can recover a pending delete from the stored intent and a complete reread,
+  and does not replay a delete whose absence it can confirm.
 - **Long histories.** Operations leave in bounded commits: a ledger row with
   the first of its record's operations, at most
   `ledger.MaxForgetOperations` (1,024), the rest a stored page at a time once

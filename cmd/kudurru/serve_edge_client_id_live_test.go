@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"io"
 	"log/slog"
 	"math/big"
@@ -42,10 +43,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
-
-// edgeClientIDImage is the pinned dnsdist 2.1.3 image of the live edge tests.
-const edgeClientIDImage = "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e"
 
 // TestRunServeEdgeClientIDLiveDnsdist runs the pinned dnsdist 2.1.3 image
 // with the configuration kudurru renders (YAML and Lua) in front of a real
@@ -289,7 +288,7 @@ func runEdgeClientIDDnsdist(t *testing.T, dir string, renderer dnsdist.Renderer,
 		}
 		_, _ = docker(ctx, "rm", "--force", name)
 	})
-	if out, err := docker(t.Context(), "run", "-d", "--name", name, "--network", "host", "-v", dir+":/cfg:ro", "--entrypoint", "dnsdist", edgeClientIDImage,
+	if out, err := docker(t.Context(), "run", "-d", "--name", name, "--network", "host", "-v", dir+":/cfg:ro", "--entrypoint", "dnsdist", kudurrutest.DnsdistImage,
 		"--supervised", "--disable-syslog", "-C", "/cfg/"+renderer.Name()+"/"+renderer.Main()); err != nil {
 		t.Fatalf("start dnsdist: %v %s", err, out)
 	}
@@ -477,11 +476,19 @@ func (x edgeClientIDTargets) finAloneAnswered(t *testing.T, roots *x509.CertPool
 func (x edgeClientIDTargets) h3Post(ctx context.Context, roots *x509.CertPool, path string, wire []byte, watch *quicFINWatch, finAlone bool) (*http.Response, error) {
 	h3 := &http3.Transport{TLSClientConfig: edgeClientIDTLS(roots, "dns.example.com"), QUICConfig: &quic.Config{Tracer: watch.tracer}}
 	defer func() { _ = h3.Close() }()
+	return x.h3PostRoundTrip(ctx, path, wire, finAlone, h3.RoundTrip)
+}
+
+func (x edgeClientIDTargets) h3PostRoundTrip(ctx context.Context, path string, wire []byte, finAlone bool, roundTrip func(*http.Request) (*http.Response, error)) (*http.Response, error) {
 	var body io.Reader = bytes.NewReader(wire)
 	if finAlone {
 		r, w := io.Pipe()
+		defer func() { _ = r.Close() }()
 		go func() {
-			_, _ = w.Write(wire)
+			if _, err := w.Write(wire); err != nil {
+				_ = w.CloseWithError(err)
+				return
+			}
 			time.Sleep(200 * time.Millisecond)
 			_ = w.Close()
 		}()
@@ -492,7 +499,7 @@ func (x edgeClientIDTargets) h3Post(ctx context.Context, roots *x509.CertPool, p
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
-	resp, err := h3.RoundTrip(req)
+	resp, err := roundTrip(req)
 	if err != nil {
 		return nil, err
 	}
@@ -503,6 +510,29 @@ func (x edgeClientIDTargets) h3Post(ctx context.Context, roots *x509.CertPool, p
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(data))
 	return resp, nil
+}
+
+func TestH3PostClosesFINAlonePipeOnRoundTripError(t *testing.T) {
+	dialErr := errors.New("test dial failure")
+	var requestBody io.ReadCloser
+	target := edgeClientIDTargets{doh3: "127.0.0.1:1"}
+	_, err := target.h3PostRoundTrip(t.Context(), "/dns-query", []byte("query"), true, func(req *http.Request) (*http.Response, error) {
+		requestBody = req.Body
+		return nil, dialErr
+	})
+	if !errors.Is(err, dialErr) {
+		t.Fatalf("h3PostRoundTrip error = %v, want %v", err, dialErr)
+	}
+	if requestBody == nil {
+		t.Fatal("RoundTrip did not receive a request body")
+	}
+	data, err := io.ReadAll(requestBody)
+	if !errors.Is(err, io.ErrClosedPipe) {
+		t.Fatalf("request body read error = %v, want %v (read %q)", err, io.ErrClosedPipe, data)
+	}
+	if len(data) != 0 {
+		t.Fatalf("request body remained readable after RoundTrip failed: %q", data)
+	}
 }
 
 func (x edgeClientIDTargets) dotSNI(t *testing.T, roots *x509.CertPool, server, name string) int {

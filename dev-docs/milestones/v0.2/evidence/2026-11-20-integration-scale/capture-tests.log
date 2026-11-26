@@ -1,0 +1,13 @@
+=== host-race.log ===
+=== RUN   TestCaptureFailureDiagnosticsAndRecovery
+2026/11/20 19:45:51 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestCaptureFailureDiagnosticsAndRecovery (0.03s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/ee/integration/host	1.069s
+=== admin-race.log ===
+=== RUN   TestIntegrationAdminReportsHostCaptureFailure
+2026/11/20 19:46:46 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/20 19:46:47 INFO complete serving generation published again component=serving
+2026/11/20 19:46:48 WARN integration capture failed reason=CaptureDeadlineExceeded duration=23.342µs bound=10s
+--- PASS: TestIntegrationAdminReportsHostCaptureFailure (1.90s)
+PASS
