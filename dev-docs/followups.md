@@ -7,9 +7,12 @@ creation does not waive release requirements.
 
 Package lifecycle (#167, part of #133): the optional `packages` workflow
 exercises maintainer scripts and systemd on an Ubuntu VM and in Rocky Linux.
-Retain a green hosted `package-lifecycle` artifact before proposing a required
-check. The November 16, 2026 RPM rehearsal did not run maintainer scripts or
-systemd, and snapshot results do not replace evidence for the published packages.
+The [verified closeout](milestones/v0.2/final-acceptance.md#verified-issue-closeout-november-21-2026)
+records green hosted `package-lifecycle` results and the checksums for both
+snapshot formats.
+The check remains optional. The November 16, 2026 RPM rehearsal did not run
+maintainer scripts or systemd, and snapshot results do not replace evidence
+for the published packages.
 See [the release checklist](release-checklist.md#3-checks-before-ga-ci-and-the-owners-hardware).
 
 For #133, use the [manual release acceptance runbook](milestones/v0.2/manual-acceptance.md)
@@ -64,6 +67,7 @@ This does not change the SQLite takeover behavior, which is now documented in
 |---|---|---|
 | Stored TSIG keys: SQLite and Kubernetes management with hot reload (D292, D314, D365) and the `kudurru tsigkeys` CLI (D394) are integrated, and TSIG on DoH/DoQ/DoH3 is integrated (F07b, `a6bf8e1`). Open: `kudurru tsigkeys` has not run against a Kubernetes node, and F07a's final gates (G21–G24) | dev-docs/milestones/m2/xfr.md; F07a | v0.2 |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
+| Zone transfers across other commits: D419 keeps transfer answers current only across the NOTIFY acknowledgment, a primary zone's status projection and its receipt realignment. Any other commit (an unrelated object write such as a token or sign-in, the controller's or the list fetcher's status of other kinds) still withholds every transfer answer, refusals included, until the node publishes again (D395). Extending the transfer-neutral set needs a proof per shape that no transfer is computed from it | #236 (D419) | v0.3 |
 
 ## Active Directory DNS replacement (D222)
 
@@ -197,6 +201,12 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+Current K3/K7 follow-through: [mounted Kubernetes evidence for #156](milestones/v0.2/followup-audit.md#k3k7-mounted-evidence-156)
+supersedes the historical test gaps below for election, shared budgets,
+holder recovery, partition and re-acquisition, cleanup fencing, rotation,
+license expiry and UID replacement. This is local envtest evidence only;
+it does not change deployment support or claim live qualification.
+
 | Item | Source | Target |
 |---|---|---|
 | Define what `kudurru integrations list/get -o name` should print. The current list prints a table and get prints YAML; #154 preserves both formats. | PR #192 review | Integration CLI follow-up |
@@ -207,11 +217,11 @@ term (F28-HISTORY-RECHECK, D369).
 | Kubernetes integration host: K3 and K7 stay partial (two-replica budget sharing with hand-placed Leases only, credential rotation proven by order only, no holder-change, partition or mid-cleanup lease-loss qualification, expired license and re-created Integration proven at the adapter only); UniFi record publication and Tier-B webhooks are refused on Kubernetes; native Secret credential references are disabled; the CLI `get` is not run on Kubernetes | F09B-KUBE-ROOT, F09B-KUBE-SOURCES, F09B-OPEN | v0.2 |
 | Edge blocks: the five-minute restore hold measures wall time since the first lower sighting, so two pulls five minutes apart accept a stale revision at once; after a deliberate restore new blocks are delayed up to five minutes (not in the runbook); an owner whose only backend misses a pull has its blocks cleared and reinstalled | EDGE-DYNBLOCK verify | v0.2 |
 | Known issue: the pinned dnsdist 2.1.3 edge never answers a DoQ or DoH3 request whose QUIC FIN arrives in its own empty frame. The live client-ID test's canary fails once an image bump fixes it (then drop the retry and the known-issue text); the canary cannot tell the defect from another failure; `h3Post` leaks a goroutine on a dial failure; one DoQ loss was attributed to the defect by inference only | EDGE-CLIENT-ID | dnsdist upstream; after v0.2.0 |
-| CoreDNS same-name multi-port loss reporting (#161) and Kubernetes RPZ diagnostics (#162) remain open. The local #162 baseline already exposes RPZ fields in dig; the policy-state count and readiness are incorrect. The [RPZ-OPEN follow-up](milestones/v0.2/followup-audit.md#sqlite-restart-and-pending-filters-163) measured local SQLite restart windows of 152 ms and 303 ms from first response to first RPZ NXDOMAIN (no NOERROR), limited pending filters to RPZ, and pinned the CLI fixture messages. The signed Kubernetes offline restart still fails closed by design (D390). | RPZ-KUBE, RPZ-DIAG, RPZ-OPEN; #130, #161, #162, #163 | v0.2 |
+| CoreDNS same-name multi-port loss reporting (#161) and Kubernetes RPZ policy-state counts and readiness (#162) are fixed. The [RPZ-OPEN follow-up](milestones/v0.2/followup-audit.md#sqlite-restart-and-pending-filters-163) measured local SQLite restart windows of 152 ms and 303 ms from first response to first RPZ NXDOMAIN (no NOERROR), limited pending filters to RPZ, and pinned the CLI fixture messages. The signed Kubernetes offline restart still fails closed by design (D390). | RPZ-KUBE, RPZ-DIAG, RPZ-OPEN; #130, #161, #162, #163 | Implemented; see the [verified closeout](milestones/v0.2/final-acceptance.md#verified-issue-closeout-november-21-2026) |
 | Settings after the first 0.2 start: `PreparedImage.CommittedDynamicOwnership` rebuilds the zone's dynamic index on every publication; `docs/deploy/runbooks.md` (near line 600) and `docs/deploy/compose-ha.md` (near line 108) say a later file edit of any cluster key is not applied, which is inaccurate for restart-required keys; static twins cannot change a cluster setting after their first 0.2 start; `TestAnchorUpgradeStaticTwinV010/LaterFileEditNotApplied` does not assert the seeded value | QUAL-OPEN2 and QUAL-MIXED-VERSION verify | v0.2 |
 | G21-PERMISSIONS (#139), closed with local evidence at `62763b3750cbaf025407fbec7d11a6c778ae1fdf`: five same-package negative controls fail on `c36efe14` and `ce3ab6e2` and pass with the existing six after the fix. The 75 verbose `uses, first` inventory lines match both baselines. `CGO_ENABLED=1 go test ./internal/api -run '^Test(RoutePermissionLint\|HandlerPermissionScanCreditsOnlyChecks\|PermissionVerbsAreUsedOrReserved\|LintVerbUseCatchesUnusedAndStale)$' -race -count=1 -v` passed (4 tests, 11 subtests); `CGO_ENABLED=0 go vet ./internal/api` passed; `CGO_ENABLED=0 golangci-lint run ./internal/api/...` (v2.15.0) reported 0 issues; `python3 -B -m unittest discover -s hack -p 'test_bench_*.py'` passed all 53 bench-guard tests on an isolated rerun after one `Text file busy` fixture failure. These results replace the missing evidence without reclassifying the empty historical `fix-bench01.log` and `fix-lint02.log`. The bare-name item is closed; D393 in `dev-docs/design-record.md` already closes the `settings.operatorSeesQueryLog` wording item. The review follow-up adds range-declaration and method-receiver controls: both fail on `7c3f1355`, all 13 scanner subtests pass under race after the follow-up, and the 75 inventory lines still match. No hosted acceptance or performance claim. | G21-PERMISSIONS verify | v0.2 |
 | Evidence gaps: FLAKE-PORT-RACE's ledger points at unfinished logs (use `verify-01-mounted-race.log`, `verify-03-lint.log`) | FLAKE-PORT-RACE verify | v0.2 |
-| Low-severity notes left open: HA-SELF (200 for any token authentication failure on the new-hash view; every seal error reported as `committed_output_unavailable`; no mounted follower audit test); OBS-TRACING (about 5 KB per traced query); F09B-OPEN (joined budget error classification untested; timing-dependent bounds); QUAL-OPEN3 wording of the measured percentages | verify results in `followups/*.json` | v0.2 |
+| Low-severity notes left open: OBS-TRACING (about 5 KB per traced query); F09B-OPEN (joined budget error classification untested; timing-dependent bounds); QUAL-OPEN3 wording of the measured percentages | verify results in `followups/*.json` | v0.2 |
 | Hosted job for the local-only interop suites: start a private dockerd on the runner and run `hack/test-knot-catalog.sh` (Knot `cznic/knot@sha256:174b0fcb24c6c3bc5065c9d1ce46b588eec607a5f32bc40ff0cda60150f00bd9`, knotd 3.6.2; `TestKnotCatalogConsumer` and `TestKnotInboundSecondaryTransfer`, last unskipped pass at `2e4e89fc`) and `hack/test-dnsdist-live.sh` (`powerdns/dnsdist-21:2.1.3@sha256:c70ae7363712188ab2878d22bc9f1801cae29190688474a224caee2089f74837`; all live dnsdist tests: F43 YAML/Lua, F28, F39b (both tests), anchor edge and F18c, last unskipped pass at `d2039002`, `out/QUAL-OPEN3`). Until then both are local-only evidence | QUAL-INTEROP, G23-R5; D383 | after v0.2.0 |
 
 RPZ diagnostics (#162): mounted `TestRunServeKubeRPZFeeds` already reports
@@ -219,6 +229,13 @@ RPZ diagnostics (#162): mounted `TestRunServeKubeRPZFeeds` already reports
 missing policy-state rule counts and incorrectly ready unavailable feeds;
 it now pins the node-local projection alongside the equivalent assertions in
 `TestRunServeSQLiteRPZFeedDiagnostics`. Evidence is local (envtest and SQLite).
+
+The historical HA-SELF notes were addressed in the HA-OPEN5 batch (`7bae1238`,
+`532a5cd7`) and its review fix (`1737eb2e`).
+`TestRootMemberForwardPasswordTransportRefusalActualHTTP` distinguishes a
+retained password refusal from a member transport refusal and checks that
+neither leaves a durable mutation audit row. See the
+[current #137 evidence](milestones/v0.2/followup-audit.md#follower-self-service-refusal-evidence-137).
 
 ### Current F09B evidence (#174)
 
@@ -257,8 +274,8 @@ remains.
 | `TestRunServeUniFiHostnamePolicyLifecycle` fails under the race detector since the ID-INVENTORY commits (bisect: passes at `2e15060e`, fails at `e0bddb72`) | ID-INVENTORY verify; integrator; INVENTORY-REGRESS | v0.2 |
 | Managed root anchors: the [November 20 evidence](milestones/v0.2/followup-audit.md#f28-startup-bounds-and-hosted-bootstrap-evidence--november-20-2026) confirms the exact bootstrap count and two-race cap on current source. Hosted CI 44780132339 observed one acquisition and zero races in each enrolled case. The original 10 s readiness polls and the restarted-writer test passed five local race repetitions; the historical heavier-load misses and early writer return were not reproduced. Pre-publication SERVFAIL remains possible (538 ms in that hosted run, under the unchanged 5 s sampler limit). Full hosted command coverage remains open. Mounted refusal/fence coverage is tracked in #169 (PR #205); retired promotion and abandoned-term return are tracked in #170 (PR #215) | F28-OPEN6, F28-OPEN7, F28-REVOKE-HOSTED verify; #135 | v0.2 |
 | IAM writers: D413 replaces the owner-rejected permanent-history limit with the approved checkpoint. D414 records owner acceptance of v0.2 token issuance with both permissions and the mounted TLS, final-clock, provider and follower proofs. Additional local process acceptance covers real member-mTLS replication and follower restart with the primary stopped; unrelated administrator sessions survive. Live Authentik password/TOTP authorization-code login additionally passes on both processes with actual replication; manual browser UI and independent-host behavior are not claimed. See [the scoped acceptance report](milestones/v0.2/local-release-acceptance.md). Shared live-state bounds remain | IAM-WRITERS; D413/D414 | v0.2; scoped proofs recorded, independent review separate |
-| Integrations: every changing SQLite command and every host capture reads the whole stored image, so a large store can drop every integration job (capture over 10 s) or never finish a cleanup (commands over 30 s), and production cannot raise either bound; permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; the 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is unexplained; hosted-intermittent `TestIntegrationWebhookMountedClientsRestart` and `TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers` | INT-OPEN2 verify; integrator | v0.2 |
-| UniFi optional writes: the recovery exit covers acknowledged creates only (a partial update or delete needs the operator to restore the baseline; undocumented and untested); the host-level abandon path has no unit test; a deleted source's new 409 is not pinned by a test; no live controller was exercised | INT-UNIFI-PUSH verify | v0.2 |
+| Integrations: every changing SQLite command and every host capture reads the whole stored image, so a large store can drop every integration job (capture over 10 s) or never finish a cleanup (commands over 30 s), and production cannot raise either bound; permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; the historical 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is unexplained but did not reproduce in five current-main race runs (see the INT-UNIFI-PUSH follow-up for the separate observation 503); hosted-intermittent `TestIntegrationWebhookMountedClientsRestart` and `TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers` | INT-OPEN2 verify; integrator | v0.2 |
+| UniFi optional writes: the mounted TLS double covers partial update/delete settlement, lost acknowledgments, restart and lease loss, and the deleted-source 409. The host abandon regression covers acknowledged creates. Live UniFi and Cloudflare acceptance remains pending owner authorization, disposable resources, and sanitized cleanup receipts | INT-UNIFI-PUSH verify; #125 and #153 | v0.2 |
 | External zones: #123 adds source conditions and metrics; #150 adds smaller-page retry and Service selector compatibility, without changing the caps. See the local RBAC recovery, pagination and selector regressions in the follow-up audit. | INT-EXTERNAL-ZONES verify | v0.2 |
 | Client-group views (#136): local SQLite runtime and Kubernetes envtest qualify UPDATE ownership in both namespaces; mounted SQLite AXFR and IXFR use default data with either allowed TSIG key. The SQLite takeover is documented and covered by `TestSQLiteUpdateViewOwnership`. The dashboard namespace edit and remap tests and explicit `source: served` API contract supersede the older editor and heuristic findings. Partial SQLite refusal visibility is covered by the merged #171 fix; pinned live edge TCP still needs execution (#127), and a namespaced forwarded delete is refused by an older strict primary | INT-6 and DASH-INVENTORY | v0.2 |
 | Parent and child zones: a new child zone answers SERVFAIL until its first publication (up to 5.2 s without race, 27 s under race), not within D395's bound; `TestRunServeSQLiteParentEditedAsChildIsCreated` used half its bound on a loaded machine | CORE-CHILD-RECONCILE, CORE-OPEN4 verify | v0.2 |
@@ -328,6 +345,41 @@ deadline, and pre-deduplication counts are unchanged. Local checks:
 |---|---|---|
 | `CGO_ENABLED=1 go test -p 4 ./cmd/kudurru -run 'TestRootMember.*Apply\|TestMemberItemRefusal' -race -count=3` | Pass, 112.574 s | `.context/gh159-primary-race.log` |
 | `CGO_ENABLED=1 go test -p 3 ./internal/cluster/replica -run Hold -race -count=1` | Pass, 3.049 s | `.context/gh159-primary-checks.log` |
+
+### Tracing/cache failure attribution (#165)
+
+The [hosted failure](https://github.com/robertherbaugh/kudurru/actions/runs/43514296652/job/132192391544)
+on November 13, 2026, tested `531bffd0`. The `go test 1/2` log reported:
+
+```text
+--- FAIL: TestRunServeTracingThroughCacheAndRace (4.52s)
+    serve_tracing_cache_test.go:218: trace 7479c20d94664b9ce2cff08616a423c2: span kudurru.dnssec ends before it starts
+```
+
+The log has no raw OTLP timestamps to attribute that individual failure to
+a particular interleaving or clock change. A second failure mentioned in
+the audit has no attributable run or assertion in the retained evidence.
+
+On November 20, 2026, the unmodified race-enabled test passed 30/30 on
+`ce3ab6e2` with five available CPUs and 30/30 on CPU 0 with `GOMAXPROCS=1`.
+A temporary `go test -overlay` on the same source forced the detached
+prefetch to start its `kudurru.dnssec` span after the answer cutoff was
+captured but before `Trace.Finish`. The still-open span got an end before
+its start: wall delta −90,058 ns, monotonic delta −90.056 µs. The unchanged
+mounted test failed at the same assertion. The same forced ordering
+passed after clipping detached span timestamps to the answer. This is
+local, controlled reproduction of a mechanism, not a reconstruction of
+the original hosted timestamps. No deadline or observation was relaxed.
+
+The deterministic unit regression and the tracing and pipeline suites
+passed under race with the fix. The local `BenchmarkTracedChain` allocation
+remeasurement on `ce3ab6e2` and the fix is in the
+[tracing guide](../docs/deploy/tracing.md#what-tracing-costs-a-query).
+The four existing slow-exporter regressions also passed locally under race:
+`TestSlowExporterNeverBlocksFinish`,
+`TestSinkFanoutBlockedSinkNeverStallsPrimaryOrTail`,
+`TestHTTPSinkStalledDestinationLosesOnlyItsOwnQueries`, and
+`TestRunServeQuerylogSinksStalledFailingAndReload`.
 
 ### November 20 managed-anchor term-rejoin regressions (#170)
 

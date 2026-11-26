@@ -15312,6 +15312,24 @@ Still open, stated plainly. Setup failures other than a lost budget CAS (a provi
 **Review and verification state at 17b7c87a.** The review accepted the package with four findings (one major: four bounded budget re-reservation attempts were not enough once more than two Cloudflare instances reserve at once; two minor: the two-replica budget test covers only the minimal case, and credential rotation is proven only by credential order at the peer; one nit) and two intended guard changes. The fixer resolved three (the re-reservation now runs until the request's deadline) and rebutted three (no retry of other refused setup work; the adapter-level legs of K3 stay partial; the guard notes); the verifier confirmed all three resolved and reported three new minor notes, open: budget exhaustion past the deadline is now also a local refusal on the event path, untested; the rotation leg's 60 s wait could be met by the request's own timeout; and the deadline leg's attempt bounds depend on scheduling. Merged and pushed at `85913663`. K3 and K7 stay partial (see the section).
 
 
+### K3/K7 mounted evidence (#156)
+
+This evidence supersedes the corresponding historical K3/K7 gaps above. It
+comes from `runServe` with local Kubernetes 1.37 envtest, local provider peers
+and synthetic credentials, not a hosted or live deployment.
+
+| Mounted test | What passed | What failed when the protection was removed with a local Go overlay |
+| --- | --- | --- |
+| `TestRunServeKubeCloudflareTwoReplicasShareBudget/self-elected` | Each replica acquired its own Lease through election; both published once and shared one durable budget, 20 reservations for 20 requests. The pre-placed concurrent contention cases remain separate. | Bypassing reservations for one Integration let 20 requests through with only 10 durable reservations. |
+| `TestRunServeKubeCloudflarePublicationAndRefusals` | A second elected holder recovered the first replica's pending Cloudflare intent from a fresh read without replaying the batch. | Disabling recovery left the intent pending and the successor never completed. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | A reviewed check could not reach the peer when the live Lease read failed. A network partition moved the Lease, the old source expired without renewal, and the healed former holder later re-acquired the Lease and committed a successor head. | Ignoring the failed live Lease check let the reviewed operation succeed and send two peer requests. |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | Displacing the holder after its head delete left the unreferenced chunks and terminating finalizer intact. A fresh election finished the purge. | Ignoring the fence for the chunk delete let the old holder remove the chunks. |
+| `TestRunServeKubeCredentialRotationJoinsPreviousStop` | An instrumented provider blocked in `Stop`; the replacement provisioned the new credential only after `Stop` returned. | Calling `Stop` asynchronously let the replacement provision while `Stop` was blocked. |
+| `TestRunServeKubeExpiredLicenseAndRecreatedIntegration` | Advancing the license clock beyond grace blocked a reviewed sync without a peer request. Recreating the same name and spec did not inherit a still-valid old source: the old head remained unchanged and the new UID did not receive its grant. | Granting the feature to an expired key kept the new instance from entering `LicenseUnavailable`. Removing source eligibility's UID comparison exposed the old grant to the new UID. |
+
+These tests do not change the supported providers, Lease or budget bounds, or
+fencing rules. No shared cluster or live provider acceptance was attempted.
+
 ### OPS-1 CoreDNS Corefile offline importer — November 10, 2026 (D392)
 
 `kudurru import coredns --file Corefile` (or `--file -` for stdin) now converts a
@@ -18216,6 +18234,40 @@ Commits: `21468b91` (host and planner seams), `960faeb9` (UniFi writes, wiring, 
 **What remains open.** No live UniFi controller was exercised; the write bodies follow the published 10.6.106 schema and the legacy `cmd/stamgr` convention, and the DHCP PUT drops `id` and `metadata` from the GET body on the assumption that the controller rejects or ignores read-only fields. UniFi writes are refused on Kubernetes. The dashboard has no controls for them yet (the Integrations page belongs to a later dashboard package): it needs the `result` field of act, the three action schemas and the `UniFiPushUnsupportedOnKubernetes` reason. Disabling `mirrorRecords` leaves applied policies in place (only `deletionPolicy: Delete` removes them), and nothing restores previous DHCP servers automatically; the preview shows them. Because the UniFi provider now reports negotiated roles, its polling interval is the smaller of `spec.unifi.poll` and `spec.resync` (default 10 m), so a poll longer than ten minutes now polls every ten minutes unless `resync` is raised. A reviewed mirror sync runs inside the one 30 s operation bound of every reviewed command, together with the inventory observation that follows it; each policy effect costs a reread, the write and a confirming reread, each with a budget transaction, so a large first mirror (dozens of records) may not finish in one sync: the operations not begun stay unapplied, an interrupted one is uncertain and settles at a later poll, and the operator previews and syncs again. No test drives a large mirror. A source change does not wake a mirror instance (it is reviewed-only); a review started before the host has adopted a deleted record set into its frame now answers `409` (it answered `404` before the review fixes; this applied to every publisher). A partially created record leaves the controller-acknowledged policies in place and the intent pending until the operator removes them; a reviewed sync does not resume such an intent (the review suggested that as a further exit; it would let an operator command write under a pending intent and was not built). Every failed write, a definite 4xx refusal included, answers `integration_uncertain`, and a record the controller keeps refusing stops each sync at that record until it is excluded (abandoned at the next poll, since nothing was acknowledged). The act audit row of `block-client` carries a parameter digest, not the MAC; the digest is canonical JSON, so the same MAC written in another letter case still digests differently. The polling cadence change is now in the changelog and the operator docs; no test pins the UniFi cadence itself.
 
 **Verification state at 7663c957.** Merged and pushed at `95c57113`, after the integrator's contract commit. The verifier resolved the blocker (an intent whose acknowledged effects are gone is abandoned only with exact proof), the major (a 409 fence on the frame a command captures) and three more, and left finding 5 (minor) partly unresolved: the act audit row named only a parameter digest; INT-OPEN2 made it name the client's MAC in lowercase. New, low, open: the recovery exit covers only acknowledged creates (a partial update or delete needs the operator to restore the baseline; untested and undocumented); a deleted source now yields 409 for every publisher and the background operation path, with no test pinning it; the parameter digest collapses duplicate keys and misses trailing brackets of malformed input; the host-level abandon path has no unit test. Locally `TestIntegrationUniFiPushMirrorPartialCreate` failed once under load (INT-OPEN2 left its 30 s stall open). No live UniFi controller was exercised.
+
+
+**Issue #125 synthetic follow-up (November 20, 2026).** The mounted UniFi TLS
+double exercises a definite second PUT/DELETE failure, lost replies with an
+unavailable immediate reread, exact-baseline restore, operator completion,
+restart, and lease loss while the final PUT is held. Recovery neither replays
+the write nor adopts a foreign policy, and the old digest is refused. The
+mounted deleted-source test pins the 409 and the host unit test covers all
+three acknowledged-create abandon cases. This does not qualify a live
+UniFi controller or a Cloudflare account; #153 remains pending.
+
+**Current-main timing evidence (`ce3ab6e2`, November 20, 2026).** In five
+local race runs of `TestIntegrationUniFiPushMirrorPartialCreate` and
+`TestIntegrationAdminActualUniFiTLSObservation` against loopback doubles,
+the historical 30-second stall did not reproduce (5/5 partial-create runs
+passed). The observation test returned HTTP 503 in 2/5 runs (test elapsed
+times: 2.64 s and 2.70 s). Hosted CI run `44684111744`, job `136114447349`,
+saw the same observation test return 503 (2.63 s) on `07881d30`. On `ce3ab6e2`, hosted
+run `44780132339`, job `136440648524`, passed both UniFi batches even
+though an unrelated signed-update test failed the workflow. These are
+distinct failure signatures; the 30-second bound is unchanged. Sanitized
+diagnostics reproduced the observation failure in 1/5 more runs: the response
+key was `unavailable`, with zero additional requests to the TLS double and no
+source outcome. That places this occurrence before provider dispatch. The
+exact admission check was not identified in a subsequent five-run trace
+sample that passed. No retry or production behavior change was added.
+
+The SQLite restart regression shows the same pending intent at shutdown and
+one confirmation by the restarted runtime's automatic poll. An experimental
+immediate post-restart HTTP re-review returned `503 unavailable` in 3/3 race
+runs after the poll settled; the relationship to the observe-only failure is
+not established. The regression pins the stale 409 before restarting while
+the intent is pending. The non-restart and writer-lease tests also pin it
+after settlement. No HTTP retry is used to mask the restart refusal.
 
 
 ### INT-EXTERNAL-ZONES Kubernetes external zones from Ingress, Gateway API routes and LoadBalancer Services — November 10, 2026 (D402)
@@ -21967,3 +22019,39 @@ Full hosted validation of the corrected source is pending. The passing
 performance recording remains attributed to its exact earlier source; updated
 source qualification must be recorded separately. GitHub review stays outside
 the owner's requested work, and other documented scope/deferrals remain.
+
+### Follower self-service refusal evidence (#137)
+
+On November 20, 2026, `TestRootMemberForwardPasswordTransportRefusalActualHTTP`
+reproduced a transport `401 unauthenticated` on `ce3ab6e2`. The mounted
+follower requested a password change with its valid bearer credential; the
+fixture fenced the primary while the follower held the original request at
+body read. The primary refused the member exchange before its command
+executor. The follower now answers `503 unavailable` and says the password
+was not changed. The same test checks that a wrong current password still
+gets the primary's retained `401 unauthenticated`. Neither refusal changed
+the password or left a durable mutation audit row.
+
+The HA-OPEN5 fixes (`7bae1238`, `532a5cd7`, `1737eb2e`) are integrated.
+`TestRootMemberForwardPasswordAndTokensActualHTTP` checks the durable
+attribution of successful commands and the absence of mutation audit rows
+for refused commands. `TestRootMemberForwardTokenCallerPasswordActualHTTP`
+pins the original principal for a committed password change, and
+`TestRootMemberForwardCookiePasswordUnservedActualHTTP` and
+`TestMemberSessionUnservedNamesTheCause` pin committed-but-unavailable output.
+The shared failure matrix in `TestMemberSelfError`, `TestMemberLogoutError`,
+and `TestObjectForwardError` distinguishes authority refusals, other definite
+refusals, authorization denials, and uncertain completion, including joined
+errors. No request bound, subject, deduplication check, or replay rule changed.
+
+Local checks used mounted loopback TLS and synthetic SQLite fixtures only.
+The baseline reproduction failed as expected in `.context/gh137-before.log`
+(1-minute load average 0.42). The focused `CGO_ENABLED=1 go test -p 4 -race
+-count=1 -run ... ./cmd/kudurru` suite passed in 138.398 seconds, including
+the refusal matrix, mounted password/token/sign-out and audit tests, the
+unforwarded mutation test, and the cut-apply regression
+(`.context/gh137-forward-refusal-race.log`, 1-minute load average 0.90 at start).
+`go vet -p 3 ./cmd/kudurru/...` passed (147.791 seconds wall time, load
+0.92), and `golangci-lint run --concurrency 3 ./cmd/kudurru/...` (v2.15.0)
+reported zero issues (76.095 seconds wall time, load 7.70). See
+`.context/gh137-vet-lint.log`. `make docs-site docs-check-links` also passed.

@@ -218,6 +218,7 @@ type Store struct {
 	clusterID         string
 	epoch             uint64
 	authority         atomic.Pointer[replication.Authority]
+	transfer          atomic.Pointer[transferRun]   // transfer-neutral run (TransferNeutral, D419), written under wmu before its authority is published
 	authorityChanged  chan struct{}                 // replaced/closed under wmu
 	termsMu           sync.Mutex                    // after wmu; guards terms and termSeq
 	terms             map[uint64]context.CancelFunc // live elected terms (retireTermsLocked)

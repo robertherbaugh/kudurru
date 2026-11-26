@@ -353,6 +353,7 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		s.sinceCompacted = 0
 	}
 	s.head.Store(rv)
+	s.noteTransferLocked(a, transferNeutral(ms))
 	s.publishAuthorityLocked(a)
 	s.publishGenerationLocked()
 	out := make([]store.Object, len(ms))
