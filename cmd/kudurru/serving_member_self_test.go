@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -607,6 +610,72 @@ func primaryPasswordIs(t *testing.T, f *memberForwardHTTPFixture, password strin
 	}
 	verified, err := users.NewHasher(1).Verify(t.Context(), user.Spec.PasswordHash, password)
 	return err == nil && verified && !user.Spec.MustChangePassword
+}
+
+func TestRootMemberForwardPasswordTransportRefusalActualHTTP(t *testing.T) {
+	var commands atomic.Int32
+	fixture := newMemberForwardHTTPFixture(t, false, memberForwardRarePull, func(fixture *memberForwardHTTPFixture) {
+		fixture.memberCommandSeen = func(clusterreplica.Command) { commands.Add(1) }
+	})
+	tickFixtureClock(t, fixture.primary)
+	const current, replacement = "current-follower-password-1", "replacement-follower-password-2"
+	setFollowerFixturePassword(t, fixture, current)
+	primary := fixture.primary.s.opts.Store
+	user := store.Key{Kind: "LocalUser", Name: "root-command"}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	invalid := fixture.exchange(ctx, http.MethodPost, "/auth/password", api.PasswordChangeRequest{
+		CurrentPassword: "wrong-follower-password-3", NewPassword: replacement,
+	})
+	if key, _ := invalid.refusal(); invalid.err != nil || invalid.status != http.StatusUnauthorized || key != api.KeyUnauthenticated || commands.Load() != 1 {
+		t.Fatalf("retained password refusal: status=%d body=%s err=%v member commands=%d", invalid.status, invalid.body, invalid.err, commands.Load())
+	}
+	if rows := forwardedAuditRows(t, primary, user); len(rows) != 0 {
+		t.Fatalf("retained password refusal left mutation audit rows: %+v", rows)
+	}
+
+	hold := &memberForwardBodyHold{entered: make(chan struct{}), release: make(chan struct{})}
+	release := sync.OnceFunc(func() { close(hold.release) })
+	defer release()
+	fixture.hold.Store(hold)
+	finished := make(chan memberForwardAnswer, 1)
+	go func() {
+		finished <- fixture.exchange(ctx, http.MethodPost, "/auth/password", api.PasswordChangeRequest{
+			CurrentPassword: current, NewPassword: replacement,
+		})
+	}()
+	select {
+	case <-hold.entered:
+	case answer := <-finished:
+		t.Fatalf("password request ended before its body read: status=%d body=%s err=%v", answer.status, answer.body, answer.err)
+	case <-ctx.Done():
+		t.Fatal("password request did not start reading its body", ctx.Err())
+	}
+	successor := primary.Authority().Term
+	successor.Epoch++
+	successor.PrimaryID = fixture.follower.opts.Store.Authority().MemberID
+	successor.PrimaryName = "receiver"
+	successor.PromotionID = "test-successor"
+	if authority, err := primary.ObserveAuthority(ctx, successor); err != nil || authority.Mode != replication.Fenced {
+		t.Fatalf("could not fence the primary before dispatch: authority=%+v err=%v", authority, err)
+	}
+	release()
+	select {
+	case answer := <-finished:
+		key, message := answer.refusal()
+		if answer.err != nil || answer.status != http.StatusServiceUnavailable || key != api.KeyUnavailable ||
+			message != "cluster authority changed; the password was not changed" {
+			t.Errorf("member transport refusal: status=%d body=%s err=%v", answer.status, answer.body, answer.err)
+		}
+	case <-ctx.Done():
+		t.Fatal("password request did not return after transport refusal", ctx.Err())
+	}
+	if commands.Load() != 1 || !primaryPasswordIs(t, fixture, current) {
+		t.Fatalf("transport refusal reached command execution or changed the password: member commands=%d", commands.Load())
+	}
+	if rows := forwardedAuditRows(t, primary, user); len(rows) != 0 {
+		t.Fatalf("transport refusal left mutation audit rows: %+v", rows)
+	}
 }
 
 // A token caller changes its own password through the follower's mounted API.

@@ -216,7 +216,7 @@ func strip(k *sourceKind, u *unstructured.Unstructured, gateways map[string]gate
 		add(hosts, loadBalancerTargets(u.Object))
 	case familyService:
 		// external-dns publishes a Service only when it names its hosts.
-		if str(u.Object, "spec", "type") == "LoadBalancer" {
+		if isLoadBalancer(u) {
 			add(extra, loadBalancerTargets(u.Object))
 		}
 	case familyGateway:
@@ -258,6 +258,10 @@ func strip(k *sourceKind, u *unstructured.Unstructured, gateways map[string]gate
 		}
 	}
 	return s
+}
+
+func isLoadBalancer(service *unstructured.Unstructured) bool {
+	return str(service.Object, "spec", "type") == "LoadBalancer"
 }
 
 // acceptedParents returns namespace/name of every Gateway in the route's

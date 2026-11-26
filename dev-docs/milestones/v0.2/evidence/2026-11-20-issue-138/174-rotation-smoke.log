@@ -1,0 +1,17 @@
+=== RUN   TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation
+I1120 19:31:31.940345   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 19:31:31.971709   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+I1120 19:31:32.959868   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:32.963633   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:33.236135   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 19:31:33.252046   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-84c919d0a603e79e3c0ff323981dd876"
+I1120 19:31:39.699614   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:39.703350   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:42.803888   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:42.806991   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:46.153698   72782 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+I1120 19:31:46.157033   72782 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-integration-784034e97eb4766d9c943efc5a8eaa7a"
+    integration_kube_open_test.go:376: credential replacement canceled the old provider's held request: cause=context canceled (deadline remaining: 29.739391616s)
+--- PASS: TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation (22.73s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	22.781s

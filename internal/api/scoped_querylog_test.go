@@ -254,7 +254,31 @@ func TestClusterStatsMerge(t *testing.T) {
 func TestClusterStatsMergeAtHourBoundary(t *testing.T) {
 	for _, offset := range []time.Duration{0, 30 * time.Second, 119 * time.Second, 121 * time.Second, 5 * time.Minute, 59*time.Minute + 59*time.Second} {
 		t.Run(offset.String(), func(t *testing.T) {
-			testClusterStatsMerge(t, newClusterLogFixtureAt(t, time.Date(2026, 11, 18, 13, 0, 0, 0, time.UTC).Add(offset)))
+			now := time.Date(2026, 11, 18, 13, 0, 0, 0, time.UTC).Add(offset)
+			fixture := newClusterLogFixtureAt(t, now)
+			testClusterStatsMerge(t, fixture)
+			for _, duration := range []time.Duration{time.Hour, 3 * time.Minute} {
+				since := url.QueryEscape(now.Add(-duration).Format(time.RFC3339))
+				until := url.QueryEscape(now.Format(time.RFC3339))
+				for _, scope := range []struct {
+					params  string
+					queries int64
+				}{
+					{"scope=cluster", 6},
+					{"scope=node&node=node-a", 3},
+					{"scope=node&node=node-b", 3},
+				} {
+					var page QueriesBody
+					fixture.h.do("GET", "/api/v1/queries?"+scope.params+"&since="+since+"&until="+until, "operator", nil).want(200).json(&page)
+					var summary SummaryBody
+					fixture.h.do("GET", "/api/v1/stats/summary?"+scope.params+"&from="+since+"&to="+until, "viewer", nil).want(200).json(&summary)
+					if page.Partial || summary.Partial || int64(len(page.Queries)) != scope.queries || page.RecordsFiltered != scope.queries ||
+						summary.Queries.Total != scope.queries || summary.Clients.Active != 1 {
+						t.Fatalf("%s %s: partial=%t/%t rows=%d filtered=%d summary=%d clients=%d; want %d queries and 1 client",
+							duration, scope.params, page.Partial, summary.Partial, len(page.Queries), page.RecordsFiltered, summary.Queries.Total, summary.Clients.Active, scope.queries)
+					}
+				}
+			}
 		})
 	}
 }

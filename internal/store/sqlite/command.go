@@ -282,6 +282,8 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if t.primary != nil {
 		s.bus.reset()
 	}
+	// Section rows, enrollment and anchor work are never transfer-neutral.
+	s.noteTransferLocked(a, !t.sections && t.primary == nil && t.anchor == nil && t.anchorInit == nil && !t.anchorTouched && transferNeutral(t.mutations))
 	s.publishAuthorityLocked(a)
 	s.publishGenerationLocked()
 	for n, m := range t.mutations {
@@ -303,6 +305,7 @@ type CommandTx struct {
 	failed           error
 	changed          bool
 	localChanged     bool // node-local metadata, outside the canonical image
+	sections         bool // a replication section row changed (D419: never transfer-neutral)
 	mutations        []*mutation
 	rvs              []uint64
 	checks           []func(context.Context) error
@@ -587,6 +590,7 @@ func (t *CommandTx) PutSection(ctx context.Context, section string, entry replic
 		return t.poison(err)
 	}
 	if n > 0 {
+		t.sections = true
 		t.markSectionMutation(section, e.Key)
 		t.anchorTouched = t.anchorTouched || anchorKey(section, e.Key)
 	}
@@ -617,6 +621,7 @@ func (t *CommandTx) DeleteSection(ctx context.Context, section, key string) erro
 		return t.poison(err)
 	}
 	if n > 0 {
+		t.sections = true
 		t.markSectionMutation(section, key)
 		t.anchorTouched = t.anchorTouched || anchorKey(section, key)
 	}

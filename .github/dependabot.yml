@@ -13,8 +13,9 @@
 # gcr.io/distroless/static, whose digest is also in .goreleaser.yaml,
 # images/base and publish.yml (TestDockerfile; dev-docs/release-checklist.md
 # has the bump). keepalived is built from a release tarball and Alpine
-# 3.24 through ARGs, which Dependabot does not read. Between bumps the daily
-# Trivy scan (security.yml) fails when an image needs one.
+# 3.24 through ARGs, which Dependabot does not read, and the Rocky Linux
+# image of hack/package-lifecycle.sh is a script variable. Between bumps the
+# daily Trivy scan (security.yml) fails when an image needs one.
 #
 # All of them wait 7 days after a release before proposing it (cooldown), so
 # a compromised or broken release has time to be found and pulled first.

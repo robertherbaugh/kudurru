@@ -21,12 +21,17 @@ type rootAnchorOutput struct {
 	ack   *rootUpdateAcknowledgment
 	bound bool
 	// Only a bound ordinary recursive/policy response uses retained DNS data.
-	// Unbound output, authoritative data and transfer continuations stay strict.
+	// Unbound output and authoritative data stay strict; transfers and their
+	// continuations stay strict apart from transfer-neutral commits (D419).
 	query       bool
 	retainedDNS bool
 	// servedDNS marks any other bound ordinary query response: it may use
 	// the data of the publication that is still served (D378).
 	servedDNS bool
+	// transfer marks an AXFR or IXFR answer, its refusals and continuation
+	// messages included: it stays current across transfer-neutral commits
+	// and is otherwise as strict as full data currency (D419).
+	transfer bool
 }
 
 const (
@@ -45,9 +50,9 @@ func captureRootAnchorOutput(req *pipeline.Request) (dnsserver.Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &rootAnchorOutput{ctx: req.Ctx, seal: seal, read: read,
-		query: req.Msg != nil && req.Msg.Opcode == dns.OpcodeQuery && len(req.Msg.Question) == 1 &&
-			req.Question().Qtype != dns.TypeAXFR && req.Question().Qtype != dns.TypeIXFR}, nil
+	query := req.Msg != nil && req.Msg.Opcode == dns.OpcodeQuery && len(req.Msg.Question) == 1
+	transfer := query && (req.Question().Qtype == dns.TypeAXFR || req.Question().Qtype == dns.TypeIXFR)
+	return &rootAnchorOutput{ctx: req.Ctx, seal: seal, read: read, query: query && !transfer, transfer: transfer}, nil
 }
 
 // Emit holds mode/R only around the synchronous actual transport handoff.
@@ -67,6 +72,8 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 		current = o.seal.dnsCurrent
 	} else if o.servedDNS {
 		current = o.seal.servedCurrent
+	} else if o.transfer {
+		current = o.seal.transferCurrent
 	}
 	if o.ack != nil {
 		if !o.bound {
@@ -99,7 +106,11 @@ func (o *rootAnchorOutput) Next() error {
 			o.state.Store(anchorOutputTerminal)
 		}
 	}()
-	read, err := o.seal.captureRead(o.ctx)
+	current := o.seal.current
+	if o.transfer {
+		current = o.seal.transferCurrent
+	}
+	read, err := o.seal.captureReadCurrent(o.ctx, current)
 	if err != nil {
 		return err
 	}

@@ -316,9 +316,10 @@ func (t *Trace) Decide(latency time.Duration, failed bool) bool {
 	return keep
 }
 
-// Finish ends the root span and every span still open at end, closes the
-// trace to further changes and, when Decide kept it, offers it to the
-// export queue without blocking.
+// Finish closes the trace at the answer time. Detached work can record
+// spans between the answer and this call; clip their timestamps to the
+// answer so they cannot end before they start or extend the query's trace.
+// When Decide kept the trace, offer it to the export queue without blocking.
 func (t *Trace) Finish(end time.Time) {
 	if t == nil {
 		return
@@ -328,9 +329,13 @@ func (t *Trace) Finish(end time.Time) {
 		t.mu.Unlock()
 		return
 	}
-	for i := range t.spans {
-		if t.spans[i].End.IsZero() {
-			t.spans[i].End = end
+	for index := range t.spans {
+		span := &t.spans[index]
+		if span.End.IsZero() || span.End.After(end) {
+			if span.Start.After(end) {
+				span.Start = end
+			}
+			span.End = end
 		}
 	}
 	t.finished = true

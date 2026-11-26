@@ -47,6 +47,32 @@ func (b *bindLog) contains(s string) bool {
 	return strings.Contains(b.data.String(), s)
 }
 
+func (b *bindLog) startedJournalIXFR(zone, key string, fromSerial, toSerial uint32) bool {
+	return b.contains(fmt.Sprintf("transfer of '%s/IN': IXFR started: TSIG %s (serial %d -> %d)",
+		strings.TrimSuffix(zone, "."), strings.TrimSuffix(key, "."), fromSerial, toSerial))
+}
+
+func TestBINDLogStartedJournalIXFR(t *testing.T) {
+	for _, tt := range []struct {
+		name, line, zone string
+		toSerial         uint32
+		want             bool
+	}{
+		{"journal delta", "transfer of 'policy.test/IN': IXFR started: TSIG rpz-transfer.test (serial 1 -> 2)", "policy.test.", 2, true},
+		{"full fallback", "transfer of 'static.test/IN': AXFR-style IXFR started: TSIG rpz-transfer.test (serial 7)", "static.test.", 7, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			log := &bindLog{}
+			if _, err := log.Write([]byte(tt.line)); err != nil {
+				t.Fatal(err)
+			}
+			if got := log.startedJournalIXFR(tt.zone, "rpz-transfer.test.", 1, tt.toSerial); got != tt.want {
+				t.Fatalf("journal IXFR match = %t, want %t for %q", got, tt.want, tt.line)
+			}
+		})
+	}
+}
+
 func (b *bindLog) diagnostic(secret string) string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -278,9 +304,12 @@ func TestBINDRPZRuntimeTransfersRefreshRestart(t *testing.T) {
 			fx.clock.add(10 * time.Second)
 			fx.m.Wake()
 			changed := awaitStatus(t, fx, func(s Status) bool { return s.Serial == 2 })
-			if !changed.ConfirmedAt.After(renewed.ConfirmedAt) || rx.ixfr.Load() != 1 || !b.log.contains("IXFR started") {
+			if !changed.ConfirmedAt.After(renewed.ConfirmedAt) || rx.ixfr.Load() != 1 {
 				t.Fatal("journal IXFR did not update feed")
 			}
+			eventually(t, func() bool {
+				return b.log.startedJournalIXFR(list.Spec.Sources[0].RPZ.ZoneName, b.key, first.Serial, changed.Serial)
+			})
 			fresh, err := rx.TransferClient.AXFR(t.Context(), runtimeJob(t, fx).dz, list.Spec.Sources[0].RPZ.Primaries[0])
 			if err != nil {
 				t.Fatal(err)
