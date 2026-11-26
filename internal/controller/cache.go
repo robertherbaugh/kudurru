@@ -265,7 +265,11 @@ func (c *cache) identityOwners(zone string, from ...*v1alpha1.DNSRecordSet) []st
 }
 
 // view returns the zone view for a DNSZone object name, rebuilding it when
-// the zone or any of its record sets changed since it was built.
+// the zone or any of its record sets changed since it was built. There is
+// one view per zone version: when reconciles race to build the same
+// version, the first stored view wins and every caller gets it, so a
+// caller may compare views by identity (dynamicStamp does). A view built
+// at an older version than the stored one never replaces it.
 func (c *cache) view(zone string, validate EndpointValidator) *zoneView {
 	c.mu.RLock()
 	version := c.zoneVersion[zone]
@@ -293,9 +297,17 @@ func (c *cache) view(zone string, validate EndpointValidator) *zoneView {
 
 	v := buildZoneView(z, rrsets, validate)
 	c.viewMu.Lock()
+	defer c.viewMu.Unlock()
+	if cur, ok := c.views[zone]; ok {
+		switch at := c.viewAt[zone]; {
+		case at == version:
+			return cur
+		case at > version:
+			return v
+		}
+	}
 	c.views[zone] = v
 	c.viewAt[zone] = version
-	c.viewMu.Unlock()
 	return v
 }
 
