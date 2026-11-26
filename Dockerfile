@@ -19,12 +19,15 @@ ARG DATE=unknown
 ARG GOTAGS=
 ARG TARGETOS TARGETARCH
 WORKDIR /src
-COPY go.mod go.sum ./
-COPY third_party/quic-go/ ./third_party/quic-go/
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
+# The modules come from hack/go-modules.sh, which retries a transient proxy
+# error, in the same RUN as the build: a fresh CI runner (or a pruned cache
+# mount under a cached layer) has no modules, and the download is a no-op
+# when the mount still holds them. The build itself is offline
+# (GOPROXY=off), so it cannot fetch a module the download did not.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    hack/go-modules.sh download && \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOPROXY=off \
     go build -trimpath -tags "$GOTAGS" -ldflags "-s -w \
       -X github.com/robertherbaugh/kudurru/internal/version.Version=$VERSION \
       -X github.com/robertherbaugh/kudurru/internal/version.Commit=$COMMIT \

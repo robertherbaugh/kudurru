@@ -11,7 +11,12 @@ project_name: kudurru
 
 before:
   hooks:
-    - go mod download
+    # The module's dependencies, with a bounded retry on transient proxy
+    # errors only (hack/go-modules.sh). The builds below then compile offline
+    # (GOPROXY=off): a module this download did not fetch fails the build
+    # instead of being fetched without the retry. The ko images compile from
+    # the same module cache.
+    - hack/go-modules.sh download
     # The dashboard bundle into dashboard/dist, which every binary embeds. A hook
     # rather than a workflow step: goreleaser refuses a dirty tree before the
     # hooks run, and the build overwrites the tracked placeholder index.html.
@@ -25,6 +30,7 @@ builds:
     binary: kudurru
     env:
       - CGO_ENABLED=0
+      - GOPROXY=off
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags: [-trimpath]
