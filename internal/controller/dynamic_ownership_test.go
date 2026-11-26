@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -175,7 +176,13 @@ func TestZoneViewIsOnePerVersionWhenBuildsRace(t *testing.T) {
 				return nil
 			})
 		}()
-		<-entered
+		select {
+		case <-entered:
+		case v := <-done:
+			t.Fatalf("the held build never reached its validator (got view %p)", v)
+		case <-time.After(10 * time.Second):
+			t.Fatal("the held build never reached its validator")
+		}
 		other = competing()
 		close(release)
 		return <-done, other
