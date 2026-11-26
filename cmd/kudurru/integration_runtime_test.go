@@ -123,7 +123,15 @@ func integrationWriter(t *testing.T, s *servingRuntime) func() {
 		})
 	}
 	t.Cleanup(stop)
-	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady && s.primary.driver.Status().Ready })
+	// Wait for this writer's own episode. A stopped writer leaves the
+	// driver's Ready (and the publisher's ProtectedReady) behind, and the
+	// driver clears Ready only when a new Run starts, after the new writer
+	// has reset its serving dependencies. Ready alone let a test go on while
+	// that reset was still to come and fenced the next integration effect.
+	awaitServingRuntime(t, s, func() bool {
+		driver := s.primary.driver.Status()
+		return s.publisher.Status().ProtectedReady && driver.Running && driver.Ready
+	})
 	return stop
 }
 func integrationApply(t *testing.T, s *servingRuntime, d *public.Integration) *public.Integration {
