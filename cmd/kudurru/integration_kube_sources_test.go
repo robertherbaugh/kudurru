@@ -767,11 +767,23 @@ func TestRunServeKubeExpiredLicenseAndRecreatedIntegration(t *testing.T) {
 		status, body := env.api(t, cfg, http.MethodGet, "/integrations/default/inventory", nil)
 		return status == http.StatusOK && body["uid"] == string(definition.UID) && body["reason"] == "LicenseUnavailable"
 	})
-	if granted() || calls.Load() != before {
-		t.Fatal("the new UID inherited the old source or reached the provider")
+	// The administration API reads the object snapshot and the host's
+	// status directly, but DNS follows that snapshot one hop later: the
+	// source runtime re-evaluates the heads on its publish hook and installs
+	// the grants it derives through a second snapshot rebuild. The mount
+	// knowing the new UID therefore does not mean DNS has dropped the old
+	// incarnation's grants yet; it converges to denial once the runtime has
+	// evaluated the recreated object, and an inherited source would keep
+	// granting instead.
+	kubeAwait(t, 30*time.Second, "DNS stops granting from the old incarnation's source", func() bool { return !granted() })
+	if calls.Load() != before {
+		t.Fatal("the new UID reached the provider")
 	}
 	var after corev1.Secret
 	if err := env.admin.Get(ctx, secretKey, &after); err != nil || after.ResourceVersion != retained.ResourceVersion {
 		t.Fatal("the old head did not remain unchanged across recreation", err)
+	}
+	if granted() || calls.Load() != before {
+		t.Fatal("the new UID inherited the old source or reached the provider")
 	}
 }
