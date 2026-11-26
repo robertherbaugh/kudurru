@@ -69,9 +69,13 @@ if (typeof dialogProto.showModal !== 'function') {
 
 // Settle first, with the UI mounted and the fetch stub in place: nothing of
 // the test may still be in flight once jsdom goes away (queryClients.ts).
+// The teardown runs even when settling fails, so only the leaking test fails.
 afterEach(async () => {
-  await settleQueryClients();
-  cleanup();
-  clearQueryClients();
-  vi.unstubAllGlobals();
+  try {
+    await settleQueryClients();
+  } finally {
+    cleanup();
+    vi.unstubAllGlobals();
+    clearQueryClients();
+  }
 });
