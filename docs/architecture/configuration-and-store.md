@@ -2023,6 +2023,16 @@ and failures are never cached. Strict decoding, source metadata, complete-image
 digests and sections, private owners, custom validators and current authority
 checks still run. Write admission and defaulting retain their original methods.
 
+The security section's owner rows are validated the same way (D422). An
+accepted row is remembered by the SHA-256 of its key and bytes
+(`servingauth.ValidateEntry`). So is each decoded revocation floor (grant,
+account and provider floors, which hold only strings and times) by the same
+digest and the root format version (`decodeSecurity`). Both caches hold two
+full sections and never hold a failure. The cross-row checks of every decode
+(manifest, duplicates, counts, root, sessions, identities) still run. The
+exact owner names are checked in the same walk that bounds a row
+(`boundedOwnerJSON`), not in a separate pass.
+
 Requests hold leases. Replacement releases the publisher's reference, while
 old pools and other resources remain alive until the final request or stream
 releases its lease. DNS capture needs no database read and may use last-good
