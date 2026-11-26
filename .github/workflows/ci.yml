@@ -121,6 +121,7 @@ jobs:
           python3 -B -m unittest discover -s hack -p test_sync_version.py
           python3 -B -m unittest discover -s hack -p test_snapshot_images.py
           python3 -B -m unittest discover -s hack -p test_release_protection_check.py
+          python3 -B -m unittest discover -s hack -p test_probe_pins.py
           make test TEST_SUITE="$GO_TEST_SUITE" TEST_COMMAND_SHARD="$GO_COMMAND_SHARD"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.

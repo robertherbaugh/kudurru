@@ -14,8 +14,11 @@
 # images/base and publish.yml (TestDockerfile; dev-docs/release-checklist.md
 # has the bump). keepalived is built from a release tarball and Alpine
 # 3.24 through ARGs, which Dependabot does not read, and the Rocky Linux
-# image of hack/package-lifecycle.sh is a script variable. Between bumps the
-# daily Trivy scan (security.yml) fails when an image needs one.
+# image of hack/package-lifecycle.sh and the alpine probe image of
+# hack/hostnetwork-check.sh and hack/volume-check.sh (the digest of the
+# images/*/Dockerfile alpine stages; bump it with them, hack/test_probe_pins.py
+# checks) are script variables. Between bumps the daily Trivy scan
+# (security.yml) fails when an image needs one.
 #
 # All of them wait 7 days after a release before proposing it (cooldown), so
 # a compromised or broken release has time to be found and pulled first.
