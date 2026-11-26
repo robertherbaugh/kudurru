@@ -10,11 +10,15 @@ import type { Catalog, Me } from '@shared/api';
 import { AppProviders, Gate } from '../App';
 import { apiError, createFetchMock, type FetchMock, type MockHandlers } from '../dev/api';
 import { catalog as catalogFixture } from '../dev/fixtures';
+import { trackQueryClient } from './queryClients';
 
+/** A fresh client per test, settled and cleared after it (ui/src/test/setup.ts). */
 export function testQueryClient(): QueryClient {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchInterval: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
-  });
+  return trackQueryClient(
+    new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchInterval: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
+    }),
+  );
 }
 
 export interface RenderAppOptions {
