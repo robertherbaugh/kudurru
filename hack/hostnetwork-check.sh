@@ -19,7 +19,7 @@ mode=${HOSTNETWORK_CHECK_NETWORK:-netns}
 # The probe is the alpine:3.24 of the images' build stages: keep this digest
 # equal to the FROM lines in images/base/Dockerfile and
 # images/hostnetwork/Dockerfile. Bump it by hand with them (Dependabot reads
-# Dockerfiles, not this script).
+# Dockerfiles, not this script); hack/test_probe_pins.py fails until it does.
 probe=${HOSTNETWORK_CHECK_PROBE_IMAGE:-alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf}
 docker=${DOCKER:-docker}
 
