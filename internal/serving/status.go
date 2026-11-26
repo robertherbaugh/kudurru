@@ -19,12 +19,22 @@ type Status struct {
 	DNSOnly           bool
 	ProtectedReady    bool
 	Reason            string
+	// Wakes counts the Publisher's Wake calls so far. ServedWakes is the
+	// count the served publication's preparation noted before it read its
+	// candidate: that publication includes what each of those Wakes
+	// announced. A Wake counted in Wakes and not in ServedWakes is still
+	// answered by a later preparation, which publishes the same cut again
+	// when nothing else changed (D405). Wakes is read before the served
+	// publication, so ServedWakes may exceed it.
+	Wakes       uint64
+	ServedWakes uint64
 }
 
 // Status reads local atomics/bookkeeping, never SQLite or owner private values.
 func (p *Publisher) Status() Status {
 	// A dependency cursor may reference owner state; retain it while checking
 	// eligibility so a concurrent replacement cannot retire its resources.
+	wakes := p.wakes.Load()
 	lease, _ := p.Capture()
 	defer lease.Release()
 	var bundle *Bundle
@@ -35,13 +45,13 @@ func (p *Publisher) Status() Status {
 	p.mu.Lock()
 	token, preparing, reason := p.installed, p.preparing, p.reason
 	p.mu.Unlock()
-	s := Status{Authority: a, Installed: a.Installed, Preparing: preparing, Reason: reason}
+	s := Status{Authority: a, Installed: a.Installed, Preparing: preparing, Reason: reason, Wakes: wakes}
 	if token.Matches(a) {
 		s.Installed = token.Generation()
 	}
 	s.InstalledComplete = s.Installed.Validate() == nil
 	if bundle != nil {
-		s.Served = bundle.identity
+		s.Served, s.ServedWakes = bundle.identity, bundle.wakes
 		s.DNSOnly = bundle.dnsOnly || blocked || a.Mode == replication.Fenced || a.Mode == replication.Conflict || !a.Term.Same(bundle.identity.Base.Term)
 		s.ProtectedReady = !p.closed.Load() && eligible(bundle, a, blocked)
 		if !s.ProtectedReady && !s.DNSOnly && reason == "current" {
