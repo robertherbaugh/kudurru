@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
+	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -654,6 +655,10 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 		}
 	}
 	for i := range p.Operations {
+		if h.yieldsBeforeDelete(ctx, st, result.Applied) {
+			return errYield
+		}
+		started := time.Now()
 		if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 			return err
 		}
@@ -688,6 +693,9 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 			}
 			tokens[intent.Spec.Record.Key] = confirmed.ResourceVersion
 			result.Applied++
+			if st != nil {
+				st.deleteTook = time.Since(started)
+			}
 		} else {
 			result.Pending++
 			if applyErr != nil {
