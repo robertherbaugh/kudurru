@@ -282,7 +282,10 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// The commit's generation change starts the preparation. A Wake here
+	// would be owed one more preparation of the same cut when it lands after
+	// that one read its candidate (D405): a second full-section build, which
+	// republishes the cut the delete below is admitted on.
 	// A full security section takes long to publish under the race detector
 	// (more than the 15 s of localUsersFresh on a loaded machine); wait for
 	// the same condition with a longer bound so that the delete below meets a
@@ -347,11 +350,11 @@ func TestServingHTTPIAMWritersDeleteRecoversFullRevocationHistory(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// No Wake: the commit starts the preparation (see the capacity test).
 	until := time.Now().Add(90 * time.Second)
 	for !servingHTTPFixturePublished(t, f) {
 		if time.Now().After(until) {
-			t.Fatal("full historical inventory never published")
+			t.Fatalf("full historical inventory never published: %+v", f.s.publisher.Status())
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

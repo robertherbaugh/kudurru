@@ -2242,7 +2242,12 @@ bounded retry timer. Complete-image validation and final token checks still run
 on every reconciliation; the provider projection retains the Store read's
 validation result instead of repeating it. A separate writer entry retains the
 original elector token, resets provider floors, reconciles the startup
-config-provider manifest and joins old work before replacement.
+config-provider manifest and joins old work before replacement. Its provider
+admission follows the same wake rule (D420): it subscribes to source,
+authority, host, resource and candidate changes before it admits and keeps
+those subscriptions through the next wait; after a successful admission it
+waits for one of them or the host deadline, and only a failed admission retries
+on the bounded interval. Admissions stay at least that interval apart.
 License and manager/catalog/key changes wake complete preparation. Native signed
 UPDATE, license replacement recovery, follower restart/promotion and joined
 shutdown are tested through this assembly. A newly enrolled follower remains

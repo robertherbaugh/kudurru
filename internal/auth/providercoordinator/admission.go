@@ -65,13 +65,15 @@ func completeReceipts(d providerresources.Desired, allowed bool, candidates []*p
 	return out, !unchanged || count != len(out)
 }
 
-func (c *Coordinator) admit(ctx context.Context, target serving.TermActivation, candidates []*providerresources.AuthorityCandidate) error {
+// admit returns the deadline of the host capture it admitted under: the
+// writer admits again when it passes, as acquisition reconciles again.
+func (c *Coordinator) admit(ctx context.Context, target serving.TermActivation, candidates []*providerresources.AuthorityCandidate) (time.Time, error) {
 	if c.opts.Admit == nil {
-		return ErrAdmission
+		return time.Time{}, ErrAdmission
 	}
 	var h HostCapture
 	defer func() { releaseHost(h) }()
-	return c.opts.Publisher.WithWriterGate(ctx, target, func() error {
+	err := c.opts.Publisher.WithWriterGate(ctx, target, func() error {
 		return c.opts.Resources.WithReplacement(ctx, func(replacement *providerresources.Replacement) error {
 			return c.opts.PinHost(ctx, func() error {
 				var next providerresources.Desired
@@ -140,6 +142,7 @@ func (c *Coordinator) admit(ctx context.Context, target serving.TermActivation, 
 			})
 		})
 	})
+	return h.ValidUntil, err
 }
 
 // RunWriter retains only the original carried opaque elector token/context.
@@ -173,46 +176,74 @@ func (c *Coordinator) RunWriter(ctx context.Context, target serving.TermActivati
 	defer func() { c.mu.Lock(); c.writerRunning = false; c.mu.Unlock(); close(done) }()
 	timer := time.NewTimer(0)
 	defer timer.Stop()
-	candidateChanges := c.opts.Resources.AuthorityCandidates()
-	var retryAt time.Time
-	for {
-		changes := c.Changes()
-		generation := c.opts.Store.GenerationChanges()
-		authority := c.opts.Store.AuthorityChanges()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-authority:
-		case <-generation:
-		case <-changes:
-		case <-candidateChanges:
-		case <-timer.C:
-		}
-		if err := c.writerCurrent(ctx, target); err != nil {
-			return err
-		}
-		delay := c.opts.RetryInterval
-		if now := c.opts.Now(); !now.Before(retryAt) {
-			candidates := c.opts.Resources.TakeCandidates()
-			opctx, finish := context.WithTimeout(ctx, c.opts.OperationTimeout)
-			err = c.admit(opctx, target, candidates)
-			finish()
-			if errors.Is(err, store.ErrClosed) || errors.Is(err, providerresources.ErrClosed) || errors.Is(err, ErrClosed) {
-				return err
-			}
-			if err = c.writerCurrent(ctx, target); err != nil {
-				return err
-			}
-			retryAt = c.opts.Now().Add(c.opts.RetryInterval)
-		} else {
-			delay = retryAt.Sub(now)
-		}
+	reset := func(delay time.Duration, armed bool) {
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
 			default:
 			}
 		}
-		timer.Reset(delay)
+		if armed {
+			timer.Reset(delay)
+		}
+	}
+	candidateChanges := c.opts.Resources.AuthorityCandidates()
+	changes := c.Changes()
+	generation := c.opts.Store.GenerationChanges()
+	authority := c.opts.Store.AuthorityChanges()
+	host := c.opts.HostChanges()
+	var retryAt time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-authority:
+		case <-generation:
+		case <-changes:
+		case <-host:
+		case <-candidateChanges:
+		case <-timer.C:
+		}
+		if err := c.writerCurrent(ctx, target); err != nil {
+			return err
+		}
+		// Subscribe BEFORE admission and retain these subscriptions through
+		// the next wait, as acquisition does (D343): a change while admission
+		// runs wakes the next wait instead of disappearing. An admission that
+		// commits closes these itself, so it is followed by one more admission
+		// (normally a no-op) after RetryInterval: one per change, by design.
+		changes = c.Changes()
+		generation = c.opts.Store.GenerationChanges()
+		authority = c.opts.Store.AuthorityChanges()
+		host = c.opts.HostChanges()
+		if now := c.opts.Now(); now.Before(retryAt) {
+			reset(retryAt.Sub(now), true)
+			continue
+		}
+		candidates := c.opts.Resources.TakeCandidates()
+		opctx, finish := context.WithTimeout(ctx, c.opts.OperationTimeout)
+		deadline, err := c.admit(opctx, target, candidates)
+		finish()
+		if errors.Is(err, store.ErrClosed) || errors.Is(err, providerresources.ErrClosed) || errors.Is(err, ErrClosed) {
+			return err
+		}
+		if e := c.writerCurrent(ctx, target); e != nil {
+			return e
+		}
+		retryAt = c.opts.Now().Add(c.opts.RetryInterval)
+		// A failed admission retries after the bounded interval. A successful
+		// one waits for a change of what it read (sources, registry, authority,
+		// host, resources or candidates) or its host deadline: admitting the
+		// same state again every interval holds the publication writer gate,
+		// the resource guard and the SQLite writer for a complete security
+		// decode each time, competing with publication and commands.
+		switch {
+		case err != nil:
+			reset(c.opts.RetryInterval, true)
+		case !deadline.IsZero():
+			reset(max(deadline.Sub(c.opts.Now()), 0), true)
+		default:
+			reset(0, false)
+		}
 	}
 }
