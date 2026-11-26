@@ -32,7 +32,7 @@ permissions:
 # A new push to a pull request cancels the run of the previous one. Other
 # events group by event and commit, as ci.yml does: GitHub replaces a
 # pending run in a group even without cancel-in-progress, so with one group
-# for main a push that landed while a run was going cancelled the queued
+# for main a push that landed while a run was going canceled the queued
 # daily run, and with it the only scan of the latest release (2026-11-26).
 concurrency:
   group: security-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.sha) }}
