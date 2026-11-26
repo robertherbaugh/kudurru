@@ -433,7 +433,10 @@ func TestServingBlockingCommittedPendingReceiptAndSupersession(t *testing.T) {
 		t.Fatal("pending receipt claimed rollback or renewed deadline")
 	}
 	// A fresh request observes the durable deadline; the failed acknowledgment
-	// neither retries the command nor mutates legacy state.
+	// neither retries the command nor mutates legacy state. The refused
+	// acknowledgment returned before the commit's generation was served, so wait
+	// for it: a read before then is refused with generation_pending.
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
 	request := newBlockingCommandHTTP(t, f)
 	state := readBlockingResponse(t, request(http.MethodGet, ""))
 	if state.Blocking || state.Until == nil || !state.Until.Equal(*receipt.DisabledUntil) {
