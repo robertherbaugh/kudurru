@@ -70,8 +70,8 @@ type servingRuntimeOptions struct {
 	// a non-nil error is that classification's result. Nil in production;
 	// only tests set it.
 	AnchorReadyHook func(context.Context) error
-	// Registerer receives the kudurru_root_anchor_* metrics once; nil leaves
-	// them unregistered (tests).
+	// Registerer receives the root anchor and integration host metrics; nil
+	// leaves them unregistered (tests).
 	Registerer prometheus.Registerer
 	// IntegrationBounds replaces the integration host's capture and
 	// operation bounds where nonzero. Zero in production, which keeps the
