@@ -282,7 +282,7 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 	// sourceSettled observes, read-only, that every status, NOTIFY and zone
 	// lifecycle commit of the current objects has landed (heads < 0 accepts
 	// any number of committed primary heads), and that the DNSZone status of
-	// every committed primary head reports that head's serial. The status
+	// every active primary head reports that head's serial. The status
 	// projection commits after its head (and the lifecycle realignment after
 	// the status), so until it lands the other receipts still read as
 	// settled for the head before it.
