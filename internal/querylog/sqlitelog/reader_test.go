@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -587,5 +588,89 @@ func TestDirtyHourReadsFinerTiers(t *testing.T) {
 	}
 	if after := read(); !reflect.DeepEqual(after, before) {
 		t.Errorf("answers changed when 11:00 was re-derived:\n%+v\n%+v", before, after)
+	}
+}
+
+func TestDirtyHourSurvivesRestart(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		boundary time.Time
+	}{
+		{"noon", t0},
+		{"midnight", t0.Truncate(24 * time.Hour)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			boundary := tc.boundary
+			dirtyHour := boundary.Add(-time.Hour)
+			readAt := boundary.Add(30 * time.Second)
+			dbPath := filepath.Join(t.TempDir(), FileName)
+			path := func(opts *Options) { opts.Path = dbPath }
+			w, _ := newWriter(t, boundary.Add(10*time.Second), path)
+			mustWrite(t, w,
+				event(boundary.Add(-4*time.Minute+10*time.Second), "10.0.0.1", "a.example"),
+				event(boundary.Add(-2*time.Minute+10*time.Second), "10.0.0.2", "b.example"),
+				event(boundary.Add(-2*time.Minute+11*time.Second), "10.0.0.2", "c.example"),
+			)
+			if err := w.Flush(ctx); err != nil {
+				t.Fatal(err)
+			}
+			check := func(stage string, hourDone, dayDone time.Time) {
+				t.Helper()
+				if hour, day := w.RollupProgress(); hour != hourDone.Unix() || day != dayDone.Unix() {
+					t.Errorf("%s: rollup progress = %s, %s; want %s, %s", stage, time.Unix(hour, 0), time.Unix(day, 0), hourDone, dayDone)
+				}
+				for _, window := range []struct {
+					name           string
+					from           time.Time
+					total, clients int64
+				}{
+					{"rolling hour", readAt.Add(-time.Hour), 3, 2},
+					{"rolling day", readAt.Add(-24 * time.Hour), 3, 2},
+					{"from UTC day start", dirtyHour.Truncate(24 * time.Hour), 3, 2},
+					{"partial hour", boundary.Add(-3 * time.Minute), 2, 1},
+				} {
+					win := Window{From: window.from, Until: readAt}
+					reader := w.Reader()
+					page, err := reader.Queries(ctx, QueryFilter{Since: win.From, Until: win.Until})
+					if err != nil {
+						t.Fatal(err)
+					}
+					summary, err := reader.Summary(ctx, SummaryQuery{Window: win})
+					if err != nil {
+						t.Fatal(err)
+					}
+					shard, err := reader.SummaryShard(ctx, SummaryQuery{Window: win})
+					if err != nil {
+						t.Fatal(err)
+					}
+					clients, _ := shard.ActiveClients.Count()
+					domains, _ := shard.Domains.Count()
+					if int64(len(page.Queries)) != window.total || page.RecordsFiltered != window.total || page.RecordsTotal != 3 ||
+						summary.Queries.Total != window.total || summary.Clients.Active != window.clients || summary.Queries.UniqueDomains != window.total ||
+						shard.Queries.Total != window.total || clients != window.clients || domains != window.total {
+						t.Errorf("%s %s: rows/filtered/all=%d/%d/%d summary total/clients/domains=%d/%d/%d shard=%d/%d/%d; want total %d, clients %d",
+							stage, window.name, len(page.Queries), page.RecordsFiltered, page.RecordsTotal, summary.Queries.Total, summary.Clients.Active, summary.Queries.UniqueDomains,
+							shard.Queries.Total, clients, domains, window.total, window.clients)
+					}
+				}
+			}
+			check("before restart", dirtyHour, dirtyHour.Truncate(24*time.Hour))
+			reopen := func() {
+				t.Helper()
+				if err := w.Close(); err != nil {
+					t.Fatal(err)
+				}
+				w, _ = newWriter(t, readAt, path)
+			}
+			reopen()
+			check("after restart", dirtyHour, dirtyHour.Truncate(24*time.Hour))
+			if err := w.Maintain(ctx); err != nil {
+				t.Fatal(err)
+			}
+			check("after maintenance", boundary, boundary.Truncate(24*time.Hour))
+			reopen()
+			check("after maintenance and restart", boundary, boundary.Truncate(24*time.Hour))
+		})
 	}
 }

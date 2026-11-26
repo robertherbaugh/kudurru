@@ -22,6 +22,35 @@ func seedIntegration(h *harness, name string) {
 		"status":{"conditions":[{"type":"Ready","status":"True","lastTransitionTime":"2026-10-11T11:00:00Z"}]}}`)
 }
 
+func TestIntegrationsGetFormats(t *testing.T) {
+	h := loggedIn(t)
+	h.api.mu.Lock()
+	h.api.integrationSummary = &api.IntegrationSummary{
+		Namespace: "default", Name: "edge", Type: "unifi", DeletionPolicy: "Delete",
+		Phase: "Ready", Reason: "AsExpected", UID: "edge-uid", Revision: "42",
+	}
+	h.api.mu.Unlock()
+
+	defaultOutput := h.mustRun("integrations", "get", "edge")
+	for _, want := range []string{"name: edge\n", "namespace: default\n", "uid: edge-uid\n"} {
+		if !strings.Contains(defaultOutput, want) {
+			t.Fatalf("default get lacks YAML field %q:\n%s", want, defaultOutput)
+		}
+	}
+	if named := h.mustRun("integrations", "get", "edge", "-o", "name"); named != defaultOutput {
+		t.Fatalf("get -o name no longer follows the default output:\n%s", named)
+	}
+	for _, format := range []string{"table", "wide"} {
+		output := h.mustRun("integrations", "get", "edge", "-o", format)
+		header, row, ok := strings.Cut(strings.TrimSpace(output), "\n")
+		if !ok || strings.Contains(row, "\n") ||
+			strings.Join(strings.Fields(header), " ") != "NAME TYPE POLICY PHASE REASON DELETION REQUESTED UID REVISION" ||
+			strings.Join(strings.Fields(row), " ") != "edge unifi Delete Ready AsExpected - edge-uid 42" {
+			t.Fatalf("get -o %s did not print a table with one summary:\n%s", format, output)
+		}
+	}
+}
+
 // The Integration kind of the CLI (D400): get, the intg alias, apply and
 // delete take the generic object routes, and a backup or an export that
 // names no kinds leaves Integrations out while `export integrations`

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,6 +24,7 @@ import (
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration"
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -35,9 +37,14 @@ import (
 // returns a stop function that waits for it to return.
 func kubeIntegrationMount(t *testing.T, cfg *config.Config) func() {
 	t.Helper()
+	return kubeIntegrationMountWithFactory(t, cfg, nil)
+}
+
+func kubeIntegrationMountWithFactory(t *testing.T, cfg *config.Config, factory func(string) (integration.Integration, error)) func() {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, cfg, "") }()
+	go func() { done <- runServeWithKubeIntegrationFactory(ctx, cfg, "", factory) }()
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
@@ -64,8 +71,8 @@ func kubeIntegrationMount(t *testing.T, cfg *config.Config) func() {
 // resuming publishes the change once; UniFi record publication and webhook
 // instances, and an instance outside the release namespace, are refused on
 // their objects with no provider request; an ambiguous effect is sent exactly
-// once, is not replayed while its peer cannot be read, and a restart resumes
-// it through fresh-reread recovery without sending it again.
+// once, is not replayed while its peer cannot be read, and a different
+// elected holder recovers it by rereading without sending it again.
 func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
@@ -79,7 +86,7 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 		}
 	})
 	scheme := runtime.NewScheme()
-	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, public.AddToScheme} {
+	for _, add := range []func(*runtime.Scheme) error{corev1.AddToScheme, coordinationv1.AddToScheme, public.AddToScheme} {
 		if err := add(scheme); err != nil {
 			t.Fatal(err)
 		}
@@ -305,23 +312,30 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 	if _, w := counts(); w-writesBefore != 1 || pending() != 1 {
 		t.Fatal("the ambiguous effect was not sent exactly once before recovery", w-writesBefore, pending())
 	}
-	// Restart with the peer healthy: the new process resumes the pending
-	// intent by a fresh complete reread and does not send it again.
-	stop()
-	peer.mu.Lock()
-	peer.ambiguous, peer.unreadable = false, false
-	peer.mu.Unlock()
-	cfg2 := offlineServeConfig(t, gate.server.URL)
-	cfg2.Node.Name = "integration-a"
+	leaseKey := client.ObjectKey{Namespace: "default", Name: kube.DefaultLeasePrefix + ih.ElectionKey(ih.InstanceID{Namespace: "default", Name: "publisher"})}
+	heldBy := func(name string) bool {
+		var lease coordinationv1.Lease
+		return admin.Get(ctx, leaseKey, &lease) == nil && lease.Spec.HolderIdentity != nil && *lease.Spec.HolderIdentity == name
+	}
+	if !heldBy("integration-a") {
+		t.Fatal("the first replica did not hold the Lease while the intent was pending")
+	}
+	gate2 := newPartitionGate(t, restConfig)
+	cfg2 := offlineServeConfig(t, gate2.server.URL)
+	cfg2.Node.Name = "integration-b"
 	cfg2.Store.Kube.ExpectedClusterID = string(identity.UID)
 	cfg2.Store.Kube.StartupTimeout = config.Duration(5 * time.Second)
 	cfg2.Blocking.Enabled = false
 	cfg2.DNSSEC.Enabled = false
 	cfg2.Credentials.AllowedFiles = []string{credential}
 	_ = kubeIntegrationMount(t, cfg2)
-	await(90*time.Second, "the restarted host resolves the pending intent", func() bool {
+	stop()
+	peer.mu.Lock()
+	peer.ambiguous, peer.unreadable = false, false
+	peer.mu.Unlock()
+	await(90*time.Second, "the new holder resolves the pending intent", func() bool {
 		c, _ := ready("publisher")
-		return pending() == 0 && target() == "192.0.2.82" && c != nil && c.Status == metav1.ConditionTrue
+		return heldBy("integration-b") && pending() == 0 && target() == "192.0.2.82" && c != nil && c.Status == metav1.ConditionTrue
 	})
 	if _, w := counts(); w != writesBefore+1 {
 		t.Fatal("recovery replayed the ambiguous effect", w-writesBefore)

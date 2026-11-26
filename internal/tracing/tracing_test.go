@@ -417,3 +417,33 @@ func TestBeginAllocations(t *testing.T) {
 		t.Fatalf("an unkept traced query allocates %v times, want 1", allocs)
 	}
 }
+
+func TestFinishClipsDetachedSpansAtAnswer(t *testing.T) {
+	tracer, _, _ := newTestTracer(t, Config{Ratio: 1})
+	start := time.Now()
+	answer := start.Add(time.Millisecond)
+	trace, _ := tracer.Begin(query(), false, start)
+	completed := trace.Start(Root, "kudurru.cache", KindInternal, start)
+	trace.End(completed, answer.Add(-time.Microsecond), "")
+	straddles := trace.Start(Root, "kudurru.recursor", KindInternal, start)
+	trace.End(straddles, answer.Add(time.Microsecond), "")
+	late := trace.Start(Root, "kudurru.dnssec", KindInternal, answer.Add(time.Microsecond))
+	trace.Finish(answer)
+	trace.End(late, answer.Add(time.Second), "")
+
+	spans := trace.Spans()
+	for _, want := range []struct {
+		ref        SpanRef
+		start, end time.Time
+	}{
+		{Root, start, answer},
+		{completed, start, answer.Add(-time.Microsecond)},
+		{straddles, start, answer},
+		{late, answer, answer},
+	} {
+		span := spans[want.ref-1]
+		if !span.Start.Equal(want.start) || !span.End.Equal(want.end) {
+			t.Errorf("%s: start/end relative to answer = %s/%s, want %s/%s", span.Name, span.Start.Sub(answer), span.End.Sub(answer), want.start.Sub(answer), want.end.Sub(answer))
+		}
+	}
+}

@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/api"
 )
 
 // fakeAPI implements the subset of the /api/v1 contract the CLI uses, with
@@ -44,7 +46,8 @@ type fakeAPI struct {
 	lastIDs    []string
 	messages   []map[string]any
 	// manifests is the answer of GET /integrations/manifests (404 when nil).
-	manifests any
+	manifests          any
+	integrationSummary *api.IntegrationSummary
 }
 
 const (
@@ -296,6 +299,16 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			return
 		}
 		f.writeJSON(w, 200, m)
+	})
+	mux.HandleFunc("GET /api/v1/integrations/{ns}/{name}", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		summary := f.integrationSummary
+		f.mu.Unlock()
+		if summary == nil || summary.Namespace != r.PathValue("ns") || summary.Name != r.PathValue("name") {
+			f.writeErr(w, http.StatusNotFound, "not_found", "integration not found", "")
+			return
+		}
+		f.writeJSON(w, http.StatusOK, summary)
 	})
 
 	mux.HandleFunc("GET /api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {

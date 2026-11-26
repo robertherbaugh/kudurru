@@ -6,6 +6,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve pending query-log rollup repairs across restarts so late previous-hour
+  writes stay visible to summaries and client counts (#122).
+
 ## [0.2.0] - unreleased
 
 ### Added

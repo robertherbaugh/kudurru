@@ -356,6 +356,15 @@ func (w *Writer) loadState(ctx context.Context, created bool) error {
 	now := w.clock.Now().Unix()
 	w.hourDone = metaInt(meta, metaHourDone, floorTo(now, 3600))
 	w.dayDone = metaInt(meta, metaDayDone, floorTo(now, 86400))
+	for key := range meta {
+		if raw, ok := strings.CutPrefix(key, metaDirtyHour); ok {
+			hour, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return fmt.Errorf("sqlitelog: read dirty hour: %w", err)
+			}
+			w.acc.dirty[hour] = struct{}{}
+		}
+	}
 	w.firstTS = metaInt(meta, metaFirstTS, 0)
 	if la := metaInt(meta, metaLastAnalyze, 0); la > 0 {
 		w.lastAnalyze = time.Unix(la, 0)
@@ -631,7 +640,11 @@ func (w *Writer) flushMinutes(ctx context.Context, cutoff int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	base, cl, qt, up := tx.StmtContext(ctx, w.upBase), tx.StmtContext(ctx, w.upClient), tx.StmtContext(ctx, w.upQType), tx.StmtContext(ctx, w.upUp)
+	dirty := map[int64]struct{}{}
 	for _, ts := range due {
+		if hour := floorTo(ts, 3600); hour < w.hourDone {
+			dirty[hour] = struct{}{}
+		}
 		m := w.acc.minutes[ts]
 		args := []any{ts, w.nodeID}
 		for _, v := range m.base {
@@ -658,6 +671,11 @@ func (w *Writer) flushMinutes(ctx context.Context, cutoff int64) error {
 			if _, err := up.ExecContext(ctx, args...); err != nil {
 				return fmt.Errorf("sqlitelog: flush rollup_upstream_1m: %w", err)
 			}
+		}
+	}
+	for hour := range dirty {
+		if err := writeMeta(ctx, tx, dirtyHourKey(hour), 1); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -812,6 +830,7 @@ func (w *Writer) Maintain(ctx context.Context) error {
 // dirty hour. A late event for a derived hour (or, on a new database, for
 // the hour before it was opened) leaves that hour's _1h and _1d rows stale
 // until the next derive, so reads take it from the finer tiers meanwhile.
+// A minute flush persists the dirty marker with the data it protects.
 // Caller holds mu.
 func (w *Writer) readableProgress() (hourDone, dayDone int64) {
 	hourDone, dayDone = w.hourDone, w.dayDone
@@ -867,6 +886,11 @@ func (w *Writer) derive(ctx context.Context, now time.Time) error {
 	for _, h := range hours {
 		if err := deriveHour(ctx, tx, h); err != nil {
 			return err
+		}
+		if _, dirty := w.acc.dirty[h]; dirty {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM meta WHERE key=?`, dirtyHourKey(h)); err != nil {
+				return fmt.Errorf("sqlitelog: clear dirty hour %d: %w", h, err)
+			}
 		}
 		if h >= newDone {
 			newDone = h + 3600
@@ -1049,6 +1073,8 @@ func truncate(s string, n int) string {
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
+
+func dirtyHourKey(hour int64) string { return metaDirtyHour + strconv.FormatInt(hour, 10) }
 
 func writeMeta(ctx context.Context, db execer, key string, value any) error {
 	if _, err := db.ExecContext(ctx, `INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value); err != nil {

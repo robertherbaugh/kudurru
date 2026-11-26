@@ -45,7 +45,17 @@ type unifiPushPeer struct {
 	dropPost bool
 	// failPostAt makes the policy creation with that sequence number (the
 	// value next takes) answer 500 without creating anything.
-	failPostAt int
+	failPostAt  int
+	policyFault unifiPolicyFault
+}
+
+type unifiPolicyFault struct {
+	method         string
+	at, attempts   int
+	dropAckAndRead bool
+	failNextRead   bool
+	hold           <-chan struct{}
+	entered        chan<- struct{}
 }
 
 const (
@@ -118,6 +128,16 @@ func (p *unifiPushPeer) serve(t *testing.T) func(http.ResponseWriter, *http.Requ
 			p.network = body
 			_ = json.NewEncoder(w).Encode(body)
 		case r.Method == http.MethodGet && path == base+"/dns/policies":
+			if fault := &p.policyFault; fault.method == http.MethodGet && fault.hold != nil {
+				close(fault.entered)
+				<-fault.hold
+				fault.hold = nil
+			}
+			if p.policyFault.failNextRead {
+				p.policyFault.failNextRead = false
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			ids := make([]string, 0, len(p.policies))
 			for id := range p.policies {
 				ids = append(ids, id)
@@ -139,9 +159,7 @@ func (p *unifiPushPeer) serve(t *testing.T) func(http.ResponseWriter, *http.Requ
 			p.policies[id] = body
 			if p.dropPost {
 				p.dropPost = false
-				if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
-					_ = conn.Close()
-				}
+				unifiDropResponse(t, w)
 				return
 			}
 			w.WriteHeader(http.StatusCreated)
@@ -152,16 +170,38 @@ func (p *unifiPushPeer) serve(t *testing.T) func(http.ResponseWriter, *http.Requ
 				w.WriteHeader(http.StatusNotFound)
 				return
 			}
+			fault := &p.policyFault
+			inject := false
+			if r.Method == fault.method {
+				fault.attempts++
+				inject = fault.attempts == fault.at
+				if inject && fault.hold != nil {
+					close(fault.entered)
+					<-fault.hold
+				} else if inject && !fault.dropAckAndRead {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+			}
 			switch r.Method {
 			case http.MethodPut:
 				body["id"] = id
 				p.policies[id] = body
-				_ = json.NewEncoder(w).Encode(body)
 			case http.MethodDelete:
 				delete(p.policies, id)
-				w.WriteHeader(http.StatusNoContent)
 			default:
 				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			if inject && fault.dropAckAndRead {
+				fault.failNextRead = true
+				unifiDropResponse(t, w)
+				return
+			}
+			if r.Method == http.MethodPut {
+				_ = json.NewEncoder(w).Encode(body)
+			} else {
+				w.WriteHeader(http.StatusNoContent)
 			}
 		case r.Method == http.MethodPost && path == "/proxy/network/api/s/default/cmd/stamgr":
 			_ = json.NewEncoder(w).Encode(map[string]any{"meta": map[string]any{"rc": "ok"}, "data": []any{}})
@@ -173,6 +213,16 @@ func (p *unifiPushPeer) serve(t *testing.T) func(http.ResponseWriter, *http.Requ
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}
+}
+
+func unifiDropResponse(test *testing.T, writer http.ResponseWriter) {
+	test.Helper()
+	conn, _, err := writer.(http.Hijacker).Hijack()
+	if err != nil {
+		test.Error(err)
+		return
+	}
+	_ = conn.Close()
 }
 
 func (p *unifiPushPeer) written() []string {
