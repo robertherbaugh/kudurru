@@ -766,10 +766,11 @@ flowchart TD
   `status.records`. The records not yet forgotten are counted when a run
   starts, so a run that stops early reports them too, and a run that root
   fences before it could count keeps the counts of the last one. That holds
-  across leases and jobs: a job that replaces the cleanup job of the same
-  instance (after `CredentialsUnavailable` ended its lease and the bundle
-  changed, say) reports the old job's counts from its election until one of
-  its own runs counts. A blocked
+  across leases and jobs: a cleanup job that replaces the cleanup job of the
+  same instance (after `CredentialsUnavailable` ended its lease and the
+  bundle changed, say) reports the old job's counts from its election until
+  one of its own runs counts. A release counts nothing and carries nothing. A
+  blocked
   cleanup is re-evaluated at the instance's resync interval, at most every
   ten minutes, and at once when the object changes.
 - **Paused.** `LicenseUnavailable` and `Suspended` start no job, so only the

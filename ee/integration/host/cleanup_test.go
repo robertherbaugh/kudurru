@@ -351,6 +351,15 @@ func TestTerminatingReplacedJobKeepsTheCountedRemainder(t *testing.T) {
 	if requests, _, _, provisions := f.w.counts(); requests != 0 || provisions != 0 {
 		t.Fatalf("cleanup without its credential reached the provider: requests=%d provisions=%d", requests, provisions)
 	}
+	// A release that replaced this cleanup (an apply of Retain) never counts,
+	// so it carries none of the cleanup's count; another cleanup does.
+	f.h.mu.RLock()
+	release := f.h.carriedResult(instanceKey(f.owner()), f.owner(), GuardRelease)
+	cleanup := f.h.carriedResult(instanceKey(f.owner()), f.owner(), GuardCleanup)
+	f.h.mu.RUnlock()
+	if release != (Result{}) || cleanup.Remaining != 1 {
+		t.Fatalf("carried into a release %+v, into a cleanup %+v", release, cleanup)
+	}
 }
 
 // A lease lost between the provider's delete and its receipt leaves a pending
