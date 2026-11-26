@@ -51,7 +51,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - name: Build the dashboard bundle
         run: make dashboard-build
       - name: Version and image tag
