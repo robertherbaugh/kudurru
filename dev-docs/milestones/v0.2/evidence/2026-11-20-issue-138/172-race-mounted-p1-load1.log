@@ -1,0 +1,70 @@
+2026-11-20T19:38:16+00:00
+c487709debca6961802079b79d98f50644c652b2
+go version go1.27.4 linux/amd64
+8
+pid 81406's current affinity list: 0-7
+max 100000
+6.93 7.75 5.42 6/469 95697
+mode=race taskset=2 GOMAXPROCS=1 busy-loops=1 count=1 pattern=^Test(RunServe(SQLiteLongApplyKeepsServingDNSAndReads|SQLitePrimaryAnswersAcrossStatusWrites|StaticTwinsReadOnlyPeerLossRestart|RefusalInventory(Standalone|Static|Kubernetes))|ReadinessBudgetChargesOnlyRunnableTime|ProcessSchedStatReadsThisProcess)$
+=== RUN   TestReadinessBudgetChargesOnlyRunnableTime
+--- PASS: TestReadinessBudgetChargesOnlyRunnableTime (0.00s)
+=== RUN   TestProcessSchedStatReadsThisProcess
+--- PASS: TestProcessSchedStatReadsThisProcess (0.05s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 4m12.425880097s: 1189 correct DNS answers, 0 SERVFAIL, longest time without one 868.810739ms, 12 reads ok, 94 reads failed; last failed read: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s): ; wall=5m19.083s process-cpu=2m39.188s runqueue-wait=2m40.79s gomaxprocs=1 loadavg="2.99 5.56 5.25 3/394 106954"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (319.67s)
+=== RUN   TestRunServeRefusalInventoryStandalone
+    serve_refusal_inventory_test.go:128: static server mount-test ready: wall=12.015s process-cpu=6.016s runqueue-wait=6.052s gomaxprocs=1 loadavg="2.91 5.41 5.21 3/390 107016"
+    serve_refusal_inventory_test.go:129: product refusal: POST /auth/cli/{idp}/prepare (prepareCLILogin) on standalone answered 503 generation_pending (message "complete serving generation unavailable", hint "this node is preparing its next configuration; send the request again after Retry-After"), but operationRefusals (internal/api/refusals.go) declares no refusal for it there: declare the key on that shape (and give the key a row in refusalKeys with its operator doc anchor) or fix the route; wall=5m0.001s process-cpu=58.859s runqueue-wait=58.988s gomaxprocs=1 loadavg="2.41 3.47 4.40 2/368 108882"
+    serve_refusal_inventory_test.go:129: standalone: 16/212 operations walked, 2 answered 501 or 503, 3 stopped at request validation, 3 answered 404; wall=5m0.001s process-cpu=58.859s runqueue-wait=58.988s gomaxprocs=1 loadavg="2.41 3.47 4.40 2/368 108882"
+    serve_refusal_inventory_test.go:129: harness timeout before observation: standalone: context deadline exceeded; wall=5m0.001s process-cpu=58.859s runqueue-wait=58.988s gomaxprocs=1 loadavg="2.41 3.47 4.40 2/368 108882"
+--- FAIL: TestRunServeRefusalInventoryStandalone (316.92s)
+=== RUN   TestRunServeRefusalInventoryStatic
+    serve_refusal_inventory_test.go:142: static server node-a ready: wall=11.932s process-cpu=5.978s runqueue-wait=6.052s gomaxprocs=1 loadavg="2.50 3.45 4.39 3/370 109061"
+    serve_refusal_inventory_test.go:143: product refusal: POST /auth/cli/{idp}/prepare (prepareCLILogin) on static answered 503 generation_pending (message "complete serving generation unavailable", hint "this node is preparing its next configuration; send the request again after Retry-After"), but operationRefusals (internal/api/refusals.go) declares no refusal for it there: declare the key on that shape (and give the key a row in refusalKeys with its operator doc anchor) or fix the route; wall=5m0.001s process-cpu=1m0.283s runqueue-wait=1m0.452s gomaxprocs=1 loadavg="3.43 3.64 4.20 2/364 112254"
+    serve_refusal_inventory_test.go:143: static: 16/212 operations walked, 7 answered 501 or 503, 1 stopped at request validation, 1 answered 404; wall=5m0.002s process-cpu=1m0.283s runqueue-wait=1m0.452s gomaxprocs=1 loadavg="3.43 3.64 4.20 2/364 112254"
+    serve_refusal_inventory_test.go:143: harness timeout before observation: static: context deadline exceeded; wall=5m0.002s process-cpu=1m0.283s runqueue-wait=1m0.452s gomaxprocs=1 loadavg="3.43 3.64 4.20 2/364 112254"
+--- FAIL: TestRunServeRefusalInventoryStatic (316.95s)
+=== RUN   TestRunServeRefusalInventoryKubernetes
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 107637 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x67
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/log.go:60 +0xed
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).Enabled(0xc0002f5d40, 0x1)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/log/deleg.go:111 +0x30
+	>  github.com/go-logr/logr.Logger.Info({{0xa658988?, 0xc0002f5d40?}, 0xc002559610?}, {0x662556f, 0x16}, {0x0, 0x0, 0x0})
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.4/logr.go:276 +0x75
+	>  sigs.k8s.io/controller-runtime/pkg/envtest.(*Environment).Start(0xc002322dc8)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.3/pkg/envtest/server.go:303 +0xbdd
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.startKubeRuntimeMount(0xc003188488, 0xa678e80)
+	>  	/home/vercel-sandbox/kudurru/cmd/kudurru/serve_kube_auth_routes_test.go:89 +0x3c7
+	>  github.com/robertherbaugh/kudurru/cmd/kudurru.TestRunServeRefusalInventoryKubernetes(0xc003188488)
+	>  	/home/vercel-sandbox/kudurru/cmd/kudurru/serve_refusal_inventory_test.go:150 +0x145
+	>  testing.tRunner(0xc003188488, 0xa677a78)
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2195 +0x21d
+	>  created by testing.(*T).Run in goroutine 1
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2260 +0xb13
+I1120 19:54:20.728666   95699 leaderelection.go:258] "Attempting to acquire leader lease..." lock="default/kudurru-controller"
+I1120 19:54:20.852248   95699 leaderelection.go:272] "Successfully acquired lease" lock="default/kudurru-controller"
+    serve_refusal_inventory_test.go:150: static server 8a5507f8-b67 ready: wall=3.894s process-cpu=1.692s runqueue-wait=2.337s gomaxprocs=1 loadavg="3.36 3.62 4.19 3/379 112875"
+    serve_refusal_inventory_test.go:151: kubernetes: 212/212 operations walked, 51 answered 501 or 503, 28 stopped at request validation, 48 answered 404; wall=5.94s process-cpu=2.124s runqueue-wait=5.26s gomaxprocs=1 loadavg="3.47 3.63 4.19 6/379 112876"
+--- PASS: TestRunServeRefusalInventoryKubernetes (20.52s)
+=== RUN   TestRunServeStaticTwinsReadOnlyPeerLossRestart
+    serve_static_cluster_test.go:160: static server node-a ready: wall=29.056s process-cpu=14.564s runqueue-wait=14.737s gomaxprocs=1 loadavg="3.17 3.54 4.14 2/365 112885"
+    serve_static_cluster_test.go:160: static server node-b ready: wall=29.819s process-cpu=14.938s runqueue-wait=15.098s gomaxprocs=1 loadavg="2.90 3.44 4.08 3/366 113077"
+    serve_static_cluster_test.go:164: mounted DNS published seed.static.example. after 5.93s
+    serve_static_cluster_test.go:257: static server node-b ready: wall=7.012s process-cpu=3.508s runqueue-wait=3.537s gomaxprocs=1 loadavg="2.87 3.38 4.04 3/366 113085"
+--- PASS: TestRunServeStaticTwinsReadOnlyPeerLossRestart (88.94s)
+=== RUN   TestRunServeSQLitePrimaryAnswersAcrossStatusWrites
+    serve_status_write_test.go:82: mounted DNS published seed.example. after 5.791s
+    serve_status_write_test.go:260: 24 status writes of 24 new serials; probe: 1424 answered, 0 SERVFAIL, 0 other, 0 without an answer within 200 ms; 3 UPDATE retries after SERVFAIL or no answer; 0 status reads asked again after generation_pending; wall=1m56.488s process-cpu=58.145s runqueue-wait=58.693s gomaxprocs=1 loadavg="2.88 3.21 3.90 3/365 113182"
+--- PASS: TestRunServeSQLitePrimaryAnswersAcrossStatusWrites (116.51s)
+FAIL
+test exit=1
+2026-11-20T19:57:56+00:00

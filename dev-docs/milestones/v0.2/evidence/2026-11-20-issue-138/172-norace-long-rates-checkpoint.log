@@ -1,0 +1,112 @@
+2026-11-20T19:30:22+00:00
+ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61
+go version go1.27.4 linux/amd64
+8
+pid 66520's current affinity list: 0-7
+max 100000
+7.31 8.01 3.94 5/481 66538
+mode=norace taskset=1 GOMAXPROCS=1 busy-loops=0 count=100 pattern=^TestRunServeSQLiteLongApplyKeepsServingDNSAndReads$
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 15.33174644s: 105 correct DNS answers, 0 SERVFAIL, longest time without one 356.228423ms, 14 reads ok, 1 reads failed; last failed read: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s): ; wall=24.309s process-cpu=19.441s runqueue-wait=1.974s gomaxprocs=1 loadavg="7.11 7.89 4.01 10/501 67236"
+    serve_apply_multi_mount_test.go:481: 1 reads of a second caller failed during one request (14 answered); last: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s):
+    panic.go:694: mounted failure load: wall=24.31s process-cpu=19.441s runqueue-wait=1.974s gomaxprocs=1 loadavg="7.11 7.89 4.01 8/501 67236"
+--- FAIL: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (24.34s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 15.898231193s: 116 correct DNS answers, 0 SERVFAIL, longest time without one 266.074532ms, 14 reads ok, 0 reads failed; last failed read: ; wall=26.478s process-cpu=17.57s runqueue-wait=6.327s gomaxprocs=1 loadavg="7.70 7.96 4.14 8/513 71548"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (26.52s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.472541457s: 91 correct DNS answers, 0 SERVFAIL, longest time without one 263.942942ms, 13 reads ok, 0 reads failed; last failed read: ; wall=21.666s process-cpu=15.757s runqueue-wait=1.195s gomaxprocs=1 loadavg="7.22 7.84 4.18 7/536 74191"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (21.71s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 11.052553615s: 86 correct DNS answers, 0 SERVFAIL, longest time without one 211.649001ms, 13 reads ok, 0 reads failed; last failed read: ; wall=19.65s process-cpu=14.731s runqueue-wait=1.273s gomaxprocs=1 loadavg="7.50 7.86 4.26 4/499 77784"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (19.68s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 11.675289849s: 83 correct DNS answers, 0 SERVFAIL, longest time without one 217.371773ms, 12 reads ok, 0 reads failed; last failed read: ; wall=19.971s process-cpu=15.549s runqueue-wait=142ms gomaxprocs=1 loadavg="6.41 7.59 4.25 5/442 78359"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (20.00s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.040321881s: 93 correct DNS answers, 0 SERVFAIL, longest time without one 242.100612ms, 12 reads ok, 0 reads failed; last failed read: ; wall=20.28s process-cpu=15.675s runqueue-wait=266ms gomaxprocs=1 loadavg="5.76 7.37 4.25 5/427 80380"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (20.29s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 11.751023941s: 90 correct DNS answers, 0 SERVFAIL, longest time without one 272.035971ms, 13 reads ok, 0 reads failed; last failed read: ; wall=19.837s process-cpu=15.412s runqueue-wait=464ms gomaxprocs=1 loadavg="5.26 7.16 4.25 10/464 81758"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (19.89s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 17.834622701s: 121 correct DNS answers, 0 SERVFAIL, longest time without one 282.813519ms, 14 reads ok, 0 reads failed; last failed read: ; wall=28.214s process-cpu=19.81s runqueue-wait=5.433s gomaxprocs=1 loadavg="6.09 7.17 4.35 7/469 84466"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (28.24s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.121000048s: 92 correct DNS answers, 0 SERVFAIL, longest time without one 257.921647ms, 13 reads ok, 0 reads failed; last failed read: ; wall=22.174s process-cpu=16.425s runqueue-wait=388ms gomaxprocs=1 loadavg="5.83 7.05 4.37 6/471 85298"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (22.18s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 15.192008491s: 106 correct DNS answers, 0 SERVFAIL, longest time without one 229.654136ms, 14 reads ok, 0 reads failed; last failed read: ; wall=23.215s process-cpu=18.259s runqueue-wait=1.411s gomaxprocs=1 loadavg="6.27 7.04 4.44 7/482 85353"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (23.28s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.812840426s: 91 correct DNS answers, 0 SERVFAIL, longest time without one 273.419255ms, 11 reads ok, 0 reads failed; last failed read: product refusal: generation_pending: complete serving generation unavailable (hint: this node is preparing its next configuration; send the request again after Retry-After) (retry after 1s): ; wall=22.24s process-cpu=15.713s runqueue-wait=3.45s gomaxprocs=1 loadavg="6.68 7.09 4.51 18/481 87061"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (22.30s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 19.589448417s: 124 correct DNS answers, 0 SERVFAIL, longest time without one 290.858287ms, 16 reads ok, 0 reads failed; last failed read: ; wall=33.551s process-cpu=18.564s runqueue-wait=19.422s gomaxprocs=1 loadavg="10.68 7.98 4.90 13/468 88683"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (33.59s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 19.456778239s: 122 correct DNS answers, 0 SERVFAIL, longest time without one 268.832949ms, 15 reads ok, 0 reads failed; last failed read: ; wall=30.385s process-cpu=19.6s runqueue-wait=10.782s gomaxprocs=1 loadavg="11.55 8.46 5.16 9/483 90937"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (30.41s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 15.240888948s: 107 correct DNS answers, 0 SERVFAIL, longest time without one 341.714025ms, 13 reads ok, 0 reads failed; last failed read: ; wall=23.649s process-cpu=17.83s runqueue-wait=3.035s gomaxprocs=1 loadavg="11.11 8.60 5.29 7/485 91444"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (23.69s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 10.954471302s: 82 correct DNS answers, 0 SERVFAIL, longest time without one 235.876215ms, 11 reads ok, 0 reads failed; last failed read: ; wall=18.884s process-cpu=14.59s runqueue-wait=285ms gomaxprocs=1 loadavg="9.50 8.40 5.30 3/472 92270"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (18.92s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 13.019673413s: 93 correct DNS answers, 0 SERVFAIL, longest time without one 247.08635ms, 12 reads ok, 0 reads failed; last failed read: ; wall=21.198s process-cpu=16.792s runqueue-wait=340ms gomaxprocs=1 loadavg="8.67 8.28 5.32 5/470 93680"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (21.22s)
+=== RUN   TestRunServeSQLiteLongApplyKeepsServingDNSAndReads
+    serve_apply_multi_mount_test.go:338: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:339: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:415: mounted request kudurru apply: repeated=0
+    serve_apply_multi_mount_test.go:441: apply of 120 documents took 12.710569446s: 97 correct DNS answers, 0 SERVFAIL, longest time without one 239.962936ms, 14 reads ok, 0 reads failed; last failed read: ; wall=21.588s process-cpu=16.443s runqueue-wait=295ms gomaxprocs=1 loadavg="7.59 8.05 5.31 5/458 94168"
+--- PASS: TestRunServeSQLiteLongApplyKeepsServingDNSAndReads (21.59s)
