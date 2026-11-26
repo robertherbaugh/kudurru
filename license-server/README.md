@@ -475,7 +475,7 @@ one sentence naming the variable; it never repeats a secret.
 The image is `ghcr.io/robertherbaugh/kudurru-license-server`, published by
 `.github/workflows/license-server.yml` on `license-server-v*` tags
 (linux/amd64 and linux/arm64, cosign-signed). It runs as uid 65532 on
-`oven/bun:1.4.4-distroless`, listens on 8790, answers `GET /healthz` and
+`oven/bun:1.4.5-distroless`, listens on 8790, answers `GET /healthz` and
 `GET /readyz`, and drains on SIGTERM. Put it behind a TLS-terminating proxy
 with `PUBLIC_URL=https://…` and `TRUSTED_PROXIES` (or `CLIENT_IP_HEADER`).
 One instance is the supported topology; several work, but the sign-in rate
