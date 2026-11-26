@@ -1,8 +1,7 @@
 // The QueryClients of the running test, and the teardown that leaves nothing
 // of them behind (src/test/setup.ts runs it after every test). The license
-// portal's ui/src/test/queryClients.ts started from the same code; this one
-// also waits for React's scheduler, checks again after waitFor returns and
-// bounds the whole settle (porting that is in dev-docs/followups.md).
+// portal's license-server/ui/src/test/queryClients.ts is a copy; keep the two
+// in step by hand.
 //
 // React Query hands its notifications to components (and to cache listeners)
 // in a batch it schedules with setTimeout(0). A test that ends while a fetch

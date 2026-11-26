@@ -1,15 +1,14 @@
-// Copied from dashboard/src/test/setup.ts at dd3dcb0; keep in step by hand.
-// Changes: no MSW server (the portal's tests stub fetch per test with
-// ui/src/test/api.ts, which this file resets); no query-log, canvas or
-// TanStack Virtual stubs (the portal has none of those); every test waits for
-// its QueryClients to settle before unmounting and clears them after
-// (ui/src/test/queryClients.ts).
+// Copied from dashboard/src/test/setup.ts at 1d9fd14a; keep in step by hand.
+// Changes: no MSW server and no test transport (the portal's tests stub
+// fetch per test with ui/src/dev/api.ts, and this file unstubs it after each
+// test); no toBeInteractionDisabled matcher; no query-log, canvas or TanStack
+// Virtual stubs (the portal has none of those).
 //
 // Vitest setup: jest-dom matchers and the browser APIs jsdom lacks.
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
-import { clearQueryClients, settleQueryClients } from './queryClients';
+import { clearQueryClients, expectNoQueuedBatches, settleQueryClients } from './queryClients';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
 // Astryx 0.7 also announces EmptyState and Banner text in a visually hidden
@@ -69,7 +68,9 @@ if (typeof dialogProto.showModal !== 'function') {
 
 // Settle first, with the UI mounted and the fetch stub in place: nothing of
 // the test may still be in flight once jsdom goes away (queryClients.ts).
-// The teardown runs even when settling fails, so only the leaking test fails.
+// The teardown runs even when settling fails, so only the leaking test fails,
+// and with the error of settling: the check that the unmount queued nothing
+// only runs after a test that settled.
 afterEach(async () => {
   try {
     await settleQueryClients();
@@ -78,4 +79,5 @@ afterEach(async () => {
     vi.unstubAllGlobals();
     clearQueryClients();
   }
+  expectNoQueuedBatches();
 });
