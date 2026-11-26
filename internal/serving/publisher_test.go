@@ -47,13 +47,18 @@ func primary(t *testing.T) *sqlite.Store {
 
 func applyPair(t *testing.T, s *sqlite.Store, label string) {
 	t.Helper()
+	if err := applyPairErr(s, label); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func applyPairErr(s *sqlite.Store, label string) error {
 	var objects []store.Object
 	for _, name := range []string{"one", "two"} {
 		objects = append(objects, &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"cut": label}}, Spec: v1alpha1.DNSZoneSpec{Type: v1alpha1.ZoneTypePrimary, ZoneName: name + ".example."}})
 	}
-	if _, err := s.ApplyCluster(context.Background(), objects, store.ApplyOptions{Manager: store.ManagerAPI}, nil); err != nil {
-		t.Fatal(err)
-	}
+	_, err := s.ApplyCluster(context.Background(), objects, store.ApplyOptions{Manager: store.ManagerAPI}, nil)
+	return err
 }
 
 func installImage(t *testing.T, s, p *sqlite.Store) replication.Generation {
@@ -993,5 +998,81 @@ func TestPublisherSourceLeaseSurvivesASameSourcePublicationOnly(t *testing.T) {
 	lease.Release()
 	if err := p.CheckSourceLease(ctx, lease); !errors.Is(err, ErrReleased) {
 		t.Fatal("a released lease was not refused:", err)
+	}
+}
+
+// HoldTerm is the rest of a request of several items (D378). It holds an
+// unchanged publication for the whole hold when nobody waits, ends early once
+// every caller that waited for a publication stopped waiting while it was
+// current, and reports false as soon as any commit makes the publication
+// stale, or at once when none is current.
+func TestPublisherHoldTermEndsWhenStaleOrWaitingCallersAreServed(t *testing.T) {
+	s := primary(t)
+	applyPair(t, s, "first")
+	var gate atomic.Pointer[chan struct{}]
+	p := runPublisher(t, Options{Source: s, Prepare: func(ctx context.Context, c Candidate) (Prepared, error) {
+		if g := gate.Load(); g != nil {
+			select {
+			case <-*g:
+			case <-ctx.Done():
+				return Prepared{}, ctx.Err()
+			}
+		}
+		return allComponents(c)
+	}})
+	status := waitStatus(t, p, func(s Status) bool { return s.ProtectedReady })
+	target := TermActivation{Term: status.Authority.Term, Incarnation: status.Authority.Incarnation}
+	ctx := context.Background()
+
+	began := time.Now()
+	if held, err := p.HoldTerm(ctx, target, 100*time.Millisecond, false); err != nil || !held {
+		t.Fatal("an unchanged publication was not held", held, err)
+	}
+	if elapsed := time.Since(began); elapsed < 100*time.Millisecond {
+		t.Fatal("the hold ended early although nobody waited", elapsed)
+	}
+
+	done := p.AwaitHTTP()
+	time.AfterFunc(50*time.Millisecond, done)
+	began = time.Now()
+	if held, err := p.HoldTerm(ctx, target, time.Minute, false); err != nil || !held {
+		t.Fatal("a hold whose waiting caller stopped waiting did not report it held", held, err)
+	}
+	if elapsed := time.Since(began); elapsed > 30*time.Second {
+		t.Fatal("the hold did not end once its waiting caller stopped waiting", elapsed)
+	}
+	// The caller that the hold was asked for was served before it began.
+	if held, err := p.HoldTerm(ctx, target, time.Minute, true); err != nil || !held {
+		t.Fatal("a hold for callers that no longer wait did not end at once", held, err)
+	}
+
+	// A commit that is not the holder's own, while a caller still waits.
+	waiting := p.AwaitHTTP()
+	defer waiting()
+	blocked := make(chan struct{})
+	gate.Store(&blocked)
+	committed := make(chan error, 1)
+	time.AfterFunc(50*time.Millisecond, func() { committed <- applyPairErr(s, "second") })
+	began = time.Now()
+	if held, err := p.HoldTerm(ctx, target, time.Minute, true); err != nil || held {
+		t.Fatal("a commit during the hold did not report the publication stale", held, err)
+	}
+	if err := <-committed; err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(began); elapsed > 30*time.Second {
+		t.Fatal("a commit during the hold did not end it", elapsed)
+	}
+	// The successor's preparation is held, so no publication is current.
+	if held, err := p.HoldTerm(ctx, target, time.Minute, true); err != nil || held {
+		t.Fatal("a hold without a current publication did not report it at once", held, err)
+	}
+	close(blocked)
+	gate.Store(nil)
+	waitStatus(t, p, func(s Status) bool { return s.ProtectedReady })
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := p.HoldTerm(canceled, target, time.Minute, true); !errors.Is(err, context.Canceled) {
+		t.Fatal("a canceled hold did not end with its context", err)
 	}
 }

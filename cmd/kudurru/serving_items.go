@@ -41,8 +41,9 @@ type requestItems struct {
 // does not depend on it: ordinary answers use the publication that is served
 // (recursiveRootSeal.servedCurrent). Before a later item, the request first
 // waits, inside its lifetime, until the node has published everything
-// committed so far, and then commits nothing for rest so that other callers
-// are served from that publication. It does so after work of its items, and
+// committed so far, and then commits nothing for rest, or until the callers
+// that waited have been served, so that other callers are served from that
+// publication (D421). It does so after work of its items, and
 // at once when another caller's read waits for a publication
 // (Publisher.AwaitingHTTP) and the request has not yet spent longer in its
 // waits than in its own work, so that the read is served within its own
@@ -147,12 +148,13 @@ func (i *requestItems) waitBound() time.Duration {
 }
 
 // published records that the node had a current publication for this
-// request at the moment the wait returned, after a wait of took.
-func (i *requestItems) published(took time.Duration) {
+// request after a wait of took, and that the request then rested on it for
+// rested.
+func (i *requestItems) published(took, rested time.Duration) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.paced = time.Now()
-	i.waited += took + max(i.pace.rest, 0)
+	i.waited += took + max(rested, 0)
 	if i.pace.maxWait > 0 {
 		i.wait = min(max(i.pace.wait, 2*took), max(i.pace.wait, i.pace.maxWait))
 	}
@@ -177,35 +179,66 @@ func (i *requestItems) missed(took time.Duration) {
 // command of another caller that commits while the request waits stops every
 // later item. request is the request's own context, which carries its
 // lifetime; bound additionally ends with the request's writer episode.
+//
+// The rest ends early once every caller that waited for a publication during
+// it has been served from it (Publisher.HoldTerm), so a yield costs the
+// request about the node's time to publish rather than that plus the whole
+// rest. A publication that goes stale while a caller still waits does not end
+// the pace: each item's commit is followed by the node's own follow-up writes
+// (the record's status, the zone's serial and lifecycle head, primary
+// admission), published in turn, and some react to the item's first
+// publication and replace it within milliseconds, before the waiting caller
+// may have been scheduled to capture it. That caller then found no current
+// publication and, once the request committed on, was refused with
+// generation_pending when its capture wait ended. The request instead waits
+// for the next publication, within the same bound, and rests on it again.
 func (s *servingRuntime) paceLaterItem(request, bound context.Context, items *requestItems, target serving.TermActivation) error {
-	if !items.due(s.publisher.AwaitingHTTP()) {
+	awaited := s.publisher.AwaitingHTTP()
+	if !items.due(awaited) {
 		return nil
 	}
 	wait, cancel := bound, context.CancelFunc(func() {})
 	if limit := items.waitBound(); limit > 0 {
 		wait, cancel = context.WithTimeout(bound, limit)
 	}
+	defer cancel()
 	began := time.Now()
-	err := s.publisher.WaitTerm(wait, target)
-	cancel()
-	if err != nil && bound.Err() == nil && wait.Err() != nil {
-		// The node did not publish within the wait's bound: go on without
-		// the publication, and wait longer after the next work budget.
-		items.missed(time.Since(began))
-		return nil
-	}
-	if err == nil {
-		items.published(time.Since(began))
-		if items.pace.rest <= 0 {
+	var err error
+	for {
+		err = s.publisher.WaitTerm(wait, target)
+		if err != nil && bound.Err() == nil && wait.Err() != nil {
+			// The node did not publish within the wait's bound: go on without
+			// the publication, and wait longer after the next work budget.
+			items.missed(time.Since(began))
 			return nil
 		}
-		timer := time.NewTimer(items.pace.rest)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
+		if err != nil {
+			break
+		}
+		// took is the time the node needed to reach the publication that
+		// the rest begins on.
+		took := time.Since(began)
+		if items.pace.rest <= 0 {
+			items.published(took, 0)
 			return nil
-		case <-bound.Done():
-			err = bound.Err()
+		}
+		rested := time.Now()
+		var held bool
+		held, err = s.publisher.HoldTerm(bound, target, items.pace.rest, awaited)
+		if err != nil {
+			break
+		}
+		if held || !s.publisher.AwaitingHTTP() {
+			// The publication stayed current for the rest or served every
+			// waiting caller, or it went stale while nobody waits for it.
+			items.published(took, time.Since(rested))
+			return nil
+		}
+		if wait.Err() != nil {
+			// A caller still waits, and the node did not publish again
+			// within the bound.
+			items.missed(time.Since(began))
+			return nil
 		}
 	}
 	if ended := itemEnded(request); ended != nil {

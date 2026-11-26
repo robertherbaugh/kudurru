@@ -80,8 +80,11 @@ type Publisher struct {
 	reason      string
 	sequence    uint64 // under publication lock
 	// awaiting counts HTTP callers that wait for an eligible publication
-	// before they own a lease (AwaitHTTP).
-	awaiting atomic.Int64
+	// before they own a lease (AwaitHTTP). awaitReleased is closed and
+	// replaced, under awaitMu, whenever one of them stops waiting.
+	awaiting      atomic.Int64
+	awaitMu       sync.Mutex
+	awaitReleased chan struct{}
 	// wakes counts Wake calls. A preparation notes it before it reads its
 	// candidate; a Wake that arrives later is answered by one more
 	// preparation after this one publishes (D405), never by canceling it.
@@ -535,11 +538,32 @@ func (p *Publisher) AwaitHTTP() (done func()) {
 	}
 	p.awaiting.Add(1)
 	var once sync.Once
-	return func() { once.Do(func() { p.awaiting.Add(-1) }) }
+	return func() {
+		once.Do(func() {
+			p.awaiting.Add(-1)
+			p.awaitMu.Lock()
+			if p.awaitReleased != nil {
+				close(p.awaitReleased)
+				p.awaitReleased = nil
+			}
+			p.awaitMu.Unlock()
+		})
+	}
 }
 
 // AwaitingHTTP reports whether a caller is marked by AwaitHTTP now.
 func (p *Publisher) AwaitingHTTP() bool { return p != nil && p.awaiting.Load() > 0 }
+
+// awaitChanges is closed when a caller marked by AwaitHTTP stops waiting.
+// Subscribe before reading AwaitingHTTP.
+func (p *Publisher) awaitChanges() <-chan struct{} {
+	p.awaitMu.Lock()
+	defer p.awaitMu.Unlock()
+	if p.awaitReleased == nil {
+		p.awaitReleased = make(chan struct{})
+	}
+	return p.awaitReleased
+}
 
 // Serves reports whether value is, by pointer identity, the named component of
 // the publication that is served now. It answers false once a successor has
