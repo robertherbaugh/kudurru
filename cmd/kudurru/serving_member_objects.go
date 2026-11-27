@@ -104,10 +104,11 @@ func memberRouteParts(prefix, escaped string) ([]string, bool) {
 
 // memberOwnForwardRoute reports the forwarded routes that carry a typed
 // command of their own rather than an object or zone command (D368): PATCH
-// /settings (settings.patch), POST /auth/logout, POST /auth/logout/browser
-// and DELETE /auth/sessions/{id} (auth.logout), POST /auth/password
-// (auth.password) and POST /auth/tokens and DELETE /auth/tokens/{id}
-// (auth.tokens). They get the same 30-second bound before body read.
+// /settings (settings.patch), POST /auth/login (auth.login, D363), POST
+// /auth/logout, POST /auth/logout/browser and DELETE /auth/sessions/{id}
+// (auth.logout), POST /auth/password (auth.password) and POST /auth/tokens
+// and DELETE /auth/tokens/{id} (auth.tokens). They get the same 30-second
+// bound before body read and hold the follower's scheduled pull (D375, D424).
 func memberOwnForwardRoute(method, prefix, escaped string) bool {
 	parts, ok := memberRouteParts(prefix, escaped)
 	if !ok {
@@ -117,7 +118,7 @@ func memberOwnForwardRoute(method, prefix, escaped string) bool {
 	case http.MethodPatch:
 		return len(parts) == 1 && parts[0] == "settings"
 	case http.MethodPost:
-		if len(parts) == 2 && parts[0] == "auth" && (parts[1] == "password" || parts[1] == "tokens") {
+		if len(parts) == 2 && parts[0] == "auth" && (parts[1] == "login" || parts[1] == "password" || parts[1] == "tokens") {
 			return true
 		}
 		return len(parts) >= 2 && len(parts) <= 3 && parts[0] == "auth" && parts[1] == "logout" && (len(parts) == 2 || parts[2] == "browser")
@@ -144,8 +145,8 @@ func memberEarlierBound(method, prefix, path string) bool {
 // request with several items (POST /apply, :batchDelete) sends one command for
 // each item inside this single lifetime. The other unsafe requests under
 // /objects/ and /zones/ keep the same bound, which they had before the
-// forwarded routes were named. Settings and sign-out (memberOwnForwardRoute)
-// are bounded the same way. Primary, standalone and static nodes keep their
+// forwarded routes were named. Settings, sign-in and sign-out
+// (memberOwnForwardRoute) are bounded the same way. Primary, standalone and static nodes keep their
 // ordinary route lifetime, as does every other route on a follower.
 func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

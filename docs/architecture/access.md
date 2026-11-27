@@ -945,9 +945,12 @@ result whose counters commit on the primary. The dedup record keeps only a
 fingerprint whose input includes the nonce, which is stored nowhere, so it
 cannot be used to test passwords offline.
 
-The follower answers only after its own pull has installed the session and a
-published authentication view contains it; the cookie then works on every
-member. If the primary cannot be reached, the login is not attempted and the
+The sign-in holds the follower's scheduled pull while it runs, as the
+object, settings, sign-out, password and token commands do (D375, D424), so a pull cannot install a newer
+commit of the primary between the request's arrival and its forward and
+refuse it. The follower answers only after its own pull has installed the
+session and a published authentication view contains it; the cookie then
+works on every member. If the primary cannot be reached, the login is not attempted and the
 follower answers `503 unavailable`. If the exchange is lost after sending, it
 answers `503 completion_unknown` and never repeats the command. Static twins
 and standalone nodes sign in locally. See
