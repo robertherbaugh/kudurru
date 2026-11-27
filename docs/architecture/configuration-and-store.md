@@ -2181,12 +2181,14 @@ ten seconds; the work between two timed waits is at least as long as the next
 bound. A wait that reaches its bound goes on without the publication and
 without the rest, so the pace makes a request at most about twice as slow. A
 read is served within its capture wait whenever the node publishes the
-request's items and its own follow-up writes within it, and the request still
-has credit; a caller that reads again as soon as it is answered uses the
-credit up, and then waits for it to be earned back and for one more
-publication. A node that needs longer (a large data set, one loaded CPU, or
-the race detector on a loaded machine, where one publication of 120 record
-sets reached ten seconds) still refuses it with `503 generation_pending`. The pace captures no new lease: the
+request's items within it and the request still has credit; the node's
+follow-up writes land before the next preparation completes and add no
+publication of their own (measured, D425). A caller that reads again as soon
+as it is answered uses the credit up, and then waits for the request's next
+items and their publication. A node that needs longer than the capture wait
+for that (a large data set, one loaded CPU, or the race detector on a loaded
+machine, where one publication of 120 record sets reached ten seconds) still
+refuses it with `503 generation_pending`, as designed (D425). The pace captures no new lease: the
 chain's compare still decides, so a command that another caller commits in
 the pause stops every later item.
 
