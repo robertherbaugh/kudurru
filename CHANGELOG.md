@@ -23,6 +23,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   already decoded, is not validated again for each reader of the same
   generation. Every check still runs on new bytes.
 
+- One serving preparation validates its candidate image once for each
+  validation configuration instead of once per component, by remembering the
+  exact canonical bytes each configuration accepted.
+
 ## [0.2.0] - unreleased
 
 ### Added
