@@ -254,11 +254,18 @@ func TestServingHTTPExternalAccountsPaginationAndUnlicensedRevocation(t *testing
 	}
 	// Losing the provider license must not prevent local administrators from
 	// revoking an account. Enabling cannot bypass licensed provider admission.
+	episode := f.s.primary.writer.active.Load()
 	_ = f.s.opts.License.Set("invalid-replacement", "test")
 	awaitServingHTTPView(t, f.s, func(v *servingauth.View) bool {
 		info, err := v.ProviderInfo("corp")
 		return err != nil || info.Availability != servingauth.ProviderReady
 	})
+	// The license is a provider host dependency: losing it ends the writer
+	// episode and the next one starts after a pause. A revocation sent in
+	// that gap is refused before it dispatches, as the effect-free 503
+	// "current writable serving generation unavailable", so wait for the new
+	// episode to serve first.
+	awaitServingWriterRestarted(t, f.s, episode)
 	target := first.Items[0]
 	expectServingHTTPStatus(t, f.call(t, "POST", "/iam/external-users/"+target.Name+"/disable", externalCommandBody(t, target), "", admin, csrf), http.StatusNoContent)
 	awaitServingHTTPView(t, f.s, func(v *servingauth.View) bool {

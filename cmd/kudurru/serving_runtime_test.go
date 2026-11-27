@@ -193,6 +193,30 @@ func awaitServingWakesPublished(t *testing.T, s *servingRuntime) {
 	awaitServingRuntime(t, s, servingWakesPublished(s.publisher))
 }
 
+// awaitServingWriterRestarted waits until the writer episode that was running
+// when previous was read (s.primary.writer.active.Load()) has ended and a new
+// one serves: the new episode's primary driver is Running and Ready (a new
+// Run clears Ready, so a stale Ready of the ended episode does not count), its
+// publication is protected, and the served publication includes every Wake
+// issued so far. A change to a provider host dependency, such as the license,
+// ends the episode with providerhost.ErrStale and RunWriter starts the next
+// one after a pause. A command sent in between is refused, before any
+// transaction body, as "current writable serving generation unavailable" (the
+// effect-free 503 a client resends). A test that sends its command only after
+// this returns evaluates the command, not that gap.
+func awaitServingWriterRestarted(t *testing.T, s *servingRuntime, previous *primaryWriterTerm) {
+	t.Helper()
+	if previous == nil {
+		t.Fatal("no writer episode to wait out")
+	}
+	awaitServingRuntime(t, s, func() bool {
+		driver := s.primary.driver.Status()
+		active := s.primary.writer.active.Load()
+		return active != nil && active != previous && driver.Running && driver.Ready && s.publisher.Status().ProtectedReady
+	})
+	awaitServingWakesPublished(t, s)
+}
+
 // servingWakesPublished counts the Wakes issued so far and reports whether
 // the served publication includes them, for a fixture with a publisher of its
 // own (awaitServingWakesPublished).
