@@ -265,7 +265,10 @@ once in the dashboard works the same way, with a result for each name.
   about as long in them as in its own work, so they make it at most about
   twice as slow. A waiting read is served whenever the node publishes within its two
   seconds; a client that reads again as soon as it is answered uses up
-  that allowance and can be refused on a loaded node. Measured on a shared,
+  that allowance and can be refused on a loaded node. This is by design:
+  the pauses keep the request at most about twice as slow, and the
+  refused reads were measured waiting on the request's own next
+  documents, not on the node's follow-up writes alone. Measured on a shared,
   oversubscribed test machine: 120 new record sets took 3 to 19 seconds
   (20 to 45 seconds on one CPU) with a second caller reading every two
   seconds; every DNS query got its answer (the slowest within 0.1 seconds,
