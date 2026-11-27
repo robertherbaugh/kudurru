@@ -1282,7 +1282,11 @@ happens after every pull. Reads and local commands keep the exact check
 (`CheckReadLease`). A forwarded request holds the follower's scheduled pull
 from before it captures its source until it ends (`holdMemberPulls`,
 `Coordinator.HoldPulls`, D375): the scheduled pull used to install the
-request's own earlier items and cut the rest. The scheduled pull waits for the
+request's own earlier items and cut the rest. A forwarded sign-in holds it
+too (`memberOwnForwardRoute`, D424): without the hold any pull that installed
+a commit of the primary while the sign-in waited for its source refused it,
+effect-free, with `503 unavailable`. It ends that hold when the primary
+answered (`releaseMemberPullHold`), before its explicit pull. The scheduled pull waits for the
 holders at most `MaxPullHold` (30 seconds, counted from when the pull was due);
 an explicit pull after another forwarded sign-in, sign-out or settings change
 does not wait. Each item is still one exchange in which the primary commits
