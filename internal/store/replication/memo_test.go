@@ -2,11 +2,13 @@ package replication
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -275,5 +277,40 @@ func TestValidationMemoRemembersOnlyAcceptedEncodings(t *testing.T) {
 	before := calls
 	if _, err := Validate(i, strict); err == nil && calls == before {
 		t.Fatal("other limits reused the remembered validation")
+	}
+	// So are another schema version and another kind registry.
+	version := opts
+	version.SchemaVersion++
+	if _, err := Validate(i, version); err == nil {
+		t.Fatal("another schema version reused the remembered validation")
+	}
+	kinds := opts
+	kinds.Kinds = append(slices.Clone(opts.Kinds), Kind{APIVersion: "x/v1", Kind: "Extra"})
+	if _, err := Validate(i, kinds); err == nil {
+		t.Fatal("another kind registry reused the remembered validation")
+	}
+	// A copy of the configuration with a stricter function is another key:
+	// the stricter function runs and refuses.
+	stricter := opts
+	stricter.ValidateImage = func(*Image) error { return ErrInvalid }
+	if _, err := Validate(i, stricter); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a stricter ValidateImage was skipped by the remembered validation: %v", err)
+	}
+	entries := opts
+	entries.ValidateEntry = func(string, Entry) error { return ErrInvalid }
+	if _, err := Validate(i, entries); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a stricter ValidateEntry was skipped by the remembered validation: %v", err)
+	}
+	// A remembered acceptance is refused once the owner context has ended.
+	ctx, cancel := context.WithCancel(context.Background())
+	live := opts
+	live.Context = ctx
+	before = calls
+	if _, err := Validate(i, live); err != nil || calls != before {
+		t.Fatalf("the remembered validation with a live context: %v, %d more runs", err, calls-before)
+	}
+	cancel()
+	if _, err := Validate(i, live); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a remembered validation after its context ended: %v", err)
 	}
 }

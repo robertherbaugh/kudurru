@@ -106,7 +106,7 @@ func CaptureImage(ctx context.Context, image *replication.Image, registry Schema
 			return nil, ErrManifest
 		}
 	}
-	validated, err := replication.Validate(*image, replication.Validation{SchemaVersion: registry.SchemaVersion, Kinds: slices.Clone(registry.Kinds), Memo: captureValidations})
+	validated, err := replication.Validate(*image, replication.Validation{SchemaVersion: registry.SchemaVersion, Kinds: slices.Clone(registry.Kinds), Memo: captureValidations, Context: ctx})
 	if err != nil {
 		return nil, ErrManifest
 	}

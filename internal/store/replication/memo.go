@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"reflect"
 	"sync"
 )
 
@@ -120,7 +121,8 @@ const maxRememberedImage = 8 << 20
 // ValidationMemo remembers which complete images one owner's validation
 // accepted, keyed by the SHA-256 of the exact canonical encoding Decode
 // validated together with the configuration's data fields (schema version,
-// kinds and effective limits). Validation is a pure function of those bytes
+// kinds, effective limits and the code of its validation functions).
+// Validation is a pure function of those bytes
 // and that configuration, so a hit returns a Validated of the same bytes
 // without repeating the generic checks, owner validators and digest
 // verification; a miss or a refusal runs everything, and refusals are never
@@ -143,11 +145,18 @@ func NewValidationMemo() *ValidationMemo {
 
 func (v *ValidationMemo) key(canonical []byte, opts Validation, limits Limits) [sha256.Size]byte {
 	h := sha256.New()
+	// The validation functions are part of the configuration too: a copy of
+	// an owner's Validation with another function (a stricter ValidateImage,
+	// say) is another key and validates in full. A function is identified by
+	// its code, so every closure of one function literal (the owners' per-call
+	// ValidateObject) shares an identity; such closures may differ only in the
+	// owner context they capture, which Context covers on a hit.
 	config, _ := json.Marshal(struct {
 		SchemaVersion int
 		Kinds         []Kind
 		Limits        Limits
-	}{opts.SchemaVersion, opts.Kinds, limits})
+		Functions     [3]uintptr
+	}{opts.SchemaVersion, opts.Kinds, limits, [3]uintptr{funcIdentity(opts.ValidateObject), funcIdentity(opts.ValidateEntry), funcIdentity(opts.ValidateImage)}})
 	var n [8]byte
 	binary.BigEndian.PutUint64(n[:], uint64(len(config)))
 	_, _ = h.Write(n[:])
@@ -164,3 +173,12 @@ func (v *ValidationMemo) accepted(key [sha256.Size]byte) bool {
 }
 
 func (v *ValidationMemo) accept(key [sha256.Size]byte) { v.m.put(key, struct{}{}) }
+
+// funcIdentity is the code identity of fn, or zero for nil.
+func funcIdentity(fn any) uintptr {
+	v := reflect.ValueOf(fn)
+	if !v.IsValid() || v.IsNil() {
+		return 0
+	}
+	return v.Pointer()
+}

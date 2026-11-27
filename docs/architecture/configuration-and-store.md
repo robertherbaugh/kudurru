@@ -2037,9 +2037,11 @@ Complete-image validation itself is remembered per owner (D423). The Store
 and the serving schema each hold a `replication.ValidationMemo`, passed in
 their `Validation`. It records the images that configuration accepted, keyed
 by the SHA-256 of the exact canonical encoding `Decode` validated together
-with the schema version, kinds and effective limits. A hit returns a
-`Validated` of exactly those bytes. A changed byte, other configuration data,
-a validation without a memo, or a refusal (never remembered) runs every check.
+with the schema version, kinds, effective limits and the code of its
+validation functions. A hit returns a `Validated` of exactly those bytes,
+unless the owner context in `Validation.Context` has ended. A changed byte,
+other configuration data, a copy with another validation function, a
+validation without a memo, or a refusal (never remembered) runs every check.
 So one candidate's preparation validates it once per configuration: once with
 the Store's (the publisher's read, which the provider capture reuses), once
 with the schema's (the primary image, which the integration image reuses), and

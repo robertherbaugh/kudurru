@@ -88,7 +88,7 @@ func compare(a, b string) int {
 }
 
 func (s *Schema) validation(ctx context.Context) replication.Validation {
-	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateImage: s.image, Memo: s.validations, ValidateObject: func(raw json.RawMessage) error {
+	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateImage: s.image, Memo: s.validations, Context: ctx, ValidateObject: func(raw json.RawMessage) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

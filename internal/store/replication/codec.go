@@ -230,6 +230,11 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if opts.Memo != nil {
 		key = opts.Memo.key(c, opts, l)
 		if opts.Memo.accepted(key) {
+			if opts.Context != nil {
+				if err := opts.Context.Err(); err != nil {
+					return nil, err
+				}
+			}
 			return &Validated{encoded: c}, nil
 		}
 	}
