@@ -185,7 +185,13 @@ the per-item results.
 While a forwarded request runs, the follower holds its scheduled pull
 (D375): the pull would install the request's own earlier documents and
 change the data the request is bound to, and every later document would then
-be refused. A pull that is installing when the request arrives is waited for
+be refused. A sign-in (`POST /auth/login`) holds it too (D424): a pull that
+installed any commit of the primary between the sign-in's arrival and its
+forward would refuse it with `503 unavailable` ("the follower's source
+changed" or "the enrolled primary is unavailable; the login was not
+attempted"), a login that nothing had run. The sign-in lets go of the hold
+as soon as the primary has answered, so that the scheduled pull can install
+the new session if the pull that follows the commit fails. A pull that is installing when the request arrives is waited for
 first (at most five seconds), so the request is bound to the installed data.
 The scheduled pull waits for every forwarded request, but at most 30 seconds
 from the moment it was due, and then installs anyway. The follower publishing
