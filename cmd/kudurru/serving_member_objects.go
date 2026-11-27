@@ -200,9 +200,25 @@ func (h *servingHTTP) holdMemberPulls(next http.Handler) http.Handler {
 		cancel()
 		if err == nil {
 			defer release()
+			r = r.WithContext(context.WithValue(r.Context(), memberPullReleaseKey{}, release))
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// memberPullReleaseKey carries a request's pull hold (release is idempotent)
+// for a handler that ends it before the request does.
+type memberPullReleaseKey struct{}
+
+// releaseMemberPullHold ends the pull hold of the request that ctx belongs
+// to, if it holds one. A sign-in calls it once the primary has answered: the
+// hold only keeps the captured source valid until the forward, and the
+// scheduled pull must be free to install the committed session should the
+// explicit pull after it fail.
+func releaseMemberPullHold(ctx context.Context) {
+	if release, ok := ctx.Value(memberPullReleaseKey{}).(func()); ok {
+		release()
+	}
 }
 
 // memberObjectAttributes is the follower's early admission and the primary's

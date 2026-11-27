@@ -120,7 +120,11 @@ func (h *servingHTTP) forwardLogin(w http.ResponseWriter, r *http.Request, req a
 	// The primary committed the session; serve it once this node installs it.
 	// The scheduled worker would install it too; an explicit pull shortens the
 	// wait without replaying anything.
-	_ = s.member.Pull(ctx)
+	// releaseMemberPullHold ends this request's pull hold first: the hold only
+	// kept the captured source valid until the forward, and if the explicit
+	// pull fails the scheduled pull must be free to install the session.
+	releaseMemberPullHold(ctx)
+	h.pullMemberSelf(ctx)
 	h.loginResult(r, username, nil)
 	return true, h.sealEnrollmentWithin(w, r, enrollment, time.Until(deadline))
 }
