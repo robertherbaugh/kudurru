@@ -2182,8 +2182,9 @@ bound. A wait that reaches its bound goes on without the publication and
 without the rest, so the pace makes a request at most about twice as slow. A
 read is served within its capture wait whenever the node publishes the
 request's items within it and the request still has credit; the node's
-follow-up writes land before the next preparation completes and add no
-publication of their own (measured, D425). A caller that reads again as soon
+follow-up writes land within milliseconds of each item and are published with
+the request's next items, and no waiting read was measured waiting on them
+alone (D425). A caller that reads again as soon
 as it is answered uses the credit up, and then waits for the request's next
 items and their publication. A node that needs longer than the capture wait
 for that (a large data set, one loaded CPU, or the race detector on a loaded
