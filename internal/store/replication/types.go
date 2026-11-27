@@ -237,6 +237,15 @@ type Validation struct {
 	// and digest verification. The image is detached from the accepted encoding;
 	// mutations cannot change the returned Validated value. No I/O is permitted.
 	ValidateImage func(*Image) error
+	// Memo, when set, remembers the canonical encodings this configuration
+	// accepted (ValidationMemo). Its data fields and the code of its
+	// functions are part of each key. Only one owner's validation may use a
+	// memo, since closures of one function literal share a key.
+	Memo *ValidationMemo
+	// Context, when set, is the owner context the functions observe. A
+	// remembered acceptance is refused once it has ended, as running the
+	// functions would have been.
+	Context context.Context
 }
 
 // InstallOptions fences installation against the exact current local base.

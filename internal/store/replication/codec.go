@@ -223,6 +223,21 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Everything below is a pure function of c and opts. An owner that
+	// accepted exactly these canonical bytes with this configuration before
+	// gets the same answer without repeating it (Validation.Memo).
+	var key [sha256.Size]byte
+	if opts.Memo != nil {
+		key = opts.Memo.key(c, opts, l)
+		if opts.Memo.accepted(key) {
+			if opts.Context != nil {
+				if err := opts.Context.Err(); err != nil {
+					return nil, err
+				}
+			}
+			return &Validated{encoded: c}, nil
+		}
+	}
 	// Counters are required canonical decimal strings, including zero. The
 	// encoding/json string option alone accepts leading zeroes/missing fields.
 	var header map[string]json.RawMessage
@@ -255,6 +270,9 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	}
 	if err := validate(i, opts); err != nil {
 		return nil, err
+	}
+	if opts.Memo != nil {
+		opts.Memo.accept(key)
 	}
 	return &Validated{encoded: c}, nil
 }

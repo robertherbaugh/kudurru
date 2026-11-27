@@ -30,6 +30,9 @@ type Schema struct {
 	public    map[store.Kind]bool
 	entry     func(string, replication.Entry) error
 	image     func(*replication.Image) error
+	// validations remembers the complete images this schema's validation
+	// accepted (its functions are fixed by NewSchema).
+	validations *replication.ValidationMemo
 }
 
 // NewSchema checks local registration before any candidate can be prepared.
@@ -38,7 +41,7 @@ func NewSchema(scheme *runtime.Scheme, validation *validator.Validator, entry fu
 	if scheme == nil || validation == nil || entry == nil || image == nil {
 		return nil, fmt.Errorf("servingbuild: complete local validators required")
 	}
-	s := &Schema{scheme: scheme, validator: validation, public: map[store.Kind]bool{}, entry: entry, image: image}
+	s := &Schema{scheme: scheme, validator: validation, public: map[store.Kind]bool{}, entry: entry, image: image, validations: replication.NewValidationMemo()}
 	for _, kind := range validation.Kinds() {
 		s.public[kind] = true
 	}
@@ -85,7 +88,7 @@ func compare(a, b string) int {
 }
 
 func (s *Schema) validation(ctx context.Context) replication.Validation {
-	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateImage: s.image, ValidateObject: func(raw json.RawMessage) error {
+	return replication.Validation{SchemaVersion: store.SchemaVersion, Kinds: slices.Clone(s.kinds), ValidateEntry: s.entry, ValidateImage: s.image, Memo: s.validations, Context: ctx, ValidateObject: func(raw json.RawMessage) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

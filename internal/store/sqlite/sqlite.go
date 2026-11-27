@@ -200,6 +200,10 @@ type Store struct {
 	internal map[store.Kind]bool
 	log      *slog.Logger
 
+	// validations remembers the complete images this store's replication
+	// validation accepted; its configuration is fixed when the store opens.
+	validations *replication.ValidationMemo
+
 	w    *sql.DB // single writer connection, BEGIN IMMEDIATE
 	r    *sql.DB // reader pool, query_only
 	ws   *stmts  // prepared statements of w
@@ -293,6 +297,7 @@ func openStore(ctx context.Context, path string, opts Options, existing bool) (*
 	}
 	s := &Store{
 		opts:              opts,
+		validations:       replication.NewValidationMemo(),
 		path:              path,
 		kinds:             kinds,
 		internal:          map[store.Kind]bool{},

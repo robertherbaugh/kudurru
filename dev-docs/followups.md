@@ -111,7 +111,7 @@ startup timing and historical ledger review remain separate in #135.
 | Item | Source | Target |
 |---|---|---|
 | Login lockouts: shared counters on Kubernetes (D304, D310) and complete SQLite (D305–D309); a follower forwards local login (D363), sign-out and own sessions (D368). Open: OIDC, browser and device logins on followers, and F46's final gates | dev-docs/milestones/m3/auth.md; F46 | v0.2 |
-| Complete preparation still validates a candidate completely four times and decodes the security section three more times (D422 made each pass cheaper and remembers accepted rows). Under `-race` a full section publishes in about 8 s (18 to 23 s with six busy CPUs) against the 30 s bound. Option for an owner decision: hand the Store read's validated image to the candidate's components, as acquisition already does (D343 kept every complete validator) | D420, D422 | after v0.2 |
+| A full security section still costs about 7 s of preparation under `-race` on an idle host (12 to 16 s with six busy CPUs) against the 30 s bound. Each preparation still validates once with each of three configurations (Store, serving schema, generic capture; D423), and concurrent readers of a new generation (publisher, acquisition, primary driver) each read and validate their own image. Further cuts need an owner decision: proving that one configuration's acceptance implies another's, or sharing one read between those readers | D420, D422, D423 | after v0.2 |
 
 ## Security (dev-docs/milestones/m5/security-v0.1-round.md)
 
