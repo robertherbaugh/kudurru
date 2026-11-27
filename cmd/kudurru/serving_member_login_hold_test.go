@@ -80,6 +80,7 @@ func TestRootMemberLoginHoldsScheduledPull(t *testing.T) {
 	}
 	finished := make(chan answer, 1)
 	go func() {
+		// #nosec G117 -- disposable fixture password of a test-only server
 		encoded, err := json.Marshal(api.LoginRequest{Username: "root-command", Password: password})
 		if err != nil {
 			finished <- answer{err: err}
