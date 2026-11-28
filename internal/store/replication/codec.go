@@ -373,10 +373,8 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 
 // Validate encodes and validates an image, returning an owned canonical copy.
 func Validate(i Image, opts Validation) (*Validated, error) {
-	if opts.Context != nil {
-		if err := opts.Context.Err(); err != nil {
-			return nil, err
-		}
+	if err := (&progress{ctx: opts.Context}).now(); err != nil {
+		return nil, err
 	}
 	b, err := json.Marshal(i)
 	if err != nil {

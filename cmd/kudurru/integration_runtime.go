@@ -74,6 +74,9 @@ type integrationRuntime struct {
 	// decodeStep, when a test sets it, runs once per object that capture
 	// decodes, standing in for a slow decode.
 	decodeStep func()
+	// beforePublish, when a test sets it, runs as capture starts waiting to
+	// publish its cut.
+	beforePublish func()
 }
 type integrationCut struct {
 	input              ih.Input
@@ -351,6 +354,9 @@ func (r *integrationRuntime) capture(ctx context.Context) (result ih.Input, err 
 	}
 	// Publication waits for the commands that hold the current cut, but no
 	// longer than the capture's own deadline.
+	if r.beforePublish != nil {
+		r.beforePublish()
+	}
 	if err = r.mu.LockContext(ctx); err != nil {
 		return ih.Input{}, err
 	}

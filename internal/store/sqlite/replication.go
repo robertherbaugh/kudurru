@@ -178,14 +178,11 @@ func (s *Store) readGeneration(ctx context.Context, tx *sql.Tx) (*replication.Im
 	if err := replication.SealContext(ctx, i); err != nil {
 		return nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	b, err := json.Marshal(i)
+	encoded, err := replication.EncodedSize(ctx, *i, l.MaxBytes)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(b)) > l.MaxBytes {
+	if encoded > l.MaxBytes {
 		return nil, replication.ErrTooLarge
 	}
 	if err := ctx.Err(); err != nil {

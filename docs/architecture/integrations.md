@@ -253,7 +253,8 @@ credential, admission or selected outbound source replacement revokes authority.
 On SQLite a capture has a 10-second deadline and a changing command 30
 seconds, and the whole-generation work in both observes that deadline (D428,
 #281). `ReadGeneration` checks it between rows, between the seal's objects
-and before its size check; `replication.Validate` and `Decode` check
+and through its size check, which counts the encoding one object and one
+section entry at a time (`replication.EncodedSize`) instead of building it; `replication.Validate` and `Decode` check
 `Validation.Context` between objects, section entries and JSON tokens and
 around each encoding; the capture checks it between decoded objects, in
 `zonecache.Prepare` (`PrepareOptions.Context`), between source record sets

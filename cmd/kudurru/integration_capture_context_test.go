@@ -10,9 +10,9 @@ import (
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 )
 
-// The capture tests below give a capture 200 ms of a three-second slow step.
-// The prompt bound leaves room for a slow runner and the race detector while
-// staying far below the whole step.
+// The decode test gives a capture 200 ms of a three-second slow decode. The
+// prompt bound leaves room for a slow runner and the race detector while
+// staying far below the whole decode.
 const (
 	captureContextWhole    = 3 * time.Second
 	captureContextDeadline = 200 * time.Millisecond
@@ -49,13 +49,13 @@ func captureContextFixture(t *testing.T) (*integrationRuntime, *integrationCut) 
 	return r, published
 }
 
-func expectCaptureStoppedAtDeadline(t *testing.T, r *integrationRuntime, published *integrationCut, in ih.Input, err error, elapsed time.Duration) {
+func expectCaptureStoppedAtDeadline(t *testing.T, r *integrationRuntime, published *integrationCut, in ih.Input, err error, deadline, prompt, elapsed time.Duration) {
 	t.Helper()
 	if !errors.Is(err, context.DeadlineExceeded) || in.Complete {
 		t.Fatalf("capture past its deadline returned complete=%t, %v after %s; want the deadline", in.Complete, err, elapsed)
 	}
-	if elapsed > captureContextPrompt {
-		t.Fatalf("capture past its %s deadline returned after %s, want a prompt stop", captureContextDeadline, elapsed)
+	if elapsed > prompt {
+		t.Fatalf("capture past its %s deadline returned after %s, want a prompt stop", deadline, elapsed)
 	}
 	r.mu.RLock()
 	current := r.cut
@@ -81,7 +81,7 @@ func TestIntegrationCaptureStopsAtItsDeadlineAndPublishesNothing(t *testing.T) {
 	defer cancel()
 	started := time.Now()
 	in, err := r.capture(ctx)
-	expectCaptureStoppedAtDeadline(t, r, published, in, err, time.Since(started))
+	expectCaptureStoppedAtDeadline(t, r, published, in, err, captureContextDeadline, captureContextPrompt, time.Since(started))
 	if steps.Load() >= int64(objects) {
 		t.Fatalf("capture decoded %d of %d objects after its deadline", steps.Load(), objects)
 	}
@@ -89,13 +89,15 @@ func TestIntegrationCaptureStopsAtItsDeadlineAndPublishesNothing(t *testing.T) {
 
 // A capture waits to publish while a command holds the current cut, but no
 // longer than its deadline (#281). It then leaves the queue: it publishes
-// nothing, and a command that arrives after it is not held back.
+// nothing, and a command that arrives after it is not held back. The capture
+// has one second, far more than its own work needs, and the test checks that
+// it reached the wait; the command holds the cut for six.
 func TestIntegrationCapturePublicationWaitEndsAtItsDeadline(t *testing.T) {
+	const deadline, hold = time.Second, 6 * time.Second
 	r, published := captureContextFixture(t)
-	// A command in flight holds the cut for longer than the whole step.
 	r.mu.RLock()
 	released := make(chan struct{})
-	held := time.AfterFunc(captureContextWhole, func() {
+	held := time.AfterFunc(hold, func() {
 		r.mu.RUnlock()
 		close(released)
 	})
@@ -106,12 +108,19 @@ func TestIntegrationCapturePublicationWaitEndsAtItsDeadline(t *testing.T) {
 			<-released
 		}
 	})
-	ctx, cancel := context.WithTimeout(t.Context(), captureContextDeadline)
+	var waited atomic.Bool
+	r.beforePublish = func() { waited.Store(true) }
+	defer func() { r.beforePublish = nil }()
+	ctx, cancel := context.WithTimeout(t.Context(), deadline)
 	defer cancel()
 	started := time.Now()
 	in, err := r.capture(ctx)
-	expectCaptureStoppedAtDeadline(t, r, published, in, err, time.Since(started))
-	// A pending exclusive waiter would hold this shared acquisition back.
+	elapsed := time.Since(started)
+	if !waited.Load() {
+		t.Fatalf("capture returned %v after %s before it waited to publish", err, elapsed)
+	}
+	// Before anything else takes the lock shared: a pending exclusive waiter
+	// would hold this acquisition back until the command releases the cut.
 	next := make(chan *integrationCut, 1)
 	go func() {
 		r.mu.RLock()
@@ -127,4 +136,5 @@ func TestIntegrationCapturePublicationWaitEndsAtItsDeadline(t *testing.T) {
 	case <-released:
 		t.Fatal("a later command waited for the canceled capture")
 	}
+	expectCaptureStoppedAtDeadline(t, r, published, in, err, deadline, deadline+1500*time.Millisecond, elapsed)
 }
