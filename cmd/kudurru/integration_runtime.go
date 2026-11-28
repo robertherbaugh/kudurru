@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
-	"sync"
 	"sync/atomic"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
@@ -31,9 +30,35 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
+	"golang.org/x/sync/semaphore"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// cutLock guards the published cut like a sync.RWMutex: each command holds it
+// shared for its whole transaction, and a capture holds it exclusively to
+// replace the cut. Waiters are served in arrival order, so a waiting capture
+// holds back later commands as a pending writer of an RWMutex does, but a
+// capture can stop waiting when its deadline passes (#281): it then leaves
+// the queue, publishes nothing, and the commands behind it proceed.
+type cutLock struct{ sem *semaphore.Weighted }
+
+// cutLockReaders is the exclusive weight; no runtime holds as many commands.
+const cutLockReaders = 1 << 30
+
+func newCutLock() cutLock { return cutLock{sem: semaphore.NewWeighted(cutLockReaders)} }
+
+func (l cutLock) RLock() { _ = l.sem.Acquire(context.Background(), 1) }
+
+func (l cutLock) RUnlock() { l.sem.Release(1) }
+
+// LockContext takes the lock exclusively, or returns ctx's error, holding
+// nothing, once ctx ends first.
+func (l cutLock) LockContext(ctx context.Context) error {
+	return l.sem.Acquire(ctx, cutLockReaders)
+}
+
+func (l cutLock) Unlock() { l.sem.Release(cutLockReaders) }
 
 // integrationRuntime is the root adapter, not a query owner. Run is joined by
 // the complete serving lifetime. It never mints a token or retries a command.
@@ -42,10 +67,16 @@ type integrationRuntime struct {
 	schema  *servingbuild.Schema
 	pin     currentguard.PinFunc
 	host    *ih.Host
-	mu      sync.RWMutex
+	mu      cutLock
 	cut     *integrationCut
 	allowed atomic.Pointer[license.Cut]
 	factory func(string) (integration.Integration, error)
+	// decodeStep, when a test sets it, runs once per object that capture
+	// decodes, standing in for a slow decode.
+	decodeStep func()
+	// beforePublish, when a test sets it, runs as capture starts waiting to
+	// publish its cut.
+	beforePublish func()
 }
 type integrationCut struct {
 	input              ih.Input
@@ -57,7 +88,7 @@ type integrationCut struct {
 }
 
 func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin currentguard.PinFunc) (*integrationRuntime, error) {
-	r := &integrationRuntime{s: s, schema: schema, pin: pin}
+	r := &integrationRuntime{s: s, schema: schema, pin: pin, mu: newCutLock()}
 	options, err := r.hostOptions()
 	if err != nil {
 		return nil, err
@@ -96,7 +127,17 @@ func (r *integrationRuntime) hostOptions() (ih.Options, error) {
 		CaptureTimeout: s.opts.IntegrationBounds.Capture, OperationTimeout: s.opts.IntegrationBounds.Operation}, nil
 }
 
-func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
+// capture observes ctx through every whole-generation step: the read, the
+// decode, the zone cache, the primary image and the source loop (#281). Once
+// ctx ends it returns ctx's error, never a refusal the expiry caused or a late
+// success, and it publishes its cut only while ctx is still live.
+func (r *integrationRuntime) capture(ctx context.Context) (result ih.Input, err error) {
+	published := false
+	defer func() {
+		if contextErr := ctx.Err(); contextErr != nil && !published {
+			result, err = ih.Input{}, contextErr
+		}
+	}()
 	image, err := r.s.opts.Store.ReadGeneration(ctx)
 	if err != nil {
 		return ih.Input{}, err
@@ -126,6 +167,12 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	var refs []public.CredentialReference
 	options := r.schema.PrimaryImageOptions(ctx, image.Term.ClusterID)
 	for _, raw := range image.Payload.Objects {
+		if err = ctx.Err(); err != nil {
+			return ih.Input{}, err
+		}
+		if r.decodeStep != nil {
+			r.decodeStep()
+		}
 		var header metav1.TypeMeta
 		if err = json.Unmarshal(raw, &header); err != nil {
 			return ih.Input{}, ih.ErrInvalid
@@ -157,7 +204,7 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	if err != nil {
 		return ih.Input{}, err
 	}
-	snap, err := zonecache.Prepare(zonecache.PrepareOptions{Kinds: []store.Kind{"Integration", "DNSZone", "DNSRecordSet", "ClientGroup"}, Generation: image.Revision, Now: r.s.opts.Now()}, objects, nil)
+	snap, err := zonecache.Prepare(zonecache.PrepareOptions{Context: ctx, Kinds: []store.Kind{"Integration", "DNSZone", "DNSRecordSet", "ClientGroup"}, Generation: image.Revision, Now: r.s.opts.Now()}, objects, nil)
 	if err != nil {
 		return ih.Input{}, ih.ErrInvalid
 	}
@@ -190,6 +237,9 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	for _, record := range snap.Objects.RecordSets() {
 		if !needsSources {
 			break
+		}
+		if err = ctx.Err(); err != nil {
+			return ih.Input{}, err
 		}
 		z, ok := snap.Objects.Zone(record.Spec.ZoneRef.Name)
 		if !ok || public.IsDisabled(z) || !z.DeletionTimestamp.IsZero() || public.IsDisabled(record) || !record.DeletionTimestamp.IsZero() {
@@ -241,6 +291,9 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	in.ReconcileDigests = map[ih.InstanceID]string{}
 	in.AuthorityDigests = map[ih.InstanceID]string{}
 	for _, i := range instances {
+		if err = ctx.Err(); err != nil {
+			return ih.Input{}, err
+		}
 		var dependencies []any
 		if !i.Definition().DeletionTimestamp.IsZero() {
 			// A terminating instance observes and publishes nothing (D367):
@@ -299,10 +352,21 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	for _, i := range instances {
 		next.instances[i.Owner()] = i
 	}
-	r.mu.Lock()
+	// Publication waits for the commands that hold the current cut, but no
+	// longer than the capture's own deadline.
+	if r.beforePublish != nil {
+		r.beforePublish()
+	}
+	if err = r.mu.LockContext(ctx); err != nil {
+		return ih.Input{}, err
+	}
+	defer r.mu.Unlock()
+	if err = ctx.Err(); err != nil {
+		return ih.Input{}, err
+	}
 	r.cut = next
 	r.allowed.Store(&lc)
-	r.mu.Unlock()
+	published = true
 	return in, nil
 }
 

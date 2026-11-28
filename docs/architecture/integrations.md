@@ -250,6 +250,46 @@ original root resource and source-zone copy. Exact original UID/resource version
 are still compared inside every desired-object transaction. Configuration,
 credential, admission or selected outbound source replacement revokes authority.
 
+On SQLite a capture has a 10-second deadline and a changing command 30
+seconds, and the whole-generation work in both observes that deadline (D428,
+#281). `ReadGeneration` checks it between rows, between the seal's objects
+and through its size check, which counts the encoding one object and one
+section entry at a time (`replication.EncodedSize`) instead of building it; `replication.Validate` and `Decode` check
+`Validation.Context` between objects, section entries and JSON tokens and
+around each encoding; the capture checks it between decoded objects, in
+`zonecache.Prepare` (`PrepareOptions.Context`), between source record sets
+and between instances. A capture past its deadline returns
+`context.DeadlineExceeded` (never `ErrUnavailable` or a late success) and
+publishes nothing: it replaces the root's cut only while its context is live,
+and it waits for the commands that hold the current cut (`cutLock`, shared
+for a command's whole transaction) only until its deadline, then leaves the
+queue so later commands are not held back. A command whose context ends in
+its postimage read rolls back with that error. Single whole-image JSON
+encodings and the envelope decode inside `replication.Decode` are not split,
+so a capture of the largest admissible generations can still end up to a
+few seconds after its deadline.
+
+```mermaid
+sequenceDiagram
+    participant Host
+    participant Capture as Root capture
+    participant Store as SQLite ReadGeneration
+    participant Lock as cutLock
+    Host->>Capture: capture (10 s context)
+    Capture->>Store: rows, seal, size check (ctx checked between steps)
+    Store-->>Capture: image or ctx error
+    Capture->>Capture: decode, zone cache, primary image, sources (ctx checked)
+    Capture->>Lock: LockContext (waits for commands on the old cut)
+    alt context still live
+        Lock-->>Capture: held
+        Capture->>Capture: publish the new cut
+        Capture-->>Host: complete input
+    else deadline passed
+        Lock-->>Capture: ctx error, nothing held
+        Capture-->>Host: DeadlineExceeded, old cut stays
+    end
+```
+
 ```mermaid
 flowchart TD
     Cut["Complete source/configuration/credential cut"] --> Lease["Per-instance election and incarnation"]

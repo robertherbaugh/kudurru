@@ -242,3 +242,37 @@ the current design. Meeting it would need a capture and command path that
 does not have to read and decode the whole generation inside its deadline,
 plus fixes for the deadline overruns in findings 2 and 3. These are local synthetic
 samples, one per cell, not a hardware qualification.
+
+## Rerun after the deadline fix (#281)
+
+Findings 2 and 3 were fixed in #281 (D428): the whole-generation read, the
+image validation, the capture's decode, zone cache and source loops, and the
+wait to publish the captured cut now observe the operation's deadline. Four
+cells were rerun on the same host and harness, without the race detector,
+first on main `f99a340e` (no Go change since `e6ebe9fa` affects these
+paths) and then with the fix, one cell at a time with the same wrapper
+(`GOMAXPROCS=2`, peak resident memory and load recorded). The
+`25000:small:idle` run on main also wrote a CPU profile.
+
+| Cell | Code | Capture | Apply | Host capture failures (longest) | Peak RSS | Load (1 min) start/end |
+|---|---|---|---|---|---|---|
+| `25000:small:idle` | main | 10.058s/deadline | 1.218s/finished | CaptureDeadlineExceeded x1 (10.09s) | not recorded | 3.22/- |
+| `25000:small:idle` | fix | 10.02s/deadline | 946ms/finished | CaptureDeadlineExceeded x1 (10.06s) | 1.2 GiB | 2.42/3.86 |
+| `25000:4k:loaded` | main | 10.029s/deadline | 7.829s/finished | CaptureDeadlineExceeded x2 (11.94s) | 6.3 GiB | 1.41/1.95 |
+| `25000:4k:loaded` | fix | 10.049s/deadline | 5.089s/finished | CaptureDeadlineExceeded x3 (10.06s) | 6.2 GiB | 3.86/3.99 |
+| `50000:small:loaded` | main | 10.07s/deadline | 6.762s/finished | CaptureDeadlineExceeded x2 (10.63s) | 2.3 GiB | 1.95/3.56 |
+| `50000:small:loaded` | fix | 10.028s/deadline | 2.727s/finished | CaptureDeadlineExceeded x3 (10.04s) | 2.3 GiB | 3.99/4.32 |
+| `50000:4k:idle` | main | 13.921s/deadline | 9.296s/finished | CaptureDeadlineExceeded x7 (14.02s; 10.0, 10.6, 14.0, 10.3, 10.3, 12.1, 12.4) | 10.8 GiB | 2.99/3.55 |
+| `50000:4k:idle` | fix | 12.418s/deadline | 8.735s/finished | CaptureDeadlineExceeded x6 (10.21s; 10.2, 10.1, 10.0, 10.0, 10.0, 10.0) | 9.5 GiB | 4.32/4.03 |
+
+With the fix every logged host capture returned within 0.21 s of its
+deadline. The harness's own capture at `50000:4k:idle` is the first
+validation of a new generation, with no remembered canonical form or
+acceptance, and it still returned 2.4 s late: instrumented runs put that
+time in the single JSON decode of the whole image envelope in
+`replication.Decode` (up to 3.8 s past the deadline at this shape), which
+the fix does not split. The same instrumentation found a capture that had
+finished in time and then waited about five seconds to publish behind a
+command holding the current cut; the fix bounds that wait by the capture's
+deadline. Captures and cleanup still miss their deadline at these sizes:
+the fix makes them stop on time, not fit in it.

@@ -203,6 +203,9 @@ type Store struct {
 	// validations remembers the complete images this store's replication
 	// validation accepted; its configuration is fixed when the store opens.
 	validations *replication.ValidationMemo
+	// generationRows, when a test of this package sets it, runs in
+	// readGeneration after the rows are read and before the seal.
+	generationRows func()
 
 	w    *sql.DB // single writer connection, BEGIN IMMEDIATE
 	r    *sql.DB // reader pool, query_only

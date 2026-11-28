@@ -1,6 +1,7 @@
 package zonecache
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"slices"
@@ -15,6 +16,9 @@ import (
 // does not download or certify list bodies. Generation is a local view counter,
 // never a replication generation. Now controls deterministic expiry projections.
 type PrepareOptions struct {
+	// Context, when set, bounds the work: Prepare checks it between objects,
+	// kinds and builders and returns its error once it ends, with no snapshot.
+	Context    context.Context
 	Kinds      []store.Kind
 	Lists      *blocking.Snapshot
 	Generation uint64
@@ -41,7 +45,12 @@ func Prepare(opts PrepareOptions, objects []store.Object, builders []Builder) (*
 		byKind[k] = nil
 	}
 	seen := make(map[store.Key]bool, len(objects))
-	for _, obj := range objects {
+	for n, obj := range objects {
+		if n%64 == 0 {
+			if err := prepareContext(opts.Context); err != nil {
+				return nil, err
+			}
+		}
 		if prepareNil(obj) {
 			return nil, fmt.Errorf("zonecache: nil prepare object")
 		}
@@ -55,6 +64,9 @@ func Prepare(opts PrepareOptions, objects []store.Object, builders []Builder) (*
 		idx.rvs[key.Kind] = rvMax(idx.rvs[key.Kind], copyObj.GetResourceVersion())
 	}
 	for _, k := range kinds {
+		if err := prepareContext(opts.Context); err != nil {
+			return nil, err
+		}
 		idx.byKind[k] = newKindIndex(k, byKind[k])
 	}
 	if opts.Now.IsZero() {
@@ -63,6 +75,9 @@ func Prepare(opts PrepareOptions, objects []store.Object, builders []Builder) (*
 	set := ObjectSet{idx: idx, lists: opts.Lists, now: opts.Now, allChanged: true, listsChanged: true}
 	views := make(map[string]any, len(builders))
 	for _, builder := range builders {
+		if err := prepareContext(opts.Context); err != nil {
+			return nil, err
+		}
 		if prepareNil(builder) || builder.Name() == "" {
 			return nil, fmt.Errorf("zonecache: prepare builder needs a name")
 		}
@@ -80,6 +95,14 @@ func Prepare(opts PrepareOptions, objects []store.Object, builders []Builder) (*
 		views[name] = v
 	}
 	return &Snapshot{Generation: opts.Generation, State: Live, Objects: set, BuiltAt: opts.Now, views: views}, nil
+}
+
+// prepareContext is the error of an optional context that has ended.
+func prepareContext(ctx context.Context) error {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Err()
 }
 
 func prepareNil(value any) bool {

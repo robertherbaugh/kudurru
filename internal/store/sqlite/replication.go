@@ -127,6 +127,10 @@ func (s *Store) readGeneration(ctx context.Context, tx *sql.Tx) (*replication.Im
 		return nil, err
 	}
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
 		var raw string
 		if err := rows.Scan(&raw); err != nil {
 			_ = rows.Close()
@@ -144,6 +148,10 @@ func (s *Store) readGeneration(ctx context.Context, tx *sql.Tx) (*replication.Im
 		return nil, err
 	}
 	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
 		var name, key, raw string
 		if err := rows.Scan(&name, &key, &raw); err != nil {
 			_ = rows.Close()
@@ -161,15 +169,24 @@ func (s *Store) readGeneration(ctx context.Context, tx *sql.Tx) (*replication.Im
 	if err != nil {
 		return nil, err
 	}
-	if err := replication.Seal(i); err != nil {
+	if s.generationRows != nil {
+		s.generationRows()
+	}
+	// The seal and the size check are whole-generation work after the
+	// queries. They observe ctx too: a read whose deadline has passed returns
+	// that deadline, never a late image (#281).
+	if err := replication.SealContext(ctx, i); err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(i)
+	encoded, err := replication.EncodedSize(ctx, *i, l.MaxBytes)
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(b)) > l.MaxBytes {
+	if encoded > l.MaxBytes {
 		return nil, replication.ErrTooLarge
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return i, nil
 }
