@@ -208,9 +208,15 @@ objects with 4 KiB of padding hit it at idle and under load. Every sample
 without `-race` at 25,000, 50,000 and 100,000 objects hit the capture
 deadline, so the host stopped local jobs and no deleted Integration
 finalized within the window.
-A failed capture can return several seconds after its deadline (up to
-16.7 seconds without `-race`), so the `CaptureDeadlineExceeded` series of
-`kudurru_integration_capture_seconds` can exceed 10 seconds. With `-race`,
+Those runs measured failed captures that returned several seconds after
+their deadline (up to 16.7 seconds without `-race`). Since #281 the capture
+and command work stops at its deadline: in reruns of 25,000 and 50,000
+objects the host's failed captures returned within 10.3 seconds. The first
+capture of a new generation of 50,000 objects with 4 KiB of padding still
+returned after 12.4 seconds, because one whole-image JSON decode during its
+validation does not observe the deadline, so the `CaptureDeadlineExceeded`
+series of `kudurru_integration_capture_seconds` can still exceed 10 seconds
+for the largest generations. With `-race`,
 only the 1,000-object small samples captured in time, and they did not
 finalize within the window. The 30-second operation deadline applies per
 cleanup run, not from the delete request to finalization. These results are

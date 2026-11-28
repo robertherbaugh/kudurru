@@ -2,6 +2,7 @@ package replication
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -18,16 +19,57 @@ func FeatureNames() []string {
 	return []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1", "auth-browser-attempts-v1", "managed-root-anchors-v1", "managed-root-runtime-v1", "member-enrollment-v1", "auth-revocation-checkpoint-v1"}
 }
 
+// progressEvery is how many objects, entries or JSON tokens a whole-image
+// loop handles between two checks of its context. A check costs far less than
+// one step, so a canceled operation stops within a few milliseconds of work.
+const progressEvery = 64
+
+// progress checks an optional context every progressEvery steps, and at
+// stage boundaries through now. A nil context never ends.
+type progress struct {
+	ctx context.Context
+	n   int
+}
+
+func (p *progress) step() error {
+	p.n++
+	if p.n%progressEvery != 0 {
+		return nil
+	}
+	return p.now()
+}
+
+func (p *progress) now() error {
+	if p.ctx == nil {
+		return nil
+	}
+	return p.ctx.Err()
+}
+
+// objectStep, when a test of this package sets it, runs once per object in
+// the seal and validation loops, standing in for a slow decode.
+var objectStep func()
+
 // Canonical checks duplicate JSON keys/depth and preserves numbers exactly.
 func canonical(raw []byte, depth int) ([]byte, error) {
+	return canonicalContext(context.Background(), raw, depth)
+}
+
+// canonicalContext is canonical that stops with the context's error once it
+// ends, between JSON tokens and before the encoding.
+func canonicalContext(ctx context.Context, raw []byte, depth int) ([]byte, error) {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.UseNumber()
-	value, err := parseValue(d, depth)
+	p := &progress{ctx: ctx}
+	value, err := parseValue(d, depth, p)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := d.Token(); err != io.EOF {
 		return nil, fmt.Errorf("%w: trailing JSON", ErrInvalid)
+	}
+	if err := p.now(); err != nil {
+		return nil, err
 	}
 	return json.Marshal(value)
 }
@@ -36,9 +78,12 @@ func canonical(raw []byte, depth int) ([]byte, error) {
 // remembered by the input's bytes and depth bound (memo.go), because each
 // owner that validates one image validates the same encoding. The returned
 // bytes are shared and must never be modified; Validated only reads them.
-func canonicalImage(raw []byte, depth int) ([]byte, error) {
+func canonicalImage(ctx context.Context, raw []byte, depth int) ([]byte, error) {
+	if err := (&progress{ctx: ctx}).now(); err != nil {
+		return nil, err
+	}
 	if len(raw) > maxRememberedImage {
-		return canonical(raw, depth)
+		return canonicalContext(ctx, raw, depth)
 	}
 	// The depth is written as a fixed eight bytes before the input, so no
 	// input bytes can make one (depth, input) pair hash like another.
@@ -52,7 +97,8 @@ func canonicalImage(raw []byte, depth int) ([]byte, error) {
 	if c, ok := canonicals.get(key); ok {
 		return c, nil
 	}
-	c, err := canonical(raw, depth)
+	// A canceled parse returns an error, so it is never remembered.
+	c, err := canonicalContext(ctx, raw, depth)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +108,12 @@ func canonicalImage(raw []byte, depth int) ([]byte, error) {
 	return c, nil
 }
 
-func parseValue(d *json.Decoder, left int) (any, error) {
+func parseValue(d *json.Decoder, left int, p *progress) (any, error) {
 	if left <= 0 {
 		return nil, fmt.Errorf("%w: JSON depth", ErrTooLarge)
+	}
+	if err := p.step(); err != nil {
+		return nil, err
 	}
 	t, err := d.Token()
 	if err != nil {
@@ -86,7 +135,7 @@ func parseValue(d *json.Decoder, left int) (any, error) {
 				if _, exists := m[k]; exists {
 					return nil, fmt.Errorf("%w: duplicate JSON key", ErrInvalid)
 				}
-				v, err := parseValue(d, left-1)
+				v, err := parseValue(d, left-1, p)
 				if err != nil {
 					return nil, err
 				}
@@ -97,7 +146,7 @@ func parseValue(d *json.Decoder, left int) (any, error) {
 		case '[':
 			list := []any{}
 			for d.More() {
-				v, err := parseValue(d, left-1)
+				v, err := parseValue(d, left-1, p)
 				if err != nil {
 					return nil, err
 				}
@@ -141,6 +190,19 @@ func objectKey(raw json.RawMessage) (string, objectHeader, error) {
 // Seal sorts a producer's complete image and computes a stable digest. It
 // does not substitute for receiver validation against a supported registry.
 func Seal(i *Image) error {
+	return SealContext(context.Background(), i)
+}
+
+// SealContext is Seal for an operation with a deadline. It checks ctx between
+// objects and between its stages. Once ctx ends it returns ctx's error and
+// leaves the image without a digest, so a canceled seal is never mistaken for
+// a complete one; the image's order may already have changed by then.
+func SealContext(ctx context.Context, i *Image) error {
+	p := &progress{ctx: ctx}
+	i.PayloadSHA256 = ""
+	if err := p.now(); err != nil {
+		return err
+	}
 	i.Format, i.FormatVersion, i.Complete = Format, FormatVersion, true
 	i.RequiredFeatures = FeatureNames()
 	if i.Payload.ClusterSettings.Owner == "" {
@@ -153,12 +215,21 @@ func Seal(i *Image) error {
 	keys := make(map[string]string)
 	counts := make(map[string]int)
 	for _, raw := range i.Payload.Objects {
+		if objectStep != nil {
+			objectStep()
+		}
+		if err := p.step(); err != nil {
+			return err
+		}
 		key, h, err := objectKey(raw)
 		if err != nil {
 			return err
 		}
 		keys[string(raw)] = key
 		counts[h.Kind]++
+	}
+	if err := p.now(); err != nil {
+		return err
 	}
 	sort.Slice(i.Payload.Objects, func(a, b int) bool { return keys[string(i.Payload.Objects[a])] < keys[string(i.Payload.Objects[b])] })
 	for n := range i.KindManifest {
@@ -171,7 +242,7 @@ func Seal(i *Image) error {
 		}
 		sort.Slice(*rows, func(a, b int) bool { return (*rows)[a].Key < (*rows)[b].Key })
 	}
-	digest, err := Digest(*i)
+	digest, err := digestContext(ctx, *i)
 	if err != nil {
 		return err
 	}
@@ -181,6 +252,16 @@ func Seal(i *Image) error {
 
 // Digest binds the complete manifest and payload; source clocks are excluded.
 func Digest(i Image) (string, error) {
+	return digestContext(context.Background(), i)
+}
+
+// digestContext is Digest that checks ctx before and after the encoding and
+// while canonicalizing it. A canceled digest is an error, never remembered.
+func digestContext(ctx context.Context, i Image) (string, error) {
+	p := &progress{ctx: ctx}
+	if err := p.now(); err != nil {
+		return "", err
+	}
 	raw, err := json.Marshal(struct {
 		Manifest              []Kind      `json:"manifest"`
 		Payload               Payload     `json:"payload"`
@@ -192,11 +273,14 @@ func Digest(i Image) (string, error) {
 	}
 	// The digest is a pure function of this encoding: equal bytes are the
 	// same manifest and payload, so the canonical form is not rebuilt.
+	if err := p.now(); err != nil {
+		return "", err
+	}
 	key := sha256.Sum256(raw)
 	if digest, ok := digests.get(key); ok {
 		return digest, nil
 	}
-	b, err := canonical(raw, 64)
+	b, err := canonicalContext(ctx, raw, 64)
 	if err != nil {
 		return "", err
 	}
@@ -208,6 +292,10 @@ func Digest(i Image) (string, error) {
 
 // Decode bounds, canonicalizes and validates an encoded complete image.
 func Decode(r io.Reader, opts Validation) (*Validated, error) {
+	p := &progress{ctx: opts.Context}
+	if err := p.now(); err != nil {
+		return nil, err
+	}
 	l := opts.Limits.Defaults()
 	if l.MaxBytes == math.MaxInt64 {
 		return nil, ErrInvalid
@@ -219,7 +307,7 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if int64(len(b)) > l.MaxBytes {
 		return nil, ErrTooLarge
 	}
-	c, err := canonicalImage(b, l.MaxDepth)
+	c, err := canonicalImage(opts.Context, b, l.MaxDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -230,10 +318,8 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if opts.Memo != nil {
 		key = opts.Memo.key(c, opts, l)
 		if opts.Memo.accepted(key) {
-			if opts.Context != nil {
-				if err := opts.Context.Err(); err != nil {
-					return nil, err
-				}
+			if err := p.now(); err != nil {
+				return nil, err
 			}
 			return &Validated{encoded: c}, nil
 		}
@@ -264,11 +350,19 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if err := d.Decode(&i); err != nil {
 		return nil, fmt.Errorf("%w: envelope", ErrInvalid)
 	}
+	if err := p.now(); err != nil {
+		return nil, err
+	}
 	// Missing/null sections are unsafe: an omitted section is not a deletion.
 	if i.Payload.Objects == nil || i.Payload.Runtime == nil || i.Payload.Security == nil || i.Payload.Membership == nil || i.Payload.Dedup == nil || i.RequiredFeatures == nil || i.KindManifest == nil {
 		return nil, fmt.Errorf("%w: missing complete section", ErrInvalid)
 	}
 	if err := validate(i, opts); err != nil {
+		return nil, err
+	}
+	// A context that ended after the last check is still a refusal, never
+	// a late acceptance, and it is not remembered.
+	if err := p.now(); err != nil {
 		return nil, err
 	}
 	if opts.Memo != nil {
@@ -279,6 +373,11 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 
 // Validate encodes and validates an image, returning an owned canonical copy.
 func Validate(i Image, opts Validation) (*Validated, error) {
+	if opts.Context != nil {
+		if err := opts.Context.Err(); err != nil {
+			return nil, err
+		}
+	}
 	b, err := json.Marshal(i)
 	if err != nil {
 		return nil, err
@@ -287,6 +386,7 @@ func Validate(i Image, opts Validation) (*Validated, error) {
 }
 
 func validate(i Image, opts Validation) error {
+	p := &progress{ctx: opts.Context}
 	l := opts.Limits.Defaults()
 	if i.Format != Format || i.FormatVersion != FormatVersion || i.StoreSchemaVersion != opts.SchemaVersion {
 		return ErrIncompatible
@@ -349,6 +449,12 @@ func validate(i Image, opts Validation) error {
 	counts, keys := map[string]int{}, map[string]bool{}
 	lastKey := ""
 	for _, raw := range i.Payload.Objects {
+		if objectStep != nil {
+			objectStep()
+		}
+		if err := p.step(); err != nil {
+			return err
+		}
 		if len(raw) > l.MaxObjectBytes {
 			return ErrTooLarge
 		}
@@ -388,6 +494,9 @@ func validate(i Image, opts Validation) error {
 		seen := map[string]bool{}
 		lastKey := ""
 		for _, entry := range *Section(&i.Payload, name) {
+			if err := p.step(); err != nil {
+				return err
+			}
 			entries++
 			if entries > l.MaxEntries || len(entry.Data) > l.MaxObjectBytes || len(entry.Key) > 512 {
 				return ErrTooLarge
@@ -410,7 +519,7 @@ func validate(i Image, opts Validation) error {
 	if len(i.PayloadSHA256) != 64 {
 		return fmt.Errorf("%w: digest", ErrInvalid)
 	}
-	digest, err := Digest(i)
+	digest, err := digestContext(opts.Context, i)
 	if err != nil {
 		return err
 	}

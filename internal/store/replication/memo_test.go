@@ -88,12 +88,12 @@ func TestMemoizedCanonicalImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		got, err := canonicalImage(b, 64)
+		got, err := canonicalImage(context.Background(), b, 64)
 		if err != nil || string(got) != string(want) {
 			t.Fatalf("canonical image differs: %v", err)
 		}
 	}
-	if _, err := canonicalImage(b, 2); !errors.Is(err, ErrTooLarge) {
+	if _, err := canonicalImage(context.Background(), b, 2); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("a remembered image passed a smaller depth bound: %v", err)
 	}
 	for range 2 {
@@ -143,11 +143,11 @@ func TestMemoizedDigestConcurrent(t *testing.T) {
 // bytes can imitate: a remembered image under one bound is never returned for
 // other bytes under another bound.
 func TestMemoizedCanonicalImageDepthIsSeparate(t *testing.T) {
-	if _, err := canonicalImage([]byte(`{"a":1}`), 64); err != nil {
+	if _, err := canonicalImage(context.Background(), []byte(`{"a":1}`), 64); err != nil {
 		t.Fatal(err)
 	}
 	want, wantErr := canonical([]byte(`4{"a":1}`), 6)
-	got, err := canonicalImage([]byte(`4{"a":1}`), 6)
+	got, err := canonicalImage(context.Background(), []byte(`4{"a":1}`), 6)
 	if wantErr == nil || err == nil {
 		t.Fatalf("depth 6 with a leading digit: memoized %q, %v; uncached %q, %v", got, err, want, wantErr)
 	}

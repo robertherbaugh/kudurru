@@ -1,6 +1,7 @@
 package zonecache
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -68,5 +69,27 @@ func TestPrepareRejectsInvalidObjectManifest(t *testing.T) {
 	}
 	if _, err := Prepare(PrepareOptions{Kinds: []store.Kind{"DNSZone", "DNSZone"}}, nil, nil); err == nil {
 		t.Fatal("duplicate kind manifest accepted")
+	}
+}
+
+// A prepare whose context has ended builds nothing and returns its error,
+// whether the context ended before the objects or during the builders (#281).
+func TestPrepareStopsWhenItsContextEnds(t *testing.T) {
+	z := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home", ResourceVersion: "6"}, Spec: v1alpha1.DNSZoneSpec{Type: v1alpha1.ZoneTypePrimary, ZoneName: "home.example."}}
+	kinds := []store.Kind{"DNSZone", "DNSRecordSet"}
+	ended, cancel := context.WithCancel(t.Context())
+	cancel()
+	if snapshot, err := Prepare(PrepareOptions{Context: ended, Kinds: kinds}, []store.Object{z}, nil); !errors.Is(err, context.Canceled) || snapshot != nil {
+		t.Fatalf("prepare with an ended context: %v, %v", snapshot, err)
+	}
+	live, stop := context.WithCancel(t.Context())
+	defer stop()
+	second := false
+	snapshot, err := Prepare(PrepareOptions{Context: live, Kinds: kinds}, []store.Object{z}, []Builder{
+		NewBuilder("first", func(ObjectSet) (any, error) { stop(); return "first", nil }),
+		NewBuilder("second", func(ObjectSet) (any, error) { second = true; return "second", nil }),
+	})
+	if !errors.Is(err, context.Canceled) || snapshot != nil || second {
+		t.Fatalf("prepare canceled in a builder: %v, %v, second built %t", snapshot, err, second)
 	}
 }
