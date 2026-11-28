@@ -197,20 +197,27 @@ Capacity failures call for inspecting total generation size; deadline failures
 also warrant checking CPU and storage contention. The generation limits are
 not a guarantee that a capture or cleanup will fit its deadline.
 
-**Observed SQLite scale.** In the November 20, 2026 sandbox runs, 1,000
-total objects with small records or 4 KiB of padding per seeded record
+**Observed SQLite scale.** In the November 20 and 28, 2026 sandbox runs,
+1,000 total objects with small records or 4 KiB of padding per seeded record
 finished capture, one changing command, and one Cloudflare-double record-set
 cleanup with and without two generation-reader load workers (without
 `-race`). The 32 KiB idle cell finalized, but the loaded cell did not
 finalize within the two-minute observation window. The 10,000-object small
-cell finished at idle but hit the capture deadline under load. With
-`-race`, the 1,000-object small samples captured successfully but did not
-finalize within the observation window. The
-30-second operation deadline applies per cleanup run, not from the delete
-request to finalization. These results are specific to the workload and
-host; they do not establish a production limit or qualify a release. The
-raw measurements and coverage gaps are in the
-[SQLite integration scale evidence](../../dev-docs/milestones/v0.2/evidence/2026-11-20-integration-scale/README.md).
+cell finished at idle but hit the capture deadline under load, and 10,000
+objects with 4 KiB of padding hit it at idle and under load. Every sample
+without `-race` at 25,000, 50,000 and 100,000 objects hit the capture
+deadline, so the host stopped local jobs and no deleted Integration
+finalized within the window.
+A failed capture can return several seconds after its deadline (up to
+16.7 seconds without `-race`), so the `CaptureDeadlineExceeded` series of
+`kudurru_integration_capture_seconds` can exceed 10 seconds. With `-race`,
+only the 1,000-object small samples captured in time, and they did not
+finalize within the window. The 30-second operation deadline applies per
+cleanup run, not from the delete request to finalization. These results are
+specific to the workload and host; they do not establish a production limit
+or qualify a release, and a supported scale has not been decided (#124).
+The raw measurements and findings are in the
+[SQLite integration scale evidence](../../dev-docs/milestones/v0.2/evidence/2026-11-28-integration-scale/README.md).
 
 To release an Integration that is `Terminating`, review it and run the
 release command with the exact UID and revision you reviewed:

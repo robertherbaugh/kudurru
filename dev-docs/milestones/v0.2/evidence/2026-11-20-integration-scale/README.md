@@ -57,5 +57,9 @@ objects. Larger admissible shapes and the rest of the race/load matrix still
 need measurement. Do not infer a universal supported count or close the
 parent issue from these results.
 
+The November 28 run measured the remaining admissible cells. Its
+[README](../2026-11-28-integration-scale/README.md) lists every cell of
+both runs in one table, with findings.
+
 The unit and mounted tests for capture failure visibility also passed under
 the race detector; their output is in `capture-tests.log`.
