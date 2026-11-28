@@ -22138,3 +22138,38 @@ unforwarded mutation test, and the cut-apply regression
 0.92), and `golangci-lint run --concurrency 3 ./cmd/kudurru/...` (v2.15.0)
 reported zero issues (76.095 seconds wall time, load 7.70). See
 `.context/gh137-vet-lint.log`. `make docs-site docs-check-links` also passed.
+
+### Webhook retention and event coverage (#132)
+
+This closes the fixable items that F60C-HOOKS and F60C-OPEN left open (D379,
+D380). The mounted 24-hour expiry and budget-exhaustion cases already existed
+(`TestIntegrationWebhookHooksMountedExpiryDeadLetters` and
+`TestIntegrationWebhookHooksMountedBudgetExhaustionRetries`, F60C-OPEN H4).
+
+- **Retention across short leases and restarts (D427).** The verifier's
+  finding reproduced: a lease without the hook role created its retention
+  ticker when it began, so a lease lost and won again sooner than the
+  interval, or a process in a restart loop, never pruned or dead-lettered.
+  Retention is now due one interval after the instance's last run on this
+  host, across its leases, and at once for an instance with no run, after
+  the lease's first sync. `TestRetentionRunsAcrossShortLeases` fails on the
+  baseline and on a variant due at every lease, and passes 10/10 under
+  `-race`.
+- **Mixed-version IntegrationEventCursor.**
+  `TestReplicationRefusesImageWithoutIntegrationEventCursor` covers both
+  directions. A follower of a release before the kind refuses this release's
+  image, and a follower of this release refuses an image without the kind.
+  Both refusals are `ErrIncompatible`, and neither moves the installed
+  generation. Each follower installs its own release's image. Removing the
+  manifest checks makes the test fail.
+- **Exact A1 audit rows.** The mounted webhook tests compare the whole
+  `integration.sync` and `integration.act` row. A missing row fails them,
+  and so does a row with the wrong authority, no resource version or no
+  parameter digest. The baseline assertion accepted that wrong row.
+
+Logs and reproduction commands are in
+[evidence/2026-11-28-issue-132](evidence/2026-11-28-issue-132/README.md).
+Still open: with no Integration lease running nothing prunes. That is an
+owner decision, and its default (A) is documented: each deleted hook
+instance leaves at most 384 delivery rows and one cursor until a lease runs.
+The deferred topics and the missing per-namespace filter are unchanged.

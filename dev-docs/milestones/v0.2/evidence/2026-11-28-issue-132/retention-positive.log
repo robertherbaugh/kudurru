@@ -1,0 +1,112 @@
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:55 WARN integration capture failed reason=CaptureFailed duration=8.712µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.02s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:55 WARN integration capture failed reason=CaptureFailed duration=9.458µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:55 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:56 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:56 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:56 WARN integration capture failed reason=CaptureFailed duration=15.025µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:56 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:56 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:57 WARN integration capture failed reason=CaptureFailed duration=8.1µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:57 WARN integration capture failed reason=CaptureFailed duration=13.323µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.02s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:57 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:58 WARN integration capture failed reason=CaptureFailed duration=9.256µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:58 WARN integration capture failed reason=CaptureFailed duration=8.661µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:58 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:03:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:03:59 WARN integration capture failed reason=CaptureFailed duration=8.435µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:03:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:03:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:04:00 WARN integration capture failed reason=CaptureFailed duration=8.436µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionRecordForgottenOnlyByACompleteCapture
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+2026/11/28 08:04:00 WARN integration capture failed reason=CaptureFailed duration=8.043µs bound=10s
+--- PASS: TestRetentionRecordForgottenOnlyByACompleteCapture (0.00s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:04:00 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/ee/integration/host	7.394s

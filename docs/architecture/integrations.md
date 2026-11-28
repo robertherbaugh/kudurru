@@ -1492,11 +1492,16 @@ flowchart TD
   leases without the hook role every 300 poll intervals (10 minutes at the
   default 2 s) but at least every 15 minutes, when they also dead-letter their
   own undelivered rows past the deadline without an attempt (a peer that
-  stopped advertising hooks). This is not guaranteed: a hook lease whose drain
+  stopped advertising hooks). That run is due one interval after the
+  instance's last run on this host, across its leases, so a lease that is
+  lost and won again sooner than the interval still runs it on time, and the
+  first lease after a process start runs it at once, after its first sync
+  (D427). This is not guaranteed: a hook lease whose drain
   keeps failing before it delivers, or an owner that runs no lease during that
   hour, leaves a row that another lease deletes without `EventDeadLettered`.
-  With no lease running at all nothing is pruned until one runs. With at most
-  128 instances per
+  With no lease running at all nothing is pruned until one runs, so each
+  deleted hook instance leaves at most 384 rows and its one cursor until
+  then. With at most 128 instances per
   host, delivery rows stay under 50,000 objects. The retention scan pages
   through all rows and keeps only this instance's and 64 prunable ones in
   memory, so it never stops at a listing size.
