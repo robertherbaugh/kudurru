@@ -13,6 +13,7 @@ import (
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration"
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
@@ -255,6 +256,17 @@ func integrationOperationStart(t *testing.T, f *integrationOperationFixture, def
 		if lease.Bundle().Identity().Base.Revision != f.s.publisher.Status().Authority.Installed.Revision {
 			return false
 		}
+		// An observer's first sync can change a zone (its source records),
+		// which commits NOTIFY intent with the zone's data (D202), even for
+		// a zone whose policy notifies nobody. The primary runtime's NOTIFY
+		// worker, which polls every second, clears that intent in a commit
+		// of its own (notify-ack). Sent before that commit, the single
+		// request is refused as superseded at its first current command
+		// (the effect-free 503): settled also means no intent is pending.
+		// Read after the lease, so a later zone commit is seen as well.
+		if integrationNotifyPending(t, f.s) {
+			return false
+		}
 		f.d = current.DeepCopy()
 		return true
 	})
@@ -263,4 +275,27 @@ func integrationOperationStart(t *testing.T, f *integrationOperationFixture, def
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// integrationNotifyPending reports whether an active zone head still holds
+// NOTIFY intent, which the primary runtime's NOTIFY worker clears in a commit
+// of its own (notify-ack). That commit moves the served publication, so an
+// HTTP request admitted before it is superseded at its first current command
+// (the effect-free refusal a client resends).
+func integrationNotifyPending(t *testing.T, s *servingRuntime) bool {
+	t.Helper()
+	heads, err := s.opts.Store.List(t.Context(), zk.KindZoneState, store.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range heads.Items {
+		head, ok := item.(*zk.ZoneState)
+		if !ok {
+			t.Fatalf("zone head list returned %T", item)
+		}
+		if head.Spec.Lifecycle == zk.LifecycleActive && head.Spec.NotifySequence != 0 {
+			return true
+		}
+	}
+	return false
 }
