@@ -519,8 +519,13 @@ other subjects completed, or a day and an hour after it was created), so keep
 deduplicating on the ID. Every running Integration, not only hook instances,
 removes delivery records an hour past their 24-hour deadline, and an instance
 whose peer stopped advertising hooks drops its own undelivered events at
-their deadline (`EventDeadLettered`). With no Integration running at all,
-nothing is removed until one runs.
+their deadline (`EventDeadLettered`). An Integration that does not receive
+events does this every 10 minutes at the default poll interval, and at least
+every 15 minutes whatever the interval. The time is counted across its
+leases, so an Integration whose lease is lost and won again often still does
+it, and it does it as soon as it starts after Kudurru starts. With no Integration running at all, nothing is removed until one
+runs: until then each deleted hook instance leaves at most 384 delivery
+records and one event cursor.
 
 ### Tier-B webhook records
 

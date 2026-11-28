@@ -249,6 +249,9 @@ type Host struct {
 	// captures numbers refresh runs in the order they begin; a job's
 	// captured records the latest one that refreshed its frame (D408).
 	captures atomic.Uint64
+	// lastRetention is when the latest retention run of each instance name
+	// began on this host, across its leases, on the monotonic clock (D427).
+	lastRetention map[string]time.Time
 }
 type frame struct {
 	instance *Instance
@@ -380,5 +383,5 @@ func New(o Options) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, captureMetrics: metrics, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, provisionFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
+	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, captureMetrics: metrics, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, provisionFailures: map[string]uint32{}, lastRetention: map[string]time.Time{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
 }

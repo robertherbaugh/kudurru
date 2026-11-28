@@ -263,6 +263,11 @@ func (h *Host) refresh(ctx context.Context) {
 			delete(h.provisionFailures, key)
 		}
 	}
+	for key := range h.lastRetention {
+		if _, ok := desired[key]; !ok {
+			delete(h.lastRetention, key)
+		}
+	}
 	for key, i := range desired {
 		if _, exists := h.jobs[key]; exists {
 			continue
