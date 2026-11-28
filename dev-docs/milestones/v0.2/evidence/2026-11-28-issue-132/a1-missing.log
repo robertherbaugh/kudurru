@@ -1,0 +1,22 @@
+=== RUN   TestIntegrationWebhookMountedOriginalClientObservation
+2026/11/28 07:21:35 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/28 07:21:35 INFO complete serving generation published again component=serving
+    integration_webhook_mount_test.go:219: integration.sync audit rows: []
+--- FAIL: TestIntegrationWebhookMountedOriginalClientObservation (0.40s)
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/valid
+    integration_webhook_mount_test.go:282: integration.act audit rows: []
+    integration_webhook_mount_test.go:254: original action: status=200 key="" posts=1 uncertain=false completed=false
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/invalid-schema
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/viewer
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/uncertain
+    integration_webhook_mount_test.go:282: integration.act audit rows: []
+    integration_webhook_mount_test.go:254: original action: status=503 key="integration_uncertain" posts=1 uncertain=true completed=false
+--- FAIL: TestIntegrationWebhookMountedActionsAndOriginalRefusals (0.87s)
+    --- FAIL: TestIntegrationWebhookMountedActionsAndOriginalRefusals/valid (0.25s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/invalid-schema (0.18s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/viewer (0.20s)
+    --- FAIL: TestIntegrationWebhookMountedActionsAndOriginalRefusals/uncertain (0.25s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	1.310s
+FAIL

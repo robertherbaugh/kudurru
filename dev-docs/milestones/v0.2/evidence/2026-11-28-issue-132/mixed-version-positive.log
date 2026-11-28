@@ -1,0 +1,8 @@
+=== RUN   TestReplicationRefusesImageWithoutIntegrationEventCursor
+--- PASS: TestReplicationRefusesImageWithoutIntegrationEventCursor (0.57s)
+=== RUN   TestReplicationRefusesImageWithoutIntegrationEventCursor
+--- PASS: TestReplicationRefusesImageWithoutIntegrationEventCursor (0.34s)
+=== RUN   TestReplicationRefusesImageWithoutIntegrationEventCursor
+--- PASS: TestReplicationRefusesImageWithoutIntegrationEventCursor (0.38s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/store/sqlite	2.346s

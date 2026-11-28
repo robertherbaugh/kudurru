@@ -1,0 +1,15 @@
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:59 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:481: the first lease of a new process did not prune
+--- FAIL: TestRetentionRunsAcrossShortLeases (6.00s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:20:05 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:481: the first lease of a new process did not prune
+--- FAIL: TestRetentionRunsAcrossShortLeases (6.00s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:20:11 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:481: the first lease of a new process did not prune
+--- FAIL: TestRetentionRunsAcrossShortLeases (6.00s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/ee/integration/host	18.022s
+FAIL

@@ -1,0 +1,35 @@
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:08 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.02s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:08 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:08 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:355: condition did not become true
+--- FAIL: TestRetentionTickOfRunningLeaseWithoutHookRole (3.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:11 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:355: condition did not become true
+--- FAIL: TestRetentionTickOfRunningLeaseWithoutHookRole (3.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:21:14 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/ee/integration/host	6.193s
+FAIL

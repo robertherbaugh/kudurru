@@ -1,0 +1,14 @@
+=== RUN   TestIntegrationWebhookMountedOriginalClientObservation
+--- PASS: TestIntegrationWebhookMountedOriginalClientObservation (0.39s)
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/valid
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/invalid-schema
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/viewer
+=== RUN   TestIntegrationWebhookMountedActionsAndOriginalRefusals/uncertain
+--- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals (0.83s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/valid (0.26s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/invalid-schema (0.18s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/viewer (0.15s)
+    --- PASS: TestIntegrationWebhookMountedActionsAndOriginalRefusals/uncertain (0.23s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	1.257s

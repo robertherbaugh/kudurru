@@ -1,0 +1,62 @@
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:46 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.02s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:46 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:47 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:47 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:48 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:48 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:48 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.02s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:48 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:49 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:49 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:49 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:50 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:50 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:50 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:51 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:51 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.62s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:51 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:51 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+=== RUN   TestRetentionTickOfRunningLeaseWithoutHookRole
+2026/11/28 07:19:52 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionTickOfRunningLeaseWithoutHookRole (0.01s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 07:19:52 INFO store synced; serving live objects component=zonecache previous=Unsynced
+--- PASS: TestRetentionRunsAcrossShortLeases (0.61s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/ee/integration/host	7.343s
