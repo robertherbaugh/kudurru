@@ -70,7 +70,12 @@ large requests; `kudurru apply` and `kudurru restore` do so unless
 On SQLite a request captures the node's newest publication when it arrives
 and authenticates on it. When the node has not published its newest commit
 within two seconds, the request is refused before it is read with `503
-generation_pending` (`Retry-After: 1`); send it again.
+generation_pending` (`Retry-After: 1`); send it again. A provider sign-in
+request (the browser's `GET /auth/oidc/{idp}/start` and
+`/auth/oidc/{idp}/callback`, and `POST /auth/cli/{idp}/prepare`) first
+records its rate-limit charge, a commit of its own, so it waits up to five
+seconds for the node to publish that commit before it is refused the same
+way (D426).
 
 The node commits its own work on its own schedule (zone status and
 lifecycle writes, signed UPDATEs, admission), and each commit replaces the

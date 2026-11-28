@@ -167,9 +167,18 @@ sequenceDiagram
     R->>Q: Charge IP-prefix lane under original writer/deadline
     Q-->>R: Confirm commit or refuse
     R->>A: First complete lease capture after confirmed charge
+    A->>A: Wait up to 5 s for the publication of the charge
     A->>P: Existing original credential/provider flow
     P-->>R: Verified response or original-source refusal
 ```
+
+The charge advances the installed revision, so no publication served before it
+is eligible for the request: its capture always waits for the publication of
+its own commit. That capture waits up to `servinghttp.OwnCommitWait` (five
+seconds) instead of the two-second capture wait of other requests
+(`servinghttp.WithOwnCommit`, D426); with only two seconds, a node whose
+preparation outlasted them refused every provider sign-in, and every resend,
+with `503 generation_pending`.
 
 Starts and CLI preparations each allow five requests per prefix; callbacks allow
 ten. An idle gap longer than one minute resets that lane; reaching its threshold
@@ -315,7 +324,8 @@ Rules of the recapture itself:
 - This covers a request that was read. A request that arrives while the
   node has not published its newest commit is still refused at capture,
   before it is read, with `503 generation_pending` (the middleware's
-  two-second capture wait). D405 shortened that window: a `Wake` no longer
+  two-second capture wait; five seconds for a provider sign-in, which waits
+  for its own admission charge, D426). D405 shortened that window: a `Wake` no longer
   cancels the preparation in progress, and a zone content commit deletes the
   chunks no head references. A preparation that outlasts the capture wait
   (one to three seconds under the race detector on a loaded machine) still

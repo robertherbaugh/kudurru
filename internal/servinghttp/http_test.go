@@ -504,3 +504,81 @@ func TestInitialCaptureWaitMarksOnlyReads(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+// A request marked WithOwnCommit (a provider sign-in after its own admission
+// charge, D426) waits for an eligible publication past the adapter's
+// CaptureWait, up to OwnCommitWait and no longer, and is then refused with
+// the same generation_pending as any request. An adapter with no capture
+// wait keeps its immediate refusal for a marked request too.
+func TestOwnCommitCaptureWaitIsBounded(t *testing.T) {
+	pending := func(t *testing.T) *fixture {
+		f := newFixture(t)
+		f.pause.Store(true)
+		f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			_, err := tx.Apply(ctx, &publicv1.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "new", Namespace: "default"}, Spec: publicv1.BlockListSpec{Mode: "block", Sources: []publicv1.ListSource{{Inline: []string{"blocked.example"}}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+			return err
+		})
+		return f
+	}
+	marked := func(f *fixture) *http.Request {
+		r := f.request(http.MethodGet)
+		return r.WithContext(WithOwnCommit(r.Context()))
+	}
+	refused := func(t *testing.T, response *httptest.ResponseRecorder) {
+		t.Helper()
+		if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "1" || !bytes.Contains(response.Body.Bytes(), []byte(`"generation_pending"`)) {
+			t.Fatalf("answered %d %s, want 503 generation_pending with Retry-After: 1", response.Code, response.Body)
+		}
+	}
+	t.Run("outlasts the capture wait", func(t *testing.T) {
+		f := pending(t)
+		f.adapter.options.CaptureWait = 20 * time.Millisecond
+		var calls atomic.Int32
+		response := httptest.NewRecorder()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			f.adapter.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				w.WriteHeader(http.StatusNoContent)
+			})).ServeHTTP(response, marked(f))
+		}()
+		select {
+		case <-done:
+			t.Fatalf("marked request answered %d within ten times the capture wait", response.Code)
+		case <-time.After(10 * f.adapter.options.CaptureWait):
+		}
+		f.pause.Store(false)
+		f.publisher.Wake()
+		select {
+		case <-done:
+		case <-time.After(OwnCommitWait):
+			t.Fatal("marked request did not finish after the publication")
+		}
+		if response.Code != http.StatusNoContent || calls.Load() != 1 {
+			t.Fatalf("status=%d calls=%d, want 204/1", response.Code, calls.Load())
+		}
+	})
+	t.Run("bounded by OwnCommitWait", func(t *testing.T) {
+		f := pending(t)
+		f.adapter.options.CaptureWait = 20 * time.Millisecond
+		response := httptest.NewRecorder()
+		start := time.Now()
+		f.adapter.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("pending request reached handler") })).ServeHTTP(response, marked(f))
+		if waited := time.Since(start); waited < OwnCommitWait {
+			t.Fatalf("marked request refused after %s, before OwnCommitWait", waited)
+		}
+		refused(t, response)
+	})
+	t.Run("zero capture wait refuses at once", func(t *testing.T) {
+		f := pending(t)
+		f.adapter.options.CaptureWait = 0
+		response := httptest.NewRecorder()
+		start := time.Now()
+		f.adapter.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("pending request reached handler") })).ServeHTTP(response, marked(f))
+		if waited := time.Since(start); waited >= OwnCommitWait {
+			t.Fatalf("marked request on an adapter without capture wait waited %s", waited)
+		}
+		refused(t, response)
+	})
+}

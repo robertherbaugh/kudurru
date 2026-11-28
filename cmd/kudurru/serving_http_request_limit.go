@@ -133,7 +133,10 @@ func (h *servingHTTP) requestAdmissionMiddleware(next http.Handler) http.Handler
 			return
 		}
 		admission := &requestAdmission{owner: h, lane: lane, original: ctx}
-		next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, requestAdmissionKey{}, admission)))
+		// The charge is this request's own commit, so the adapter's capture
+		// waits for its publication, up to servinghttp.OwnCommitWait instead
+		// of the ordinary capture wait (#275).
+		next.ServeHTTP(w, r.WithContext(servinghttp.WithOwnCommit(context.WithValue(ctx, requestAdmissionKey{}, admission))))
 	})
 }
 
