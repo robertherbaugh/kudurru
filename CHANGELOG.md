@@ -27,6 +27,11 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   validation configuration instead of once per component, by remembering the
   exact canonical bytes each configuration accepted.
 
+- An Integration that does not receive hook events now prunes old delivery
+  records and drops its own expired events even when its lease is lost and
+  won again more often than every 10 minutes, or Kudurru keeps restarting.
+  Each Integration still runs this at most once per interval (#132).
+
 ## [0.2.0] - unreleased
 
 ### Added

@@ -1,0 +1,6 @@
+=== RUN   TestReplicationRefusesImageWithoutIntegrationEventCursor
+    replication_test.go:548: an image without IntegrationEventCursor: <nil>
+--- FAIL: TestReplicationRefusesImageWithoutIntegrationEventCursor (0.08s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/internal/store/sqlite	0.095s
+FAIL

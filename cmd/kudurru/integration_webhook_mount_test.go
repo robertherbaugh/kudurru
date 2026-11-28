@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -215,7 +216,7 @@ func TestIntegrationWebhookMountedOriginalClientObservation(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &refusal)
 		t.Fatalf("mounted source sync: status=%d key=%q committed=%t published=%t uncertain=%t reads=%d", w.Code, refusal.Error.Key, result.SourceCommitted || refusal.Error.Hint.SourceCommitted, result.SourcePublished || refusal.Error.Hint.SourcePublished, refusal.Error.Hint.Uncertain, p.reads.Load()-before)
 	}
-	webhookMountActAudit(t, f, "integration.sync", sqlite.AuditSuccess)
+	webhookMountActAudit(t, f, "integration.sync", "/integrations/default/webhook/sync", "reviewed sync", sqlite.AuditSuccess)
 	// Later operation/status commits may supersede the publication acknowledged
 	// by Sync. Wait only for a read of the resulting complete serving snapshot.
 	var nextSnapshot *inventory.Snapshot
@@ -278,7 +279,7 @@ func TestIntegrationWebhookMountedActionsAndOriginalRefusals(t *testing.T) {
 				}
 			}
 			want := map[string]string{"valid": sqlite.AuditSuccess, "uncertain": sqlite.AuditError}[mode]
-			webhookMountActAudit(t, f, "integration.act", want)
+			webhookMountActAudit(t, f, "integration.act", "/integrations/default/webhook/actions/refresh", "reviewed action refresh with params sha256:"+kinds.Digest(params), want)
 			integrationNoSource(t, f.s, integrationOwner(f.s, f.d))
 			if p.reads.Load() != 0 || p.unexpected.Load() != 0 {
 				t.Fatal("actions-only provider polled inventory")
@@ -338,8 +339,12 @@ func TestIntegrationWebhookMountedOriginalCredentialRefusal(t *testing.T) {
 }
 
 // webhookMountActAudit requires exactly one audit row of a reviewed command
-// with the given result, or none when result is empty (D379).
-func webhookMountActAudit(t *testing.T, f *integrationOperationFixture, action, result string) {
+// with the given result, or none when result is empty (D379). The row must
+// match field by field (#132): the caller and its request, the authority
+// checked, the Integration and the revision it reviewed, the outcome, and
+// a reason naming what was asked of which incarnation. Only the IDs, time
+// and hash chain the store assigns are not compared, and they must be set.
+func webhookMountActAudit(t *testing.T, f *integrationOperationFixture, action, path, subject, result string) {
 	t.Helper()
 	var rows []sqlite.AuditEntry
 	for _, entry := range integrationAudit(t, f.s, f.d) {
@@ -353,7 +358,32 @@ func webhookMountActAudit(t *testing.T, f *integrationOperationFixture, action, 
 		}
 		return
 	}
-	if len(rows) != 1 || rows[0].Result != result || rows[0].Actor != "User:operation-admin" || !strings.Contains(rows[0].Reason, string(f.d.UID)) {
-		t.Fatalf("%s audit: %+v", action, rows)
+	if len(rows) != 1 {
+		t.Fatalf("%s audit rows: %+v", action, rows)
+	}
+	got := rows[0]
+	if got.ID <= 0 || got.Time.IsZero() || got.ChainVersion != 2 || got.RequestID == "" || got.PrevHash == "" || got.Hash == "" {
+		t.Fatalf("%s audit row lacks store fields: %+v", action, got)
+	}
+	got.ID, got.Time, got.ChainVersion, got.RequestID, got.PrevHash, got.Hash = 0, time.Time{}, 0, "", "", ""
+	outcome := "completed"
+	if result == sqlite.AuditError {
+		outcome = "uncertain: effects may have occurred and were not replayed"
+	}
+	want := sqlite.AuditEntry{
+		Authz:           "integrations:" + strings.TrimPrefix(action, "integration."),
+		ClientIP:        "192.0.2.1",
+		RequestMethod:   http.MethodPost,
+		RequestPath:     "/api/v1" + path,
+		Actor:           "User:operation-admin",
+		Manager:         store.ManagerAPI,
+		Action:          action,
+		Key:             store.Key{Kind: "Integration", Namespace: f.d.Namespace, Name: f.d.Name},
+		ResourceVersion: f.d.ResourceVersion,
+		Result:          result,
+		Reason:          subject + " of uid " + string(f.d.UID) + ": " + outcome,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%s audit row:\n got %+v\nwant %+v", action, got, want)
 	}
 }

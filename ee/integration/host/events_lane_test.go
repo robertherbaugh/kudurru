@@ -273,6 +273,48 @@ func TestRetentionWithoutHookRole(t *testing.T) {
 	}
 }
 
+// The host forgets an instance's last retention run (D427) only once a
+// complete capture no longer lists the instance. A failed capture stops
+// every job but proves nothing gone, so it keeps the record, and the jobs
+// the next capture starts are not all due at once.
+func TestRetentionRecordForgottenOnlyByACompleteCapture(t *testing.T) {
+	st := memory.New()
+	definition := webhook("sink")
+	definition.Spec.Suspend = true
+	present, absent := captureInput(t, definition), captureInput(t)
+	repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := func(context.Context) (Input, error) { return present, nil }
+	h, err := New(Options{Capture: func(ctx context.Context) (Input, error) { return capture(ctx) }, Elector: st.Elector, Ledger: repo, Reader: st, Fence: func(context.Context, ExecutionGuard) error { return nil }, Allowed: func() bool { return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := instanceKey(InstanceID{Namespace: definition.Namespace, Name: definition.Name})
+	interval := retentionInterval(h.opts.PollInterval)
+	h.refresh(t.Context())
+	h.retentionStarted(key)
+	recorded := func() bool { h.mu.RLock(); defer h.mu.RUnlock(); _, ok := h.lastRetention[key]; return ok }
+	capture = func(context.Context) (Input, error) { return Input{}, errors.New("capture failed") }
+	h.refresh(t.Context())
+	if !recorded() || h.retentionDelay(key) <= interval/2 {
+		t.Fatal("a failed capture forgot the last retention run", h.retentionDelay(key))
+	}
+	capture = func(context.Context) (Input, error) { return present, nil }
+	h.refresh(t.Context())
+	if !recorded() {
+		t.Fatal("a capture listing the instance forgot its last retention run")
+	}
+	capture = func(context.Context) (Input, error) { return absent, nil }
+	h.refresh(t.Context())
+	if recorded() || h.retentionDelay(key) != 0 {
+		t.Fatal("a capture without the instance kept its last retention run")
+	}
+}
+
 func TestRetentionIntervalBoundedByDeliveryRetention(t *testing.T) {
 	for _, tc := range []struct{ poll, want time.Duration }{
 		{time.Millisecond, 300 * time.Millisecond},
@@ -360,4 +402,148 @@ func TestRetentionTickOfRunningLeaseWithoutHookRole(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// shortTermElector grants back-to-back terms that each end after term, as
+// when a lease is lost and won again sooner than the retention interval.
+type shortTermElector struct {
+	term  time.Duration
+	terms *atomic.Int32
+}
+
+func (e shortTermElector) Run(ctx context.Context, onStarted func(context.Context), onStopped func()) error {
+	for ctx.Err() == nil {
+		term, cancel := context.WithTimeout(ctx, e.term)
+		e.terms.Add(1)
+		onStarted(term)
+		<-term.Done()
+		cancel()
+	}
+	if onStopped != nil {
+		onStopped()
+	}
+	return nil
+}
+func (shortTermElector) IsLeader() bool { return true }
+func (shortTermElector) Leader() string { return "node" }
+
+// deliveryRuns counts the retention runs of a host: each one begins with a
+// first page of IntegrationDelivery rows, and nothing else lists that kind.
+type deliveryRuns struct {
+	Reader
+	runs atomic.Int32
+}
+
+func (r *deliveryRuns) List(ctx context.Context, kind store.Kind, o store.ListOptions) (store.ObjectList, error) {
+	if kind == kinds.KindIntegrationDelivery && o.Continue == "" {
+		r.runs.Add(1)
+	}
+	return r.Reader.List(ctx, kind, o)
+}
+
+// TestRetentionRunsAcrossShortLeases loses and wins the lease of an
+// instance without the hook role every 2/7 of the retention interval
+// (#132). The term does not divide the interval, so a due run does not
+// keep landing on a term's end. A per-lease ticker never fired, so nothing
+// was pruned or dead-lettered. Retention is due one interval after the
+// instance's last run instead: the first lease of a new process prunes at
+// once, a later short lease dead-letters the instance's own row whose
+// deadline passed meanwhile and prunes another owner's row, and runs stay
+// at most one per interval.
+func TestRetentionRunsAcrossShortLeases(t *testing.T) {
+	st := memory.New()
+	definition := webhook("sink")
+	in := captureInput(t, definition)
+	start := time.Unix(1000, 0).UTC()
+	var clock sync.Mutex
+	now := start
+	current := func() time.Time { clock.Lock(); defer clock.Unlock(); return now }
+	r, err := ledger.New(ledger.Options{Reader: st, Now: current, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}, Delete: func(ctx context.Context, _ ledger.Guard, requests []store.DeleteRequest) error {
+		return st.DeleteMany(ctx, requests)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := kinds.Owner{ClusterID: in.Term.ClusterID, Namespace: definition.Namespace, Name: definition.Name, UID: string(definition.UID)}
+	other := kinds.Owner{ClusterID: in.Term.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
+	row := func(o kinds.Owner, name string, deadline time.Time) string {
+		id := kinds.Digest([]byte(name))
+		d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(o, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: o, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: deadline.Add(-24 * time.Hour), Deadline: deadline, NextAttempt: deadline.Add(-24 * time.Hour)}}
+		if _, err := st.Apply(context.Background(), d, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	gone := func(o kinds.Owner, id string) bool {
+		_, err := r.ReadDelivery(context.Background(), o, id)
+		return errors.Is(err, store.ErrNotFound)
+	}
+	within := func(d time.Duration, what string, fn func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(d)
+		for !fn() {
+			if time.Now().After(deadline) {
+				t.Fatal(what)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	const poll = 2 * time.Millisecond
+	interval := retentionInterval(poll)
+	var terms, providers atomic.Int32
+	reader := &deliveryRuns{Reader: st}
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return in, nil }, Factory: func(string) (integration.Integration, error) {
+		providers.Add(1)
+		return &fakePublisher{}, nil
+	}, Elector: func(string) store.Elector { return shortTermElector{term: interval * 2 / 7, terms: &terms} }, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: reader, Allowed: func() bool { return true }, Now: current, PollInterval: poll, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Past its deadline plus deliveryRetention: any lease may delete it.
+	first := row(other, "first", start.Add(-2*deliveryRetention))
+	// Its deadline is an hour away: nothing may touch it yet.
+	own := row(owner, "own", start.Add(time.Hour))
+	began := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("host did not quiesce")
+		}
+	})
+	within(10*interval, "the first lease of a new process did not prune", func() bool { return gone(other, first) })
+	if d, err := r.ReadDelivery(context.Background(), owner, own); err != nil || d.Spec.DeadLetter {
+		t.Fatal("dead-lettered before its deadline", d, err)
+	}
+	ran, granted := reader.runs.Load(), terms.Load()
+	// The own row's deadline passes, and another owner's row becomes
+	// prunable, only after that run.
+	clock.Lock()
+	now = start.Add(2 * time.Hour)
+	clock.Unlock()
+	second := row(other, "second", start.Add(-2*deliveryRetention))
+	within(10*interval, "short leases never dead-lettered the own expired row", func() bool {
+		d, err := r.ReadDelivery(context.Background(), owner, own)
+		return err == nil && d.Spec.DeadLetter && d.Spec.ErrorClass == "expired" && d.Spec.Attempts == 0
+	})
+	within(10*interval, "short leases never pruned another owner's row", func() bool { return gone(other, second) })
+	elapsed := time.Since(began)
+	if terms.Load() <= granted || reader.runs.Load() <= ran {
+		t.Fatal("no later lease ran retention", granted, terms.Load(), ran, reader.runs.Load())
+	}
+	if runs := reader.runs.Load(); time.Duration(runs-1)*interval > elapsed {
+		t.Fatal("retention ran more than once per interval", runs, elapsed, interval)
+	}
+	if providers.Load() < 2 {
+		t.Fatal("the lease was never lost and won again", providers.Load())
+	}
 }

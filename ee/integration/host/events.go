@@ -214,6 +214,31 @@ func retentionInterval(poll time.Duration) time.Duration {
 	return min(poll*retentionTicks, deliveryRetention/4)
 }
 
+// retentionDelay is how long a lease of the instance named key waits
+// before its next retention run: what is left of retentionInterval since
+// the instance's last run on this host, or nothing when it has none, as
+// after a process restart. So leases that end sooner than the interval,
+// and a restart loop, still run retention once per interval per instance,
+// and never more often (D427).
+func (h *Host) retentionDelay(key string) time.Duration {
+	h.mu.RLock()
+	last, ok := h.lastRetention[key]
+	h.mu.RUnlock()
+	if !ok {
+		return 0
+	}
+	return max(0, retentionInterval(h.opts.PollInterval)-time.Since(last))
+}
+
+// retentionStarted records that a retention run of the instance named key
+// begins now, whether it then succeeds or not: a failed run is retried one
+// interval later, as by a lease that keeps running.
+func (h *Host) retentionStarted(key string) {
+	h.mu.Lock()
+	h.lastRetention[key] = time.Now()
+	h.mu.Unlock()
+}
+
 // expireEvents is the retention run of a lease without the hook role: it
 // prunes like a hook lease and dead-letters, never attempts, its own rows
 // whose deadline passed.

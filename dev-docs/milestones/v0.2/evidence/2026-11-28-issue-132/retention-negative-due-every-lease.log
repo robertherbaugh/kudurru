@@ -1,0 +1,15 @@
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:04:05 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:544: retention ran more than once per interval 2 175.140534ms 600ms
+--- FAIL: TestRetentionRunsAcrossShortLeases (0.18s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:04:05 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:544: retention ran more than once per interval 2 186.587951ms 600ms
+--- FAIL: TestRetentionRunsAcrossShortLeases (0.19s)
+=== RUN   TestRetentionRunsAcrossShortLeases
+2026/11/28 08:04:05 INFO store synced; serving live objects component=zonecache previous=Unsynced
+    events_lane_test.go:544: retention ran more than once per interval 2 174.919249ms 600ms
+--- FAIL: TestRetentionRunsAcrossShortLeases (0.18s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/ee/integration/host	0.561s
+FAIL

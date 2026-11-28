@@ -184,14 +184,22 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		defer timer.Stop()
 	}
 	var eventTick, retentionTick <-chan time.Time
+	var retention *time.Timer
 	if roles, err := providerRoles(provider); err == nil && roles.Hook {
 		events := time.NewTicker(h.opts.PollInterval)
 		defer events.Stop()
 		eventTick = events.C
 	} else {
-		retention := time.NewTicker(retentionInterval(h.opts.PollInterval))
+		// The first run is due one interval after the instance's last run
+		// on this host, not one interval after this lease began, so leases
+		// shorter than the interval still prune (D427). A lease that syncs
+		// reads the timer only after its first sync: run before it, a dead
+		// letter's Degraded status would be cleared by that sync at once.
+		retention = time.NewTimer(h.retentionDelay(j.key))
 		defer retention.Stop()
-		retentionTick = retention.C
+		if timer == nil {
+			retentionTick = retention.C
+		}
 	}
 	var failures uint32
 	reset := func(delay time.Duration) {
@@ -298,6 +306,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			release()
 			reset(0)
 		case <-eventTick:
+			h.retentionStarted(j.key)
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			// Produce before draining, so a change is delivered in the same
 			// tick it is queued. A refused production never holds back the
@@ -310,16 +319,26 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			}
 			operationCancel()
 		case <-retentionTick:
+			if ctx.Err() != nil {
+				// The lease ended as the run fell due: leave it due for
+				// the next lease rather than count a run that is fenced.
+				return
+			}
+			h.retentionStarted(j.key)
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			if err := h.expireEvents(operationCtx, j); err != nil {
 				h.opts.Logger.Warn("integration event retention failed", "integration", j.key)
 			}
 			operationCancel()
+			retention.Reset(h.retentionDelay(j.key))
 		case <-syncTick:
 			began := time.Now()
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			a := h.execute(operationCtx, j, command{kind: "sync"})
 			operationCancel()
+			if retention != nil {
+				retentionTick = retention.C
+			}
 			if a.err == nil {
 				failures = 0
 				scheduled(a, began)
