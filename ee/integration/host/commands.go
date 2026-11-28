@@ -330,7 +330,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 				h.opts.Logger.Warn("integration event retention failed", "integration", j.key)
 			}
 			operationCancel()
-			retention.Reset(retentionInterval(h.opts.PollInterval))
+			retention.Reset(h.retentionDelay(j.key))
 		case <-syncTick:
 			began := time.Now()
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)

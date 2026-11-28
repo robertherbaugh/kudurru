@@ -263,8 +263,11 @@ func (h *Host) refresh(ctx context.Context) {
 			delete(h.provisionFailures, key)
 		}
 	}
+	// Only a complete capture shows that an instance is gone: a failed one
+	// keeps every instance's last retention run, so the jobs it stops and
+	// the next capture starts again do not each run retention at once (D427).
 	for key := range h.lastRetention {
-		if _, ok := desired[key]; !ok {
+		if _, ok := desired[key]; !ok && err == nil {
 			delete(h.lastRetention, key)
 		}
 	}

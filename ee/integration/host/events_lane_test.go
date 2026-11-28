@@ -273,6 +273,48 @@ func TestRetentionWithoutHookRole(t *testing.T) {
 	}
 }
 
+// The host forgets an instance's last retention run (D427) only once a
+// complete capture no longer lists the instance. A failed capture stops
+// every job but proves nothing gone, so it keeps the record, and the jobs
+// the next capture starts are not all due at once.
+func TestRetentionRecordForgottenOnlyByACompleteCapture(t *testing.T) {
+	st := memory.New()
+	definition := webhook("sink")
+	definition.Spec.Suspend = true
+	present, absent := captureInput(t, definition), captureInput(t)
+	repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture := func(context.Context) (Input, error) { return present, nil }
+	h, err := New(Options{Capture: func(ctx context.Context) (Input, error) { return capture(ctx) }, Elector: st.Elector, Ledger: repo, Reader: st, Fence: func(context.Context, ExecutionGuard) error { return nil }, Allowed: func() bool { return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := instanceKey(InstanceID{Namespace: definition.Namespace, Name: definition.Name})
+	interval := retentionInterval(h.opts.PollInterval)
+	h.refresh(t.Context())
+	h.retentionStarted(key)
+	recorded := func() bool { h.mu.RLock(); defer h.mu.RUnlock(); _, ok := h.lastRetention[key]; return ok }
+	capture = func(context.Context) (Input, error) { return Input{}, errors.New("capture failed") }
+	h.refresh(t.Context())
+	if !recorded() || h.retentionDelay(key) <= interval/2 {
+		t.Fatal("a failed capture forgot the last retention run", h.retentionDelay(key))
+	}
+	capture = func(context.Context) (Input, error) { return present, nil }
+	h.refresh(t.Context())
+	if !recorded() {
+		t.Fatal("a capture listing the instance forgot its last retention run")
+	}
+	capture = func(context.Context) (Input, error) { return absent, nil }
+	h.refresh(t.Context())
+	if recorded() || h.retentionDelay(key) != 0 {
+		t.Fatal("a capture without the instance kept its last retention run")
+	}
+}
+
 func TestRetentionIntervalBoundedByDeliveryRetention(t *testing.T) {
 	for _, tc := range []struct{ poll, want time.Duration }{
 		{time.Millisecond, 300 * time.Millisecond},

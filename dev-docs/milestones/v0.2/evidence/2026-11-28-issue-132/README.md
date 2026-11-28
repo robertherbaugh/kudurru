@@ -19,10 +19,11 @@ row. The run count never exceeds one per interval of elapsed time.
 
 | Log | Code | Result |
 | --- | --- | --- |
-| `retention-positive.log` | this change, `-race -count=10`, together with `TestRetentionTickOfRunningLeaseWithoutHookRole` | 20/20 pass |
+| `retention-positive.log` | this change, `-race -count=10`, together with `TestRetentionTickOfRunningLeaseWithoutHookRole` and `TestRetentionRecordForgottenOnlyByACompleteCapture` | 30/30 pass |
 | `retention-negative-per-lease-ticker.log` | `commands.go`, `events.go`, `types.go` and `lifecycle.go` from the baseline (a ticker per lease) | 3/3 fail: nothing pruned in 6 s, ten intervals |
 | `retention-negative-due-every-lease.log` | this change, but every lease is due at once (`time.NewTimer(0)`) | 3/3 fail: two runs within 175 ms |
-| `retention-negative-before-first-sync.log` | this change, but the timer is read before the lease's first sync | `TestRetentionTickOfRunningLeaseWithoutHookRole` fails 2 of 10 runs under `-race`: that sync cleared the `EventDeadLettered` status |
+| `retention-negative-before-first-sync.log` | this change, but the timer is read before the lease's first sync | `TestRetentionTickOfRunningLeaseWithoutHookRole` fails 3 of 10 runs under `-race`: that sync cleared the `EventDeadLettered` status |
+| `retention-negative-forget-on-failed-capture.log` | this change, but a failed capture also forgets every instance's last run | `TestRetentionRecordForgottenOnlyByACompleteCapture` fails |
 
 ```sh
 tmp=$(mktemp -d)
@@ -42,7 +43,8 @@ go test -p 1 -overlay "$tmp/overlay.json" -count=3 -v \
 The other two retention controls replace only `commands.go` with
 `sed 's/time.NewTimer(h.retentionDelay(j.key))/time.NewTimer(0)/'`, and with
 `if true || timer == nil {` in place of the `if timer == nil {` that guards
-`retentionTick = retention.C`.
+`retentionTick = retention.C`. The last control drops `&& err == nil` from
+the loop in `lifecycle.go` that forgets `lastRetention` entries.
 
 ## Mixed-version IntegrationEventCursor
 

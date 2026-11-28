@@ -214,8 +214,8 @@ func retentionInterval(poll time.Duration) time.Duration {
 	return min(poll*retentionTicks, deliveryRetention/4)
 }
 
-// retentionDelay is how long a new lease of the instance named key waits
-// before its first retention run: what is left of retentionInterval since
+// retentionDelay is how long a lease of the instance named key waits
+// before its next retention run: what is left of retentionInterval since
 // the instance's last run on this host, or nothing when it has none, as
 // after a process restart. So leases that end sooner than the interval,
 // and a restart loop, still run retention once per interval per instance,
