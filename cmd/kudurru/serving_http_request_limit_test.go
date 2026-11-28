@@ -226,3 +226,58 @@ func TestServingHTTPRequestAdmissionMissingWriterRefuses(t *testing.T) {
 		t.Fatal("missing writer changed request budget", err)
 	}
 }
+
+// TestServingHTTPRequestAdmissionWaitsForItsOwnPublication holds the node's
+// publication of a sign-in request's own lane charge for longer than the
+// adapter's capture wait (#275). The charge is a commit of the request itself,
+// made before the adapter captures, so no publication served before it is
+// eligible for the request. Such a request was refused with 503
+// generation_pending after servingHTTPCaptureWait, which no sign-in route
+// declares, and on a node whose preparation outlasts that wait every resend
+// charged and committed again and was refused the same way. The request must
+// instead wait for the publication of its charge and then answer as the route
+// does.
+func TestServingHTTPRequestAdmissionWaitsForItsOwnPublication(t *testing.T) {
+	for _, c := range []struct {
+		name, method, path, body string
+		want                     int
+	}{
+		{"start", "GET", "/auth/oidc/corp/start", "", 302},
+		{"callback", "GET", "/auth/oidc/corp/callback", "", 401},
+		{"cli", "POST", "/auth/cli/corp/prepare", "{}", 400},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newServingBrowserFixture(t)
+			awaitServingWakesPublished(t, f.s)
+			before := f.s.opts.Store.Authority().Installed.Revision
+			// The barrier lets the node prepare the charge's generation but
+			// not publish it until it is released.
+			_, unpin, err := f.s.publisher.Pin(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			pinned := true
+			defer func() {
+				if pinned {
+					unpin()
+				}
+			}()
+			answered := make(chan *httptest.ResponseRecorder, 1)
+			go func() { answered <- f.call(t, c.method, c.path, c.body, "", nil, "") }()
+			awaitServingRuntime(t, f.s, func() bool { return f.s.opts.Store.Authority().Installed.Revision > before })
+			select {
+			case w := <-answered:
+				t.Fatalf("answered %d %s while the publication of its own charge was held", w.Code, strings.TrimSpace(w.Body.String()))
+			case <-time.After(servingHTTPCaptureWait + time.Second):
+			}
+			unpin()
+			pinned = false
+			select {
+			case w := <-answered:
+				expectServingHTTPStatus(t, w, c.want)
+			case <-time.After(10 * time.Second):
+				t.Fatal("no answer after the publication of the charge was released")
+			}
+		})
+	}
+}
