@@ -204,9 +204,10 @@ cleanup with and without two generation-reader load workers (without
 `-race`). The 32 KiB idle cell finalized, but the loaded cell did not
 finalize within the two-minute observation window. The 10,000-object small
 cell finished at idle but hit the capture deadline under load, and 10,000
-objects with 4 KiB of padding hit it at idle and under load. Every sample at
-25,000, 50,000 and 100,000 objects hit the capture deadline, so the host
-stopped local jobs and no deleted Integration finalized within the window.
+objects with 4 KiB of padding hit it at idle and under load. Every sample
+without `-race` at 25,000, 50,000 and 100,000 objects hit the capture
+deadline, so the host stopped local jobs and no deleted Integration
+finalized within the window.
 A failed capture can return several seconds after its deadline (up to
 16.7 seconds without `-race`), so the `CaptureDeadlineExceeded` series of
 `kudurru_integration_capture_seconds` can exceed 10 seconds. With `-race`,

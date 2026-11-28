@@ -72,9 +72,10 @@ The columns mean the same as on November 20:
 - Host capture failures: the host's `integration capture failed` log lines
   by reason, with the longest logged duration. The host logs a transition
   into a failed capture, so the count is the number of transitions, not the
-  number of failed attempts. One or two `CaptureUnavailable` lines at start
-  are expected: the host tries to capture before the fixture's writer is
-  ready.
+  number of failed attempts. One or two `CaptureUnavailable` lines are
+  expected: the host tries to capture before the fixture's writer is
+  ready, and again while the fixture shuts down after the result line
+  (these teardown captures can take several seconds).
 - State at cleanup cutoff: the Integration's phase and reason plus the owned
   ledger and operation rows still stored. "No instance status" means the
   last capture had failed, so the host had forgotten instance status and
@@ -193,8 +194,9 @@ unchanged production bounds.
    failed finalized its Integration within the two-minute window. Usually
    one owned ledger row and one operation row remained. This is the
    designed effect of a failed capture (it stops local jobs, including
-   cleanup), so from 25,000 objects on this host (10,000 under load on the
-   November 20 host) an Integration cannot be deleted.
+   cleanup), so from 25,000 objects on this host (from 10,000 under load,
+   and 10,000 at 4 KiB at idle, on the November 20 host) a deleted
+   Integration did not finalize within the window.
 6. **Admissible shapes need most of a 16 GiB host.** The test process's
    peak resident memory, which includes the fixture, seeding and the two
    load readers and is not a server measurement, was 1.1 to 1.3 GiB at
