@@ -263,8 +263,15 @@ func integrationOperationStart(t *testing.T, f *integrationOperationFixture, def
 		// of its own (notify-ack). Sent before that commit, the single
 		// request is refused as superseded at its first current command
 		// (the effect-free 503): settled also means no intent is pending.
-		// Read after the lease, so a later zone commit is seen as well.
+		// The heads are read after the lease, so a later zone commit is
+		// seen as well. An acknowledgment that commits between the revision
+		// check above and that read leaves no intent but a served cut that
+		// lags it: compare the revision again, so that no commit lands
+		// during this predicate.
 		if integrationNotifyPending(t, f.s) {
+			return false
+		}
+		if lease.Bundle().Identity().Base.Revision != f.s.publisher.Status().Authority.Installed.Revision {
 			return false
 		}
 		f.d = current.DeepCopy()
