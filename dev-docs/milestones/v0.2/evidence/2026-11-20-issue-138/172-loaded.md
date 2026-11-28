@@ -92,7 +92,8 @@ with `-test.run='^TestRunServeStaticTwinsReadOnlyPeerLossRestart$'`.
 
 > Later: the owner-lab long-apply rate and the 1.39 s gap were measured and
 > explained in D421 (#259); the read residual is accepted in D425 (#274); the
-> auth-route `generation_pending` finding is tracked in #275.
+> auth-route `generation_pending` finding and the five-minute walk timeout
+> were one cause, fixed in D426 (#275).
 
 - The synthetic VM does not establish an owner-lab rate. The undeclared
   accounting of `generation_pending` on the auth operations remains a

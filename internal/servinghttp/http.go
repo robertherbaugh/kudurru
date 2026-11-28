@@ -244,6 +244,33 @@ func conflicted(authority replication.Authority) bool {
 	return authority.Mode == replication.Conflict || authority.Conflict != nil || authority.Divergence != nil
 }
 
+type ownCommitKey struct{}
+
+// OwnCommitWait bounds the capture of a request marked with WithOwnCommit:
+// the largest CaptureWait New accepts, and the bound of a command's wait
+// for a newer publication (D399).
+const OwnCommitWait = 5 * time.Second
+
+// WithOwnCommit marks a request that committed before the adapter captures
+// for it: provider sign-in admission charges the request's lane in a command
+// of its own (D309). No publication served before that commit is eligible
+// for the request, so its capture always waits for the publication of its
+// own commit. With only CaptureWait for that, a node whose preparation
+// outlasted it refused every such request with generation_pending, and each
+// resend charged, committed and was refused again (#275). The capture of a
+// marked request waits up to OwnCommitWait instead.
+func WithOwnCommit(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ownCommitKey{}, true)
+}
+
+// captureWait is the capture bound of the request whose context is ctx.
+func (a *Adapter) captureWait(ctx context.Context) time.Duration {
+	if own, _ := ctx.Value(ownCommitKey{}).(bool); own {
+		return OwnCommitWait
+	}
+	return a.options.CaptureWait
+}
+
 // capture waits only before the request owns a lease or authenticates. It never
 // replaces a held proof, invokes a handler twice, or wakes/cancels preparation.
 // A waiting read is marked on the publisher (Publisher.AwaitHTTP), so that a
@@ -251,10 +278,11 @@ func conflicted(authority replication.Authority) bool {
 // (D378). Other methods are not marked: such a caller would usually commit in
 // that pause and so stop the rest of the request.
 func (a *Adapter) capture(ctx context.Context, read bool) (*serving.Lease, error) {
-	if a.options.CaptureWait == 0 {
+	bound := a.captureWait(ctx)
+	if bound == 0 {
 		return a.options.Publisher.CaptureHTTP(ctx)
 	}
-	wait, cancel := context.WithTimeout(ctx, a.options.CaptureWait)
+	wait, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
 	var done func()
 	defer func() {
