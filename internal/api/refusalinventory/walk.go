@@ -252,10 +252,11 @@ func transientAnswer(a Answer) bool {
 // captured, and five quick resends of the browser start exhaust it. That
 // charge is a commit, and the operation waits for its publication (five
 // seconds, D426), so on a node that takes longer than that to prepare the
-// next generation the operation's own charge leaves it pending again. An operation that admission charges (admissionBudget) is
-// therefore never sent more often than its lane admits: after the last
-// admitted send the walk waits for the lane's window to pass, at most twice,
-// and a 429 rate_limited is still an answer that the inventory judges.
+// next generation the operation's own charge leaves it pending again. An
+// operation that admission charges (admissionBudget) is therefore never sent
+// more often than its lane admits: after the last admitted send the walk
+// waits for the lane's window to pass, at most twice, and a 429 rate_limited
+// is still an answer that the inventory judges.
 func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 	timeout := c.Timeout
 	if timeout == 0 {

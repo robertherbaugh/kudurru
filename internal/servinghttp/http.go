@@ -29,7 +29,9 @@ type Options struct {
 	CrossOriginProtection *http.CrossOriginProtection
 	MaxDuration           time.Duration
 	// CaptureWait bounds waiting for the first eligible lease, before any
-	// authentication or handler work. Zero retains immediate refusal.
+	// authentication or handler work. Zero retains immediate refusal, also
+	// for a request marked with WithOwnCommit; any other value is replaced
+	// by OwnCommitWait for such a request.
 	CaptureWait time.Duration
 	Now         func() time.Time
 }
@@ -52,7 +54,7 @@ func New(options Options) (*Adapter, error) {
 	if options.MaxDuration < time.Millisecond || options.MaxDuration > 24*time.Hour {
 		return nil, serving.ErrComponents
 	}
-	if options.CaptureWait < 0 || options.CaptureWait > 5*time.Second {
+	if options.CaptureWait < 0 || options.CaptureWait > OwnCommitWait {
 		return nil, serving.ErrComponents
 	}
 	if options.Now == nil {
@@ -258,14 +260,15 @@ const OwnCommitWait = 5 * time.Second
 // own commit. With only CaptureWait for that, a node whose preparation
 // outlasted it refused every such request with generation_pending, and each
 // resend charged, committed and was refused again (#275). The capture of a
-// marked request waits up to OwnCommitWait instead.
+// marked request waits up to OwnCommitWait instead, unless the adapter's
+// CaptureWait is zero (immediate refusal).
 func WithOwnCommit(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ownCommitKey{}, true)
 }
 
 // captureWait is the capture bound of the request whose context is ctx.
 func (a *Adapter) captureWait(ctx context.Context) time.Duration {
-	if own, _ := ctx.Value(ownCommitKey{}).(bool); own {
+	if own, _ := ctx.Value(ownCommitKey{}).(bool); own && a.options.CaptureWait != 0 {
 		return OwnCommitWait
 	}
 	return a.options.CaptureWait
