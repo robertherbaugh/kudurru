@@ -6,15 +6,21 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	integration "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	internals "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	tsigkinds "github.com/robertherbaugh/kudurru/api/tsigkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func imageOf(t *testing.T, s *Store) *replication.Image {
@@ -442,6 +448,105 @@ func TestReplicationRejectsWrongClusterStaleAndFutureSchemas(t *testing.T) {
 	if _, err := s.ValidateImage(ctx, future); !errors.Is(err, replication.ErrIncompatible) {
 		t.Fatalf("future schema: %v", err)
 	}
+}
+
+// runtimeOptions registers the server's kinds as root does. With preCursor
+// it registers them as a release before IntegrationEventCursor did: every
+// Integration carrier but that one (D379).
+func runtimeOptions(preCursor bool) func(*Options) {
+	return func(o *Options) {
+		scheme, err := runtimekinds.NewScheme()
+		if preCursor {
+			scheme, err = internals.NewScheme()
+			for _, add := range []func(*runtime.Scheme) error{zonekinds.AddToScheme, tsigkinds.AddToScheme, integration.AddSourceToScheme} {
+				if err == nil {
+					err = add(scheme)
+				}
+			}
+			if err == nil {
+				scheme.AddKnownTypes(v1alpha1.GroupVersion, &integration.IntegrationLedger{}, &integration.IntegrationLedgerList{}, &integration.IntegrationOperation{}, &integration.IntegrationOperationList{}, &integration.IntegrationBudget{}, &integration.IntegrationBudgetList{}, &integration.IntegrationDelivery{}, &integration.IntegrationDeliveryList{})
+			}
+		}
+		if err != nil {
+			panic(err)
+		}
+		o.Scheme = scheme
+		o.InternalKinds = nil
+		for _, kind := range runtimekinds.Private() {
+			if !preCursor || kind != integration.KindIntegrationEventCursor {
+				o.InternalKinds = append(o.InternalKinds, store.Kind(kind))
+			}
+		}
+	}
+}
+
+// TestReplicationRefusesImageWithoutIntegrationEventCursor is the mixed-version
+// check of the private kind D379 added (#132). An image of a primary from
+// before the kind lacks it in its manifest and payload. A follower from
+// before the kind installs such an image, and a follower of this release
+// installs this release's image with its cursor. Each one refuses the
+// other release's image as incompatible and keeps its installed generation.
+func TestReplicationRefusesImageWithoutIntegrationEventCursor(t *testing.T) {
+	ctx := context.Background()
+	p := openTemp(t, runtimeOptions(false))
+	mustApply(t, p, zone("home", "home.example."), store.ManagerAPI)
+	owner := integration.Owner{ClusterID: p.Authority().Term.ClusterID, Namespace: "dns", Name: "sink", UID: "uid-sink"}
+	cursor := &integration.IntegrationEventCursor{ObjectMeta: metav1.ObjectMeta{Name: integration.EventCursorName(owner)}, Spec: integration.IntegrationEventCursorSpec{FormatVersion: integration.FormatVersion, Owner: owner, Positions: map[string]string{"zone": "1"}, UpdatedAt: time.Unix(1000, 0).UTC()}}
+	mustApply(t, p, cursor, "integration-ledger")
+	follower := func(mutate func(*Options)) *Store {
+		s := openTemp(t, mutate, func(o *Options) { o.InitialMode = replication.Follower })
+		if err := s.Enroll(ctx, p.Authority().Term); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	// older is the primary's current image as a release before the kind
+	// read it: no manifest entry and no cursor row.
+	older := func() *replication.Image {
+		t.Helper()
+		i := imageOf(t, p)
+		objects := len(i.Payload.Objects)
+		i.KindManifest = slices.DeleteFunc(i.KindManifest, func(k replication.Kind) bool { return k.Kind == integration.KindIntegrationEventCursor })
+		i.Payload.Objects = slices.DeleteFunc(i.Payload.Objects, func(raw json.RawMessage) bool {
+			return strings.Contains(string(raw), `"kind":"`+integration.KindIntegrationEventCursor+`"`)
+		})
+		if len(i.Payload.Objects) != objects-1 {
+			t.Fatal("the older image still carries the cursor row")
+		}
+		if err := replication.Seal(i); err != nil {
+			t.Fatal(err)
+		}
+		return i
+	}
+	refused := func(s *Store, image *replication.Image, what string) {
+		t.Helper()
+		before := imageOf(t, s).Generation()
+		if _, err := s.ValidateImage(ctx, *image); !errors.Is(err, replication.ErrIncompatible) {
+			t.Fatalf("%s: %v", what, err)
+		}
+		if after := imageOf(t, s).Generation(); after != before {
+			t.Fatalf("%s moved the installed generation: %v -> %v", what, before, after)
+		}
+	}
+	if !slices.ContainsFunc(imageOf(t, p).KindManifest, func(k replication.Kind) bool {
+		return k.Kind == integration.KindIntegrationEventCursor && k.Count == 1
+	}) {
+		t.Fatal("the primary's manifest lacks its cursor")
+	}
+
+	// Positive controls: each release installs an image of its own.
+	old := follower(runtimeOptions(true))
+	install(captureReplica(t, old), t, old, older())
+	newer := follower(runtimeOptions(false))
+	copyReplica(t, newer, p)
+	var got integration.IntegrationEventCursor
+	if err := newer.Get(ctx, store.Key{Kind: integration.KindIntegrationEventCursor, Name: cursor.Name}, &got); err != nil || got.Spec.Positions["zone"] != "1" || got.Spec.Owner != owner {
+		t.Fatal("the installed image lacks the cursor", got, err)
+	}
+
+	mustApply(t, p, zone("new", "new.example."), store.ManagerAPI)
+	refused(newer, older(), "an image without IntegrationEventCursor")
+	refused(old, imageOf(t, p), "an image with an unknown IntegrationEventCursor")
 }
 
 func TestReplicaRejectsIncompleteMetadataAndSameTermCounterRollback(t *testing.T) {
