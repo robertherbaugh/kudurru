@@ -68,10 +68,9 @@ without changing the stored copy or renewing its confirmation.
 | Package / remaining scope | Follow-up |
 |---|---|
 | ZONE: Kubernetes workflow and runtime qualification | [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
-| ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
-| DNS / EDGE: dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
+| DNS / EDGE: dnsdist 2.1.3 empty-FIN limitation | EDGE-CLIENT-ID known issue in [the follow-up ledger](../../followups.md#v02-completion-pass-open-at-17b7c87a) (dnsdist upstream; after v0.2.0) |
 | UPDATE / HA: owner-accepted publication grace, bounded follower apply, and member replacement | [#129 disposition and evidence](#owner-disposition-for-129); [#159](https://github.com/robertherbaugh/kudurru/issues/159) tracks the lifetime-refusal primary name. D409 remains implemented; loaded runtime and UPDATE findings remain in [#138](https://github.com/robertherbaugh/kudurru/issues/138). |
-| DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
+| DNS: failed final performance qualification | [#143](https://github.com/robertherbaugh/kudurru/issues/143) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
 | INTEGRATIONS / IDENTITY: partial UniFi update/delete recovery, actual live providers and unexplained partial-create stall | [#125](https://github.com/robertherbaugh/kudurru/issues/125) |
 | INTEGRATIONS: Kubernetes K3/K7, limits/refusals, credential and lease-loss qualification | [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
@@ -122,15 +121,24 @@ Related issues remain open where the merged work covers only part of their scope
 |---|---|---|
 | #125 | #216 verifies recovery through a mounted SQLite and UniFi double, including restart, lease loss and foreign-record protection; #211 documents live prerequisites. | Authorized live acceptance and receipts in #153. |
 | #126 | #192 verifies the CLI and refusal contracts; #193 resolves definite head-write classification. | Mounted K3/K7 qualification in #156. |
-| #127 | #197 retains strict authority validation for same-serial IXFR without AA. | Hosted pinned private-daemon suites in #157, plus the documented dnsdist limitation. |
 | #129 | #190 documents the owner's grace, deadline and replacement decisions; #187 verifies how cut follower apply results name the original primary. | Deferred child #160. D358 remains separate. |
-| #131 | #209 adds bounded, counted Kubernetes Events delivery. | Tracing and hosted live-sink follow-ups #165 and #164. |
+| #131 | #209 adds bounded, counted Kubernetes Events delivery; #199 fixes the #165 tracing failure at its cause and remeasures tracing allocations; #185 adds the hosted ClickHouse and Loki `sinks` job. | The owner's decision on #164: make `sinks` a `ci-ok` dependency or keep it informational. |
 | #133 | #183 documents the manual acceptance runbooks and #180 provides snapshot-package lifecycle evidence. | Final-artifact visual approval, authorized production issuance and expiry/grace evidence. |
-| #135 | #215 verifies abandoned-term rejoin, and #217 records hosted managed-anchor bootstrap and readiness evidence. | Production puller refusal and fencing coverage in #169. |
-| #136 | #206 and #202 cover Kubernetes ownership and SQLite partial-refusal visibility, respectively. | Pinned live edge TCP qualification in #127 and the remaining driver limits. |
 | #138 | #198 pins retiring-zone refusal and `LastError` lifetime; #210 covers budget classification and rotation cancellation. | Loaded runtime attribution in #172. |
 | #140 | #182 provides a merge-only proposal and a read-only verifier. | A November 21 read of the live rules still found rebase allowed and no required `promotion` check on either release branch. Apply and verify the live policy separately. |
 | #143 | #181 diagnoses the ineligible CNAME result; #179 proposes a host-equivalence preflight. | A passing final-source run on qualified hardware under the unchanged gates. |
+
+### Verified issue closeout, November 28, 2026
+
+The following scopes are complete on `main`. As above, this evidence does not
+qualify the published release artifacts or waive any other acceptance gate.
+
+| Issue | Merged changes and evidence |
+|---|---|
+| [#157: pinned interop on a hosted private daemon](https://github.com/robertherbaugh/kudurru/issues/157) | [#189](https://github.com/robertherbaugh/kudurru/pull/189) (`d60684cc`) adds `hack/lab-dockerd.sh`, `hack/pinned-interop.sh` (which rejects skipped or missing tests) and the non-required `pinned-interop` workflow: Knot and dnsdist jobs on runner-private Docker daemons for path-filtered pull requests, main, weekly and on dispatch, with artifacts that keep image identities, versions and per-test JSON. The `h3Post` dial-failure leak is fixed and covered by `TestH3PostClosesFINAlonePipeOnRoundTripError`. Runs [44803939665](https://github.com/robertherbaugh/kudurru/actions/runs/44803939665) and [44811568053](https://github.com/robertherbaugh/kudurru/actions/runs/44811568053) passed, and main run [45930199597](https://github.com/robertherbaugh/kudurru/actions/runs/45930199597) on `e6ebe9fa` passed both jobs with no skipped dnsdist suite. Making the workflow a required check is an owner setting. |
+| [#127: hosted pinned Knot and dnsdist qualification](https://github.com/robertherbaugh/kudurru/issues/127) | #157 (above) runs Knot DNS 3.6.2 (catalog, inbound secondary, managed root and RFC 5011) and every live dnsdist 2.1.3 suite (including client IDs, cache isolation and managed anchors) on hosted private daemons. [#197](https://github.com/robertherbaugh/kudurru/pull/197) (`e605d2fc`, #158, D417) keeps strict validation of the signed same-serial SOA-only IXFR reply without AA. The empty-FIN defect stays disclosed as the EDGE-CLIENT-ID known issue in [the follow-up ledger](../../followups.md#v02-completion-pass-open-at-17b7c87a), targeted at dnsdist upstream. |
+| [#135: managed-anchor residual coverage](https://github.com/robertherbaugh/kudurru/issues/135) | [#205](https://github.com/robertherbaugh/kudurru/pull/205) (`88fc838f`, #169) drives all six adoption-refusal classes and the fenced gauge through the production puller and mounted status route. [#215](https://github.com/robertherbaugh/kudurru/pull/215) (`18e9977d`, #170) covers the REVOKE-retired promotion and the abandoned-term return with exact acquisition counts. [#217](https://github.com/robertherbaugh/kudurru/pull/217) (`3e98a39f`) records local race readiness evidence without changing a bound. The fully green main [CI run 45923177231](https://github.com/robertherbaugh/kudurru/actions/runs/45923177231) on `32c4c28f` supplies the complete hosted command coverage: see [the audit](followup-audit.md#f28-startup-bounds-and-hosted-bootstrap-evidence--november-20-2026). |
+| [#136: client-group view ownership parity](https://github.com/robertherbaugh/kudurru/issues/136) | [#206](https://github.com/robertherbaugh/kudurru/pull/206) (`8849b75e`) reserves served static Kubernetes view RRsets against RFC 2136 UPDATE (`TestRunServeKubeViewUpdateOwnership`); `TestSQLiteUpdateViewOwnership` covers SQLite, including takeover. D403 (with D418) and [Zones and transfers](../../../docs/architecture/zones.md#client-group-views-split-horizon) state both drivers. [#202](https://github.com/robertherbaugh/kudurru/pull/202) (`6d03308e`, #171) reports refused view endpoints in a served SQLite record set and pins the shared 16-view budget. Live edge views over UDP and TCP run in the `f39` suite of the `pinned-interop` dnsdist job (`TestRunServeRemoteEdgeClientGroupViews`, [job 140280805535](https://github.com/robertherbaugh/kudurru/actions/runs/45930199597/job/140280805535)). The documented view limits are design limits, not open work; the mixed-version refusal of a namespaced forwarded delete stays in the follow-up ledger. |
 
 ### Owner disposition for #129
 
