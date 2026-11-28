@@ -21821,6 +21821,17 @@ failed `TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger`. No full
 command-package or aggregate CI pass is claimed. The local SQLite `Anchor`
 selection passed under race in 131.164 s on the main baseline.
 
+Update, November 28, 2026: the complete hosted coverage now exists. Main
+[CI run 45923177231](https://github.com/robertherbaugh/kudurru/actions/runs/45923177231)
+on `32c4c28fb1a91ff9bc31c1ab519e60f5c21fd0fb` passed every job, including all
+four command shards, the package shard, e2e and `ci-ok`. Its E2E job
+(`140258582618`) passed the same four enrolled managed-anchor cases, and each
+logged "1 root acquisitions, 0 of them raced". The promote/rejoin sampler
+reported 585 ms of startup SERVFAIL (26 samples, starting at 01:46:12.495 UTC
+on the restarted old primary), within the unchanged 5 s limit. As before, this
+confirms the bound, not the absence of a startup gap, and the run did not
+exercise the raced path at the cap.
+
 On a local eight-vCPU sandbox with test source
 `e915b833aa6286bc422327bac8cf03684b1ebea5`, all 15 invocations passed (121.017 s)
 under race with `CGO_ENABLED=1`, `-p 2`, and `-count=5`:
